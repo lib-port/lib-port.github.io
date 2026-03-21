@@ -30,7 +30,7 @@
               <a href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/commits/" rel="nofollow">History</a>
             </li>
 
-            {%- if repo.license and repo.license.spdx_id -%}
+            {%- if repo.license and repo.license.spdx_id and repo.license.spdx_id != "NOASSERTION" -%}
               <li>
                 <span aria-hidden="true">{% octicon law %}</span>
                 {{ repo.license.spdx_id }}
