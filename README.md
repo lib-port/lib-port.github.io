@@ -17,7 +17,7 @@ This repo builds on the [Minima Jekyll theme](https://github.com/jekyll/minima) 
 ## Quick Start Guide
 - Fork the repo to a new repo owned by you named `[YOUR USERNAME].github.io`.
 - Clone your fork to a local folder.
-- Edit the following configuration options in the _config.yaml file:
+- Edit the following configuration options in the `_config.yml` file:
 
 ```yaml
 title: #title of the landing page/site
@@ -45,7 +45,7 @@ external_blog:
   post_limit: #how many of the most recent items from the RSS feed you want to show on the landing page
 ```
 
-- The order that the custom sections settings(intro, repo_grid, and external_blog) appear in the `landing page settings` block in`_config.yml` determines the order the sections appear on the home page.
+- The order that the custom section settings (`intro`, `repo_grid`, and `external_blog`) appear in the `landing page settings` block in `_config.yml` determines the order the sections appear on the home page.
 - The `switch` variable controls whether or not the section appears
 - You can include as many repos as you want, but they must be repos owned by you. To follow good UI design the maximum should be 6 and number even. E.g. 2, 4 or 6.
 - Run `python3 scripts/fetch_external_posts.py` when you want to refresh the blog data file committed at `_data/external_posts.json`.
@@ -56,7 +56,7 @@ external_blog:
 
 - Commit and push to `main`.
 - Your landing page should be available at `https://[YOUR USERNAME].github.io`.
-- Please check the [Minia README](https://github.com/jekyll/minima/blob/master/README.md) for further site customisation options. Minima RSS configurations will conflict with Dev Writer Landing Page configurations, please do not use them. The plugin and gem references to `jekyll-feed` remain as Minima will not build without them, and on-site RSS generation functionality remains, but hooks and UI artefacts for the on-site RSS have been removed.
+- Please check the [Minima README](https://github.com/jekyll/minima/blob/master/README.md) for further site customisation options. Minima RSS configurations will conflict with Dev Writer Landing Page configurations, please do not use them. The plugin and gem references to `jekyll-feed` remain as Minima will not build without them, and on-site RSS generation functionality remains, but hooks and UI artefacts for the on-site RSS have been removed.
 
 # README
 This repository powers <https://libport.github.io/>, a GitHub Pages site built with Jekyll and the remote `jekyll/minima` theme. The homepage combines two configurable sections:
@@ -69,8 +69,10 @@ This repository powers <https://libport.github.io/>, a GitHub Pages site built w
 The site is assembled from a small set of Jekyll templates plus a small Python build layer:
 
 - [`index.html`](./index.html) renders the homepage and inserts enabled sections in config order
+- [`_includes/intro.html`](./_includes/intro.html) renders the configured intro copy
 - [`_includes/repo_grid.html`](./_includes/repo_grid.html) builds the repository grid from `site.github.public_repositories`
 - [`_includes/external_blog.html`](./_includes/external_blog.html) renders external posts from the repository copy of [`_data/external_posts.json`](./_data/external_posts.json)
+- [`_includes/home_section_error.html`](./_includes/home_section_error.html) renders fail-soft messages when an enabled homepage section cannot be populated
 - [`_includes/head.html`](./_includes/head.html) exposes the configured external feed as an RSS `<link>`
 - [`assets/js/repo_updates.js`](./assets/js/repo_updates.js) fetches repo push dates from the GitHub API and caches them in `localStorage`
 - [`scripts/site_config.py`](./scripts/site_config.py) loads [`_config.yml`](./_config.yml) with `PyYAML` and performs shared validation for `intro`, `repo_grid`, and `external_blog`
@@ -87,7 +89,10 @@ The site is assembled from a small set of Jekyll templates plus a small Python b
 ├── _includes/
 │   ├── external_blog.html
 │   ├── head.html
+│   ├── home_section_error.html
+│   ├── intro.html
 │   └── repo_grid.html
+├── _data/external_posts.json
 ├── _sass/minima/custom-styles.scss
 ├── assets/js/repo_updates.js
 ├── scripts/build_site.sh
@@ -95,6 +100,7 @@ The site is assembled from a small set of Jekyll templates plus a small Python b
 ├── scripts/site_config.py
 ├── scripts/validate_site_config.py
 ├── requirements.txt
+├── tests/
 ├── Gemfile
 ├── index.html
 └── README.md
@@ -143,6 +149,7 @@ external_blog:
 Notes:
 
 - `_config.yml` is the single source of truth for section settings
+- homepage section order follows the top-level key order in `_config.yml`
 - enabled sections are validated in Python before Jekyll runs
 - `switch` must be a YAML boolean such as `true` or `false`
 - `intro.text` must be present and non-blank when `intro.switch` is `true`
@@ -210,32 +217,40 @@ python3 -m unittest discover -s tests
 
 Deployment is handled by [`.github/workflows/jekyll-gh-pages.yml`](./.github/workflows/jekyll-gh-pages.yml).
 
-On pushes to `main` other than README-only changes, GitHub Actions:
+On pushes to `main` except when only [`README.md`](./README.md) changes, GitHub Actions:
 
 1. checks out the repository
-2. sets up Ruby 3.3 and restores the Bundler cache
-3. restores `.jekyll-cache`
-4. validates enabled homepage section settings from [`_config.yml`](./_config.yml)
-5. builds the site with `bundle exec jekyll build -d ./_site`
-6. deploys `_site` to GitHub Pages
+2. configures GitHub Pages
+3. sets up Ruby 3.3 and restores the Bundler cache
+4. sets up Python 3.11 and installs [`requirements.txt`](./requirements.txt)
+5. restores `.jekyll-cache`
+6. validates enabled homepage section settings from [`_config.yml`](./_config.yml)
+7. builds the site with `bundle exec jekyll build -d ./_site`
+8. uploads `_site` as the Pages artifact
+9. deploys the artifact to GitHub Pages
 
 The workflow does not fetch or parse the external RSS feed. Deployments use the checked-in [`_data/external_posts.json`](./_data/external_posts.json) from the repository.
 
 The build job sets `JEKYLL_GITHUB_TOKEN` so `jekyll-github-metadata` can read repository metadata during the Jekyll build.
+
+The workflow also includes a cleanup job that trims older workflow runs and keeps the three most recent runs.
 
 ## Editing Guide
 
 Common changes map to these files:
 
 - update homepage copy: [`_config.yml`](./_config.yml) and [`index.html`](./index.html)
+- update the intro section markup: [`_includes/intro.html`](./_includes/intro.html)
 - change which repositories appear: [`_config.yml`](./_config.yml)
 - change how repository cards render: [`_includes/repo_grid.html`](./_includes/repo_grid.html)
 - change blog post markup: [`_includes/external_blog.html`](./_includes/external_blog.html)
+- change section-level fallback messages: [`_includes/home_section_error.html`](./_includes/home_section_error.html)
 - change styling: [`_sass/minima/custom-styles.scss`](./_sass/minima/custom-styles.scss)
 - change config parsing or validation rules: [`scripts/site_config.py`](./scripts/site_config.py) and [`scripts/validate_site_config.py`](./scripts/validate_site_config.py)
 - change feed fetching, parsing, or JSON output: [`scripts/fetch_external_posts.py`](./scripts/fetch_external_posts.py)
 - change the local build entrypoint: [`scripts/build_site.sh`](./scripts/build_site.sh)
 - refresh checked-in blog data: [`scripts/fetch_external_posts.py`](./scripts/fetch_external_posts.py) then commit [`_data/external_posts.json`](./_data/external_posts.json)
+- change automated checks: [`tests/`](./tests/)
 
 ## Notes
 
