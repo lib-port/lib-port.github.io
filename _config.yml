@@ -48,7 +48,7 @@ external_blog:
   switch: true
   feed_url: https://example.com/feed.xml
   archive_url: https://example.com/archive
-  post_limit: 5
+  post_limit: 7
 
 ################################
 # End of landing page settings
