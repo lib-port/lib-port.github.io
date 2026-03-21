@@ -1,0 +1,10 @@
+<section class="home-section-error" aria-live="polite">
+  <h2 class="home-section-error-heading">
+    <span aria-hidden="true">{% octicon alert %}</span>
+    <span>Section configuration error</span>
+  </h2>
+  <p>
+    <strong>{{ include.section_name | escape }}:</strong>
+    {{ include.message }}
+  </p>
+</section>

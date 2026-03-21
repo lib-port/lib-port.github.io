@@ -1,0 +1,236 @@
+.home-intro {
+  text-align: center;
+}
+
+.home-section-error {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid #b45309;
+  border-left: 0.4rem solid #b45309;
+  border-radius: 0.25rem;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.home-section-error h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.home-section-error-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.home-section-error-heading .octicon {
+  flex-shrink: 0;
+}
+
+.home-section-error p {
+  margin: 0;
+}
+
+.section-divider {
+  width: 50%;
+  margin-left: auto;
+  margin-right: auto;
+  border: 0;
+  border-top: 1px solid currentColor;
+  opacity: 0.25;
+}
+
+.section-heading-meta {
+  font-style: normal;
+  font-weight: normal;
+  font-size: 0.8rem;
+}
+
+/* =========================================================
+   Repo cards (home page) — colors derived from Minima
+   ========================================================= */
+
+.repo-list {
+  /* Component tokens */
+  --repo-gap: 1rem;
+  --repo-pad: 1rem;
+  --repo-radius: 0.75rem;
+  --repo-transition: 120ms ease;
+
+  /* Provide safe defaults first */
+  --repo-accent-hover: var(--repo-accent);
+
+  /* Minima 3 uses $link-base-color; Minima 2 uses $brand-color */
+  @if variable-exists(link-base-color) {
+    --repo-accent: #{$link-base-color};
+    --repo-accent-hover: #{$link-hover-color};
+  } @else {
+    --repo-accent: #{$brand-color};
+    --repo-accent-hover: #{$brand-color};
+  }
+
+  /* Base surfaces (work even if color-mix isn't supported) */
+  --repo-border: #{$border-color-01};
+  --repo-bg: #{$background-color};
+  --repo-bg-hover: #{$background-color};
+
+  /* Enhanced surfaces where supported */
+  @supports (background: color-mix(in srgb, black, white)) {
+    --repo-border: color-mix(in srgb, #{$text-color} 12%, transparent);
+    --repo-bg: color-mix(in srgb, #{$background-color} 96%, #{$text-color});
+    --repo-bg-hover: color-mix(in srgb, var(--repo-bg) 92%, var(--repo-accent));
+  }
+
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  display: grid;
+  gap: var(--repo-gap);
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+  align-items: stretch;
+}
+
+.repo-card {
+  position: relative;
+  isolation: isolate; /* keeps z-index layering predictable inside the card */
+
+  margin: 0;
+  padding: var(--repo-pad);
+
+  border: 1px solid var(--repo-border);
+  border-radius: var(--repo-radius);
+  background: var(--repo-bg);
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  transition:
+    border-color var(--repo-transition),
+    background-color var(--repo-transition);
+}
+
+/* Pointer hover */
+.repo-card:hover {
+  border-color: var(--repo-accent);
+  background: var(--repo-bg-hover);
+  cursor: pointer;
+}
+
+/* Keyboard-only border highlight (no @supports selector(...) — GH Pages Sass can’t parse it)
+   Browsers without :has() will ignore this, but your focus outline still works. */
+.repo-card:has(.repo-link:focus-visible) {
+  border-color: var(--repo-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .repo-card { transition: none; }
+  .repo-updated { transition: none; }
+}
+
+.repo-title {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* Repo title link: high-enough specificity to beat Minima's generic link hover rules */
+.repo-title > a.repo-link:link,
+.repo-title > a.repo-link:visited {
+  color: var(--repo-accent);
+  text-decoration: none;
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0.12em;
+}
+
+.repo-title > a.repo-link:hover,
+.repo-title > a.repo-link:focus-visible,
+.repo-card:hover .repo-title > a.repo-link {
+  color: var(--repo-accent-hover);
+  text-decoration: underline;
+}
+
+/* Whole-card clickable (stretched link overlay) */
+.repo-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: var(--repo-radius);
+}
+
+/* Focus ring around the whole card (via the stretched overlay) */
+.repo-link:focus-visible::after {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+/* Keep other interactive elements above the stretched overlay */
+.repo-card :where(a:not(.repo-link), button, input, select, textarea) {
+  position: relative;
+  z-index: 2;
+}
+
+/* Make the meta block reliably clickable even if you later add opacity/transform */
+.repo-meta {
+  position: relative;
+  z-index: 2;
+
+  margin: 0;
+  margin-top: auto; /* push this block to the bottom of the card */
+  padding: 0;
+  list-style: none;
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+
+  font-size: 0.875em;
+}
+
+.repo-desc { margin: 0; }
+
+.repo-updated {
+  display: none;
+  margin: 0;
+  max-height: 0;
+  overflow: hidden;
+  align-items: baseline;
+  gap: 0.35em;
+  font-size: 0.875em;
+  line-height: 1.4;
+  opacity: 0;
+  transform: translateY(-0.2rem);
+  transition:
+    max-height 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.repo-updated.is-visible {
+  display: inline-flex;
+  max-height: 2rem;
+  opacity: 0.8;
+  transform: translateY(0);
+}
+
+.repo-meta > li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  white-space: nowrap;
+}
+
+.octicon {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+  display: inline-block;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+}
+
+.post-content, .page-content {
+  text-rendering: optimizeLegibility;
+}
