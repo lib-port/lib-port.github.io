@@ -8,7 +8,7 @@
 ![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-ES6%2B-F7DF1E?logo=javascript&logoColor=black)
 
-Dev Writer Landing Page is an AI and recruiter friendly static site to showcase your code from GitHub and blog posts from a blogging platform (Blogger, Wordpress, Medium etc.). It features AI access and ingestion optimisations, responsive design, light and dark themes in response to browser settings, and optimised, graceful degradation client-side JS showing repo update status.
+Dev Writer Landing Page is an AI and recruiter friendly static site to showcase your code from GitHub and blog posts from a blogging platform (Blogger, Wordpress, Medium etc.). It features AI access and ingestion optimisations, responsive design, light and dark themes in response to browser settings, and optimised, graceful degradation client-side JS showing repo update status. GitHub style callouts and GFM is enabled to extend the landing page into a documentation site.
 
 View the live demo at <https://libport.github.io/>.
 
