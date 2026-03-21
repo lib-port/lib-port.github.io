@@ -1,0 +1,26 @@
+---
+layout: home
+---
+
+<header class="post-header"><h1 class="post-title">Home</h1></header>
+{%- assign has_rendered_home_section = false -%}
+{%- for section_key in site.keys -%}
+  {%- capture home_section -%}
+    {%- case section_key -%}
+      {%- when "intro" -%}
+        {%- include intro.html -%}
+      {%- when "repo_grid" -%}
+        {%- include repo_grid.html -%}
+      {%- when "external_blog" -%}
+        {%- include external_blog.html -%}
+    {%- endcase -%}
+  {%- endcapture -%}
+  {%- assign home_section = home_section | strip -%}
+  {%- if home_section != "" -%}
+    {%- if has_rendered_home_section -%}
+<hr class="section-divider">
+    {%- endif -%}
+    {{- home_section -}}
+    {%- assign has_rendered_home_section = true -%}
+  {%- endif -%}
+{%- endfor -%}

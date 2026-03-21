@@ -1,0 +1,57 @@
+exclude:
+  - README.md
+  - requirements.txt
+  - scripts/
+  - tests/
+
+plugins:
+  - jekyll-gfm-admonitions
+  - jekyll-remote-theme
+  - jekyll-sitemap
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-octicons
+  - jekyll-github-metadata
+  
+markdown: kramdown
+kramdown:
+  input: GFM
+
+remote_theme: jekyll/minima
+
+minima:
+  skin: auto
+  show_excerpts: true
+  hide_site_feed_link: true
+
+title: libport.github.io
+
+##################################
+# Start of landing page settings
+##################################
+
+intro:
+  switch: true
+  text: Course notes, projects, and essays.
+
+repo_grid:
+  switch: true
+  repo_list:
+    - linux-cyber
+    - data-AI-eng
+    - BA-PO-econ
+    - open-banking-lakehouse
+    - backtest
+    - libport.github.io
+
+external_blog:
+  switch: true
+  feed_url: https://example.com/feed.xml
+  archive_url: https://example.com/archive
+  post_limit: 5
+
+################################
+# End of landing page settings
+################################
+
+description: A blog and portfolio site focusing on the intersection of technology, social sciences, and humanities.

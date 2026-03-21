@@ -1,0 +1,69 @@
+{%- assign repo_grid = site.repo_grid -%}
+{%- assign configured_repos = repo_grid.repo_list | default: empty -%}
+{%- assign github_repositories = site.github.public_repositories | default: empty -%}
+
+{%- if repo_grid and repo_grid.switch -%}
+  {%- if github_repositories.size == 0 -%}
+    {%- include home_section_error.html
+      section_name="repo_grid"
+      message='GitHub repository metadata is unavailable, so the configured repositories cannot be rendered.'
+    -%}
+  {%- else -%}
+  {%- capture repo_cards -%}
+    {%- for configured_repo in configured_repos -%}
+      {%- assign repo = github_repositories | where_exp: "item", "item.name == configured_repo" | first -%}
+
+      {%- if repo -%}
+        {%- assign branch = repo.default_branch | default: "main" -%}
+        <li class="repo-card" data-repo-owner="{{ repo.owner.login | escape }}" data-repo-name="{{ repo.name | escape }}">
+          <h3 class="repo-title">
+            <a class="repo-link" href="{{ repo.html_url }}">{{ repo.name }}</a>
+          </h3>
+
+          {%- if repo.description != "" -%}
+            <p class="repo-desc">{{ repo.description }}</p>
+          {%- endif -%}
+
+          <ul class="repo-meta" aria-label="Repository metadata">
+            <li>
+              <span aria-hidden="true">{% octicon history %}</span>
+              <a href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/commits/" rel="nofollow">History</a>
+            </li>
+
+            {%- if repo.license and repo.license.spdx_id -%}
+              <li>
+                <span aria-hidden="true">{% octicon law %}</span>
+                {{ repo.license.spdx_id }}
+              </li>
+            {%- endif -%}
+
+            <li>
+              <span aria-hidden="true">{% octicon file-zip %}</span>
+              <a class="repo-download" href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/archive/refs/heads/{{ branch }}.zip" rel="nofollow">Download <small>(.zip)</small></a>
+            </li>
+          </ul>
+
+          <p class="repo-updated" aria-live="polite">
+            <span aria-hidden="true">{% octicon git-commit %}</span>
+            <span class="repo-updated-text"></span>
+          </p>
+        </li>
+      {%- endif -%}
+    {%- endfor -%}
+  {%- endcapture -%}
+
+  {%- assign repo_cards = repo_cards | strip -%}
+  {%- if repo_cards != "" -%}
+  <h2>Notes and Projects <span class="section-heading-meta">(GitHub repos)</span></h2>
+  <ul class="repo-list">
+    {{- repo_cards -}}
+  </ul>
+  <script src="/assets/js/repo_updates.js" defer></script>
+  {%- else -%}
+    {%- include home_section_error.html
+      section_name="repo_grid"
+      message='None of the repository names in <code>repo_grid.repo_list</code> matched the repositories available from GitHub metadata.'
+    -%}
+  {%- endif -%}
+  {%- endif -%}
+{%- endif -%}

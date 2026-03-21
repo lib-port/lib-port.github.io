@@ -1,0 +1,5 @@
+{%- assign intro = site.intro -%}
+{%- assign intro_text = intro.text | to_s | strip -%}
+{%- if intro and intro.switch -%}
+<p class="home-intro">{{ intro_text }}</p>
+{%- endif -%}
