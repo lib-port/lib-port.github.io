@@ -21,28 +21,38 @@ This repo builds on the [Minima Jekyll theme](https://github.com/jekyll/minima) 
 
 ```yaml
 title: #title of the landing page/site
-intro:
-  switch: true
-  text: #introduction for the site, located below the "Home" page title.
-description: #description that will be shown in the footer
 ```
 and
 
 ```yaml
+##################################
+# Start of landing page settings
+##################################
+
+intro:
+  switch: true
+  text: #introduction for the site, located below the "Home" page title.
+
 repo_grid:
   switch: true
   repo_list:
   - #name of first repo
   - #name of second repo
-```
-and
 
-```yaml
 external_blog:
   switch: true
   feed_url: #URL of the RSS feed of your blog
   archive_url: #URL of the archive page of your blog that lists all the posts
   post_limit: #how many of the most recent items from the RSS feed you want to show on the landing page
+
+################################
+# End of landing page settings
+################################
+```
+and
+
+```yaml
+description: #description that will be shown in the footer
 ```
 
 - The order that the custom section settings (`intro`, `repo_grid`, and `external_blog`) appear in the `landing page settings` block in `_config.yml` determines the order the sections appear on the home page.
