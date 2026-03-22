@@ -149,10 +149,6 @@
       return repo.pushed_at;
     }
 
-    if (typeof repo.updated_at === "string" && repo.updated_at) {
-      return repo.updated_at;
-    }
-
     return "";
   }
 
@@ -168,11 +164,11 @@
   }
 
   function getStorageKey(owner) {
-    return `repo-updates:v2:owner:${owner}`;
+    return `repo-updates:v3:owner:${owner}`;
   }
 
   function getFailureKey(owner) {
-    return `repo-updates:v2:failure:owner:${owner}`;
+    return `repo-updates:v3:failure:owner:${owner}`;
   }
 
   function readCache(storageKey) {
