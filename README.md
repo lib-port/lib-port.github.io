@@ -30,7 +30,7 @@ and
 ##################################
 
 intro:
-  switch: true
+  switch: true 
   text: #introduction for the site, located below the "Home" page title.
 
 repo_grid:
@@ -259,7 +259,7 @@ Common changes map to these files:
 - change config parsing or validation rules: [`scripts/site_config.py`](./scripts/site_config.py) and [`scripts/validate_site_config.py`](./scripts/validate_site_config.py)
 - change feed fetching, parsing, or JSON output: [`scripts/fetch_external_posts.py`](./scripts/fetch_external_posts.py)
 - change the local build entrypoint: [`scripts/build_site.sh`](./scripts/build_site.sh)
-- refresh checked-in blog data: [`scripts/fetch_external_posts.py`](./scripts/fetch_external_posts.py) then commit [`_data/external_posts.json`](./_data/external_posts.json)
+- refresh checked-in blog data: run [`scripts/fetch_external_posts.py`](./scripts/fetch_external_posts.py) then commit [`_data/external_posts.json`](./_data/external_posts.json)
 - change automated checks: [`tests/`](./tests/)
 
 ## Notes
