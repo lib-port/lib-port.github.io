@@ -49,6 +49,7 @@ class SiteConfigValidationTests(unittest.TestCase):
         self.assertEqual(config.intro.text, "Hello world")
         self.assertEqual(config.repo_grid.repo_list, ["alpha", "beta"])
         self.assertEqual(config.external_blog.feed_url, "https://example.com/feed")
+        self.assertEqual(config.external_blog.archive_url, "https://example.com/archive")
         self.assertEqual(config.external_blog.post_limit, 5)
 
     def test_disabled_sections_ignore_malformed_inner_fields(self) -> None:
@@ -138,6 +139,75 @@ class SiteConfigValidationTests(unittest.TestCase):
             r"external_blog\.switch is true, but external_blog\.feed_url is missing or blank",
         ):
             validate_site_config(config_path)
+
+    def test_missing_external_blog_archive_url_is_rejected(self) -> None:
+        config_path = self.write_config(
+            """
+            intro:
+              switch: false
+
+            repo_grid:
+              switch: false
+
+            external_blog:
+              switch: true
+              feed_url: https://example.com/feed
+              post_limit: 3
+            """
+        )
+
+        with self.assertRaisesRegex(
+            ConfigValidationError,
+            r"external_blog\.switch is true, but external_blog\.archive_url is missing or blank",
+        ):
+            validate_site_config(config_path)
+
+    def test_external_blog_post_limit_must_be_between_one_and_ten(self) -> None:
+        for post_limit in (0, 11, True, "5"):
+            with self.subTest(post_limit=post_limit):
+                config_path = self.write_config(
+                    f"""
+                    intro:
+                      switch: false
+
+                    repo_grid:
+                      switch: false
+
+                    external_blog:
+                      switch: true
+                      feed_url: https://example.com/feed
+                      archive_url: https://example.com/archive
+                      post_limit: {post_limit!r}
+                    """
+                )
+
+                with self.assertRaisesRegex(
+                    ConfigValidationError,
+                    r"external_blog\.post_limit must be an integer between 1 and 10",
+                ):
+                    validate_site_config(config_path)
+
+    def test_external_blog_post_limit_accepts_boundaries(self) -> None:
+        for post_limit in (1, 10):
+            with self.subTest(post_limit=post_limit):
+                config_path = self.write_config(
+                    f"""
+                    intro:
+                      switch: false
+
+                    repo_grid:
+                      switch: false
+
+                    external_blog:
+                      switch: true
+                      feed_url: https://example.com/feed
+                      archive_url: https://example.com/archive
+                      post_limit: {post_limit}
+                    """
+                )
+
+                config = validate_site_config(config_path)
+                self.assertEqual(config.external_blog.post_limit, post_limit)
 
     def test_malformed_yaml_is_rejected(self) -> None:
         config_path = self.write_config(

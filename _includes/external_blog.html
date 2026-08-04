@@ -1,32 +1,17 @@
-{%- assign blog_data = site.data.external_posts -%}
-{%- assign blog_posts = blog_data.posts | default: empty -%}
 {%- assign external_blog = site.external_blog -%}
-{%- assign blog_archive_url = external_blog.archive_url -%}
 {%- if external_blog and external_blog.switch -%}
-  {%- if blog_data == nil -%}
-    {%- include home_section_error.html
-      section_name="external_blog"
-      message='The section is enabled, but <code>_data/external_posts.json</code> was not generated before the Jekyll build.'
-    -%}
-  {%- elsif blog_posts.size > 0 -%}
 <h2>Recent Posts <span class="section-heading-meta">(external site)</span></h2>
-  <ul class="post-list">
-    {%- for post in blog_posts -%}
-      <li>
-        <span class="post-meta">{{ post.published_at | date: "%b %-d, %Y" }}</span>
-        <h3>
-          <a class="post-link" href="{{ post.url | escape }}">{{ post.title | escape }}</a>
-        </h3>
-        {%- if post.excerpt -%}
-          <p>{{ post.excerpt | escape }}</p>
-        {%- endif -%}
-      </li>
-    {%- endfor -%}
-  </ul>
-  {%- if blog_archive_url -%}
-  <p>
-    <a class="post-link" href="{{ blog_archive_url | escape }}">View all posts</a>
+<div
+  class="external-blog"
+  data-external-blog
+  data-feed-url="{{ external_blog.feed_url | escape }}"
+  data-archive-url="{{ external_blog.archive_url | escape }}"
+  data-post-limit="{{ external_blog.post_limit }}"
+  aria-live="polite"
+>
+  <p class="external-blog-fallback">
+    <a class="post-link" href="{{ external_blog.archive_url | escape }}">View posts on Substack</a>
   </p>
-  {%- endif -%}
-  {%- endif -%}
+</div>
+<script src="{{ '/assets/js/external_blog.js' | relative_url }}" defer></script>
 {%- endif -%}

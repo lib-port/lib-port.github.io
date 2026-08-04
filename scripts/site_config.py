@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "_config.yml"
 TRUTHY_SWITCH_VALUES = {True}
 FALSY_SWITCH_VALUES = {False, None}
+MAX_EXTERNAL_BLOG_POST_LIMIT = 10
 
 
 class ConfigValidationError(ValueError):
@@ -132,12 +133,17 @@ def validate_external_blog(raw_config: dict[str, Any]) -> ExternalBlogConfig:
         return ExternalBlogConfig(enabled=False, feed_url="", archive_url="", post_limit=0)
 
     feed_url = _require_non_blank_string(section, "external_blog", "feed_url")
-    archive_url = _optional_string(section.get("archive_url"), "external_blog", "archive_url")
+    archive_url = _require_non_blank_string(section, "external_blog", "archive_url")
 
     raw_post_limit = section.get("post_limit")
-    if not isinstance(raw_post_limit, int) or isinstance(raw_post_limit, bool) or raw_post_limit <= 0:
+    if (
+        not isinstance(raw_post_limit, int)
+        or isinstance(raw_post_limit, bool)
+        or not 1 <= raw_post_limit <= MAX_EXTERNAL_BLOG_POST_LIMIT
+    ):
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: external_blog.switch is true, but external_blog.post_limit must be a positive integer"
+            f"{CONFIG_PATH}: external_blog.switch is true, but external_blog.post_limit "
+            f"must be an integer between 1 and {MAX_EXTERNAL_BLOG_POST_LIMIT}"
         )
 
     return ExternalBlogConfig(
