@@ -343,7 +343,7 @@ test("the template contains the progressive fallback and deferred loader", () =>
   const template = fs.readFileSync(templatePath, "utf8");
 
   assert.match(template, /<h2[^>]*data-external-blog-heading[^>]*hidden/);
-  assert.match(template, />View posts on Substack<\/a>/);
+  assert.match(template, />View posts<\/a>/);
   assert.match(template, /data-feed-url=/);
   assert.match(template, /data-archive-url=/);
   assert.match(template, /external_blog\.js[^>]*defer/);
