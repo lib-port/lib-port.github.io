@@ -26,25 +26,25 @@
 
           <ul class="repo-meta" aria-label="Repository metadata">
             <li>
-              <span aria-hidden="true">{% octicon history %}</span>
+              <span class="repo-icon" aria-hidden="true">{% octicon history %}</span>
               <a href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/commits/" rel="nofollow">History</a>
             </li>
 
             {%- if repo.license and repo.license.spdx_id and repo.license.spdx_id != "NOASSERTION" -%}
               <li>
-                <span aria-hidden="true">{% octicon law %}</span>
+                <span class="repo-icon" aria-hidden="true">{% octicon law %}</span>
                 {{ repo.license.spdx_id }}
               </li>
             {%- endif -%}
 
             <li>
-              <span aria-hidden="true">{% octicon file-zip %}</span>
+              <span class="repo-icon" aria-hidden="true">{% octicon file-zip %}</span>
               <a class="repo-download" href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/archive/refs/heads/{{ branch }}.zip" rel="nofollow">Download <small>(.zip)</small></a>
             </li>
           </ul>
 
           <p class="repo-updated" aria-live="polite">
-            <span aria-hidden="true">{% octicon git-commit %}</span>
+            <span class="repo-icon" aria-hidden="true">{% octicon git-commit %}</span>
             <span class="repo-updated-text"></span>
           </p>
         </li>

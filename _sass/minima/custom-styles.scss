@@ -196,7 +196,7 @@
   margin: 0;
   max-height: 0;
   overflow: hidden;
-  align-items: baseline;
+  align-items: center;
   gap: 0.35em;
   font-size: 0.875em;
   line-height: 1.4;
@@ -217,9 +217,24 @@
 
 .repo-meta > li {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.35em;
   white-space: nowrap;
+}
+
+.repo-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.repo-icon > .octicon {
+  display: block;
+  vertical-align: 0;
 }
 
 .octicon {
