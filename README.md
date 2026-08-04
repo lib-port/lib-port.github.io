@@ -1,140 +1,51 @@
 # Dev Writer Landing Page
 
 [![Deploy Jekyll with GitHub Pages](https://github.com/libport/libport.github.io/actions/workflows/jekyll-gh-pages.yml/badge.svg)](https://github.com/libport/libport.github.io/actions/workflows/jekyll-gh-pages.yml)
-[![Website](https://img.shields.io/website?url=https%3A%2F%2Flibport.github.io%2F&up_message=online&down_message=offline&label=site)](https://libport.github.io/)
-![Last Commit](https://img.shields.io/github/last-commit/libport/libport.github.io)
-![Jekyll](https://img.shields.io/badge/Jekyll-4.4.1-cc0000?logo=jekyll)
-![Ruby](https://img.shields.io/badge/Ruby-3.3-cc342d?logo=ruby)
-![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
-![JavaScript](https://img.shields.io/badge/JavaScript-ES6%2B-F7DF1E?logo=javascript&logoColor=black)
+[![Live site](https://img.shields.io/website?url=https%3A%2F%2Flibport.github.io%2F&up_message=online&down_message=offline&label=site)](https://libport.github.io/)
 
-Dev Writer Landing Page is an AI and recruiter friendly static site to showcase your code from GitHub and blog posts from a blogging platform (Blogger, Wordpress, Medium etc.). It features AI access and ingestion optimisations, responsive design, light and dark themes in response to browser settings, and optimised, graceful degradation client-side JS showing repo update status. GitHub style callouts and GFM is enabled to extend the landing page into a documentation site.
+A configurable Jekyll landing page for presenting selected GitHub repositories and recent posts from an external RSS or Atom feed. It is designed for GitHub Pages and builds on the [Minima theme](https://github.com/jekyll/minima).
 
-View the live demo at <https://libport.github.io/>.
+[View the live demo](https://libport.github.io/)
 
-This repo builds on the [Minima Jekyll theme](https://github.com/jekyll/minima) and also depends on [Jekyll](https://jekyllrb.com/docs/), [GitHub Pages](https://pages.github.com/) and [GitHub Actions](https://docs.github.com/en/actions).
+## Features
 
-## Quick Start Guide
-- Fork the repo to a new repo owned by you named `[YOUR USERNAME].github.io`.
-- Clone your fork to a local folder.
-- Edit the following configuration options in the `_config.yml` file:
+- Configurable introduction, repository grid, and external-post sections
+- Server-rendered repository metadata with client-side update labels
+- Committed RSS or Atom snapshots for deterministic builds
+- Responsive light and dark themes based on browser preferences
+- Graceful behavior when JavaScript or the GitHub API is unavailable
+- SEO metadata, a sitemap, and GitHub-flavored Markdown extensions
+- Automated deployment to GitHub Pages
 
-```yaml
-title: #title of the landing page/site
-```
-and
+## Quick start
 
-```yaml
-##################################
-# Start of landing page settings
-##################################
+1. Fork this repository, then rename the fork to `YOUR_USERNAME.github.io`.
+2. In the fork's **Settings → Pages**, select **GitHub Actions** as the deployment source.
+3. Clone the renamed repository:
 
-intro:
-  switch: true 
-  text: #introduction for the site, located below the "Home" page title.
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/YOUR_USERNAME.github.io.git
+   cd YOUR_USERNAME.github.io
+   ```
 
-repo_grid:
-  switch: true
-  repo_list:
-  - #name of first repo
-  - #name of second repo
+4. Edit the site metadata and homepage sections in [`_config.yml`](./_config.yml). See [Configuration](#configuration) for all supported settings.
+5. If the external-post section is enabled, generate its initial data snapshot:
 
-external_blog:
-  switch: true
-  feed_url: #URL of the RSS feed of your blog
-  archive_url: #URL of the archive page of your blog that lists all the posts
-  post_limit: #how many of the most recent items from the RSS feed you want to show on the landing page
+   ```bash
+   python3 -m pip install -r requirements.txt
+   python3 scripts/fetch_external_posts.py
+   ```
 
-################################
-# End of landing page settings
-################################
-```
-and
-
-```yaml
-description: #description that will be shown in the footer
-```
-
-- The order that the custom section settings (`intro`, `repo_grid`, and `external_blog`) appear in the `landing page settings` block in `_config.yml` determines the order the sections appear on the home page.
-- The `switch` variable controls whether or not the section appears
-- You can include as many repos as you want, but they must be repos owned by you. To follow good UI design the maximum should be 6 and number even. E.g. 2, 4 or 6.
-- Run `python3 scripts/fetch_external_posts.py` when you want to refresh the blog data file committed at `_data/external_posts.json`.
-- Build the site with `scripts/build_site.sh`.
-
-> [!NOTE]
-> The external blog data file is no longer generated during the build. Update `_data/external_posts.json` manually with `python3 scripts/fetch_external_posts.py` and commit the result before deploying if you want newer feed content on the site.
-
-- Commit and push to `main`.
-- Your landing page should be available at `https://[YOUR USERNAME].github.io`.
-- Please check the [Minima README](https://github.com/jekyll/minima/blob/master/README.md) for further site customisation options. Minima RSS configurations will conflict with Dev Writer Landing Page configurations, please do not use them. The plugin and gem references to `jekyll-feed` remain as Minima will not build without them, and on-site RSS generation functionality remains, but hooks and UI artefacts for the on-site RSS have been removed.
-
-# README
-This repository powers <https://libport.github.io/>, a GitHub Pages site built with Jekyll and the remote `jekyll/minima` theme. The homepage combines two configurable sections:
-
-- a grid of selected GitHub repositories
-- recent posts pulled from an external RSS or Atom feed into a Jekyll data file
-
-## How It Works
-
-The site is assembled from a small set of Jekyll templates plus a small Python build layer:
-
-- [`index.html`](./index.html) renders the homepage and inserts enabled sections in config order
-- [`_includes/intro.html`](./_includes/intro.html) renders the configured intro copy
-- [`_includes/repo_grid.html`](./_includes/repo_grid.html) builds the repository grid from `site.github.public_repositories`
-- [`_includes/external_blog.html`](./_includes/external_blog.html) renders external posts from the repository copy of [`_data/external_posts.json`](./_data/external_posts.json)
-- [`_includes/home_section_error.html`](./_includes/home_section_error.html) renders fail-soft messages when an enabled homepage section cannot be populated
-- [`_includes/head.html`](./_includes/head.html) exposes the configured external feed as an RSS `<link>`
-- [`assets/js/repo_updates.js`](./assets/js/repo_updates.js) fetches repo push dates from the GitHub API and caches them in `localStorage`
-- [`scripts/site_config.py`](./scripts/site_config.py) loads [`_config.yml`](./_config.yml) with `PyYAML` and performs shared validation for `intro`, `repo_grid`, and `external_blog`
-- [`scripts/validate_site_config.py`](./scripts/validate_site_config.py) fails the build early if enabled section settings are invalid
-- [`scripts/fetch_external_posts.py`](./scripts/fetch_external_posts.py) consumes validated `external_blog` settings and fetches the external feed directly with `curl` when you run it manually
-- [`scripts/build_site.sh`](./scripts/build_site.sh) validates config and then builds the site using the checked-in data files
-
-## Repository Layout
-
-```text
-.
-├── .github/workflows/jekyll-gh-pages.yml
-├── _config.yml
-├── _includes/
-│   ├── external_blog.html
-│   ├── head.html
-│   ├── home_section_error.html
-│   ├── intro.html
-│   └── repo_grid.html
-├── _data/external_posts.json
-├── _sass/minima/custom-styles.scss
-├── assets/js/repo_updates.js
-├── scripts/build_site.sh
-├── scripts/fetch_external_posts.py
-├── scripts/site_config.py
-├── scripts/validate_site_config.py
-├── requirements.txt
-├── tests/
-├── Gemfile
-├── index.html
-└── README.md
-```
+6. Commit the configuration and generated data, then push to `main`.
+7. After the deployment workflow finishes, visit `https://YOUR_USERNAME.github.io`.
 
 ## Configuration
 
-The main settings live in [`_config.yml`](./_config.yml).
+[`_config.yml`](./_config.yml) is the source of truth for site metadata, enabled sections, section order, and external data settings.
 
-### Site metadata
+```yaml
+title: Your Name
 
-```yml
-title: libport.github.io
-intro:
-  switch: true
-  text: Course notes, projects, and essays.
-description: A blog and portfolio site focusing on the intersection of technology, social sciences, and humanities.
-```
-
-### Homepage sections
-
-The homepage renders sections by iterating over top-level config keys. Each section can be enabled or disabled with a YAML boolean `switch`.
-
-```yml
 intro:
   switch: true
   text: Course notes, projects, and essays.
@@ -142,40 +53,63 @@ intro:
 repo_grid:
   switch: true
   repo_list:
-    - linux-cyber
-    - data-AI-eng
-    - BA-PO-econ
-    - open-banking-lakehouse
-    - backtest
-    - libport.github.io
+    - first-repository
+    - second-repository
 
 external_blog:
   switch: true
   feed_url: https://example.com/feed.xml
   archive_url: https://example.com/archive
   post_limit: 5
+
+description: A short description shown in site metadata and the footer.
 ```
 
-Notes:
+The top-level order of `intro`, `repo_grid`, and `external_blog` determines their order on the homepage.
 
-- `_config.yml` is the single source of truth for section settings
-- homepage section order follows the top-level key order in `_config.yml`
-- enabled sections are validated in Python before Jekyll runs
-- `switch` must be a YAML boolean such as `true` or `false`
-- `intro.text` must be present and non-blank when `intro.switch` is `true`
-- `repo_grid.repo_list` must be a non-empty list of unique repository names when `repo_grid.switch` is `true`
-- `external_blog.post_limit` must be a positive integer when `external_blog.switch` is `true`
-- if a section `switch` is `false`, malformed inner fields for that section are ignored
-- `external_blog.archive_url` is optional and only renders when present
+| Setting | Requirement |
+| --- | --- |
+| `title` | Site title used by the theme and metadata. |
+| `description` | Site description used by metadata and the footer. |
+| `intro.switch` | YAML boolean controlling whether the introduction is shown. |
+| `intro.text` | Required, non-blank text when the introduction is enabled. |
+| `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
+| `repo_grid.repo_list` | Required, non-empty list of unique repository names when enabled. Repositories must belong to the account hosting the site. |
+| `external_blog.switch` | YAML boolean controlling whether external posts are shown. |
+| `external_blog.feed_url` | Required RSS or Atom URL when external posts are enabled. |
+| `external_blog.archive_url` | Optional link to the external site's archive. |
+| `external_blog.post_limit` | Required positive integer when external posts are enabled. |
 
-## Local Development
+Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings.
+
+### Refresh external posts
+
+External posts are generated separately from the site build:
+
+```bash
+python3 scripts/fetch_external_posts.py
+```
+
+The command reads `external_blog` from `_config.yml` and writes [`_data/external_posts.json`](./_data/external_posts.json). Commit the updated JSON so local and GitHub Pages builds use the same content.
+
+Optional overrides are available for one-off refreshes:
+
+```bash
+python3 scripts/fetch_external_posts.py --feed-url https://example.com/feed.xml --limit 3
+python3 scripts/fetch_external_posts.py --output _data/external_posts.json
+```
+
+The site build never fetches the feed automatically.
+
+## Local development
 
 ### Prerequisites
 
-- Ruby 3.3
-- Bundler
-- Python 3
-- `PyYAML` for config loading and validation
+- Ruby 3.3 and Bundler
+- Python 3 and `pip`
+- Node.js 20 for client-side tests
+- `curl` for fetching external feeds
+- Network access to download the remote Minima theme
 
 ### Install dependencies
 
@@ -184,86 +118,62 @@ bundle install
 python3 -m pip install -r requirements.txt
 ```
 
-### Validate site configuration
+### Validate and build
 
 ```bash
 python3 scripts/validate_site_config.py
-```
-
-### Generate external blog data
-
-```bash
-python3 scripts/fetch_external_posts.py
-```
-
-Run this manually whenever you want to refresh [`_data/external_posts.json`](./_data/external_posts.json). The generated JSON should be committed to the repository so builds and deployments use the repo copy directly.
-
-By default the script loads validated settings from [`_config.yml`](./_config.yml) via [`scripts/site_config.py`](./scripts/site_config.py). If `external_blog.switch` is `false`, it skips feed generation and exits successfully. If `external_blog.switch` is `true`, config validation must already pass before feed generation continues.
-
-The fetcher performs a direct `curl` request for the configured RSS or Atom feed.
-
-Useful overrides:
-
-```bash
-python3 scripts/fetch_external_posts.py --feed-url https://example.com/feed --limit 3
-python3 scripts/fetch_external_posts.py --output _data/external_posts.json
-```
-
-### Build the site locally
-
-```bash
 ./scripts/build_site.sh
 ```
 
-`scripts/build_site.sh` does not fetch the external feed. It validates config and builds the site using the committed `_data/external_posts.json`.
+The build script validates `_config.yml` before writing the generated site to `_site`.
 
-### Run Python tests
+### Run tests
 
 ```bash
 python3 -m unittest discover -s tests
+node --test tests/repo_updates.test.js
 ```
+
+## How it works
+
+| Area | Responsibility |
+| --- | --- |
+| Configuration | `_config.yml` defines site metadata, homepage sections, and external-feed settings; Python validation rejects invalid enabled-section settings. |
+| Page generation | Jekyll, Minima, Liquid includes, and custom Sass generate the static site. |
+| Repository data | `jekyll-github-metadata` supplies repository cards during the build; `assets/js/repo_updates.js` refreshes update labels in the browser and caches results in `localStorage`. |
+| External posts | `scripts/fetch_external_posts.py` converts an RSS or Atom feed into committed Jekyll data. |
+| Deployment | `.github/workflows/jekyll-gh-pages.yml` validates, builds, uploads, and deploys the site. |
+
+Client-side repository updates are an enhancement: repository cards and links remain available when JavaScript or the GitHub API is unavailable.
 
 ## Deployment
 
-Deployment is handled by [`.github/workflows/jekyll-gh-pages.yml`](./.github/workflows/jekyll-gh-pages.yml).
+The GitHub Actions workflow deploys pushes to `main` and can also be started manually. README-only changes do not trigger a deployment.
 
-On pushes to `main` except when only [`README.md`](./README.md) changes, GitHub Actions:
+During deployment, the workflow:
 
-1. checks out the repository
-2. configures GitHub Pages
-3. sets up Ruby 3.3 and restores the Bundler cache
-4. sets up Python 3.11 and installs [`requirements.txt`](./requirements.txt)
-5. restores `.jekyll-cache`
-6. validates enabled homepage section settings from [`_config.yml`](./_config.yml)
-7. builds the site with `bundle exec jekyll build -d ./_site`
-8. uploads `_site` as the Pages artifact
-9. deploys the artifact to GitHub Pages
+1. installs the locked Ruby dependencies and required Python package
+2. validates `_config.yml`
+3. builds the committed site content with authenticated GitHub metadata
+4. uploads and deploys `_site` to GitHub Pages
 
-The workflow does not fetch or parse the external RSS feed. Deployments use the checked-in [`_data/external_posts.json`](./_data/external_posts.json) from the repository.
+The workflow does not refresh `_data/external_posts.json`; run the feed command and commit its output whenever newer posts should be published.
 
-The build job sets `JEKYLL_GITHUB_TOKEN` so `jekyll-github-metadata` can read repository metadata during the Jekyll build.
+## Troubleshooting
 
-The workflow also includes a cleanup job that trims older workflow runs and keeps the three most recent runs.
+| Symptom | Resolution |
+| --- | --- |
+| Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
+| External posts are stale | Run `python3 scripts/fetch_external_posts.py`, review the generated JSON, and commit it. |
+| The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
+| Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |
 
-## Editing Guide
+## Customization notes
 
-Common changes map to these files:
+Custom homepage markup lives in `_includes`, while component styling lives in [`_sass/minima/custom-styles.scss`](./_sass/minima/custom-styles.scss). Refer to the [Minima documentation](https://github.com/jekyll/minima) for broader theme customization.
 
-- update homepage copy: [`_config.yml`](./_config.yml) and [`index.html`](./index.html)
-- update the intro section markup: [`_includes/intro.html`](./_includes/intro.html)
-- change which repositories appear: [`_config.yml`](./_config.yml)
-- change how repository cards render: [`_includes/repo_grid.html`](./_includes/repo_grid.html)
-- change blog post markup: [`_includes/external_blog.html`](./_includes/external_blog.html)
-- change section-level fallback messages: [`_includes/home_section_error.html`](./_includes/home_section_error.html)
-- change styling: [`_sass/minima/custom-styles.scss`](./_sass/minima/custom-styles.scss)
-- change config parsing or validation rules: [`scripts/site_config.py`](./scripts/site_config.py) and [`scripts/validate_site_config.py`](./scripts/validate_site_config.py)
-- change feed fetching, parsing, or JSON output: [`scripts/fetch_external_posts.py`](./scripts/fetch_external_posts.py)
-- change the local build entrypoint: [`scripts/build_site.sh`](./scripts/build_site.sh)
-- refresh checked-in blog data: run [`scripts/fetch_external_posts.py`](./scripts/fetch_external_posts.py) then commit [`_data/external_posts.json`](./_data/external_posts.json)
-- change automated checks: [`tests/`](./tests/)
+Minima's built-in feed configuration can conflict with this project's external-feed settings. The `jekyll-feed` dependency remains because Minima expects it, but the homepage intentionally links to the configured external feed instead of presenting the generated site feed.
 
-## Notes
+## License
 
-- [`README.md`](./README.md) and `scripts/` are excluded from the Jekyll build
-- [`_data/external_posts.json`](./_data/external_posts.json) is a committed data file used directly by local builds and GitHub Pages deployments
-- repository "last updated" labels are enhanced client-side and fail gracefully if the GitHub API is unavailable
+This project is available under the [MIT License](./LICENSE).

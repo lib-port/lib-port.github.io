@@ -5,7 +5,6 @@
   const FALLBACK_LOADING_TEXT = "Checking for updates...";
   const FALLBACK_UNAVAILABLE_TEXT = "Last updated unavailable";
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const WEEK_MS = 7 * DAY_MS;
   const DATE_FORMATTERS = {
     withYear: new Intl.DateTimeFormat("en-US", {
       month: "short",
@@ -18,15 +17,17 @@
     }),
   };
 
-  const cards = Array.from(
-    document.querySelectorAll(".repo-card[data-repo-owner][data-repo-name]")
-  );
-  if (cards.length === 0) return;
+  function start() {
+    const cards = Array.from(
+      document.querySelectorAll(".repo-card[data-repo-owner][data-repo-name]")
+    );
+    if (cards.length === 0) return;
 
-  const cardsByOwner = groupCardsByOwner(cards);
+    const cardsByOwner = groupCardsByOwner(cards);
 
-  for (const [owner, ownerCards] of cardsByOwner) {
-    loadOwnerUpdates(owner, ownerCards);
+    for (const [owner, ownerCards] of cardsByOwner) {
+      loadOwnerUpdates(owner, ownerCards);
+    }
   }
 
   async function loadOwnerUpdates(owner, ownerCards) {
@@ -278,45 +279,47 @@
     }
   }
 
-  function formatPushedAt(isoString) {
+  function formatPushedAt(isoString, now = new Date()) {
     const date = new Date(isoString);
-    if (Number.isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime()) || Number.isNaN(now.getTime())) {
       return "";
     }
 
-    const now = new Date();
-    const nowMs = now.getTime();
-    const isTodayUtc =
-      date.getUTCFullYear() === now.getUTCFullYear() &&
-      date.getUTCMonth() === now.getUTCMonth() &&
-      date.getUTCDate() === now.getUTCDate();
+    const dayDifference = localCalendarDay(now) - localCalendarDay(date);
 
-    if (isTodayUtc) {
+    if (dayDifference === 0) {
       return "Updated today";
     }
 
-    const diffMs = nowMs - date.getTime();
-
-    if (diffMs < 2 * DAY_MS) {
+    if (dayDifference === 1) {
       return "Updated yesterday";
     }
 
-    if (diffMs < WEEK_MS) {
-      const days = Math.floor(diffMs / DAY_MS);
-      return `Updated ${days} day${days === 1 ? "" : "s"} ago`;
+    if (dayDifference > 1 && dayDifference < 7) {
+      return `Updated ${dayDifference} days ago`;
     }
 
-    if (diffMs < 2 * WEEK_MS) {
+    if (dayDifference >= 7 && dayDifference < 14) {
       return "Updated last week";
     }
 
-    if (diffMs < 4 * WEEK_MS) {
-      const weeks = Math.floor(diffMs / WEEK_MS);
+    if (dayDifference >= 14 && dayDifference < 28) {
+      const weeks = Math.floor(dayDifference / 7);
       return `Updated ${weeks} weeks ago`;
     }
 
-    const sameYear = date.getUTCFullYear() === now.getUTCFullYear();
+    const sameYear = date.getFullYear() === now.getFullYear();
     const formatter = sameYear ? DATE_FORMATTERS.withoutYear : DATE_FORMATTERS.withYear;
     return `Updated on ${formatter.format(date)}`;
+  }
+
+  function localCalendarDay(date) {
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS;
+  }
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { formatPushedAt };
+  } else {
+    start();
   }
 })();
