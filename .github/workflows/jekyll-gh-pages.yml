@@ -30,14 +30,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
           submodules: false
           lfs: false
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       # Cache Ruby gems + build with Jekyll directly (faster than reinstalling gems each run)
       - name: Setup Ruby
@@ -47,7 +47,7 @@ jobs:
           bundler-cache: true
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
@@ -56,7 +56,7 @@ jobs:
         run: python3 -m pip install -r requirements.txt
 
       - name: Restore Jekyll cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .jekyll-cache
           key: ${{ runner.os }}-jekyll-${{ hashFiles('Gemfile', '_config.yml', '_includes/**', '_layouts/**', '_posts/**', '_sass/**', '*.html', '*.md') }}
@@ -72,7 +72,7 @@ jobs:
         run: bundle exec jekyll build -d ./_site
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ./_site
 
@@ -86,7 +86,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
   
   delete-runs:
     runs-on: ubuntu-latest
