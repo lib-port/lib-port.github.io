@@ -1,6 +1,6 @@
 {%- assign external_blog = site.external_blog -%}
 {%- if external_blog and external_blog.switch -%}
-<h2>Recent Posts <span class="section-heading-meta">(external site)</span></h2>
+<h2 data-external-blog-heading hidden>Recent Posts <span class="section-heading-meta">(external site)</span></h2>
 <div
   class="external-blog"
   data-external-blog
@@ -10,7 +10,7 @@
   aria-live="polite"
 >
   <p class="external-blog-fallback">
-    <a class="post-link" href="{{ external_blog.archive_url | escape }}">View posts on Substack</a>
+    <a class="post-link" href="{{ external_blog.archive_url | escape }}">View posts</a> <span class="section-heading-meta">(external site)</span>
   </p>
 </div>
 <script src="{{ '/assets/js/external_blog.js' | relative_url }}" defer></script>

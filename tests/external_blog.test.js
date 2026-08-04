@@ -342,6 +342,7 @@ test("the template contains the progressive fallback and deferred loader", () =>
   const templatePath = path.join(__dirname, "..", "_includes", "external_blog.html");
   const template = fs.readFileSync(templatePath, "utf8");
 
+  assert.match(template, /<h2[^>]*data-external-blog-heading[^>]*hidden/);
   assert.match(template, />View posts on Substack<\/a>/);
   assert.match(template, /data-feed-url=/);
   assert.match(template, /data-archive-url=/);
@@ -351,7 +352,9 @@ test("the template contains the progressive fallback and deferred loader", () =>
 
 test("starts normally when loaded as a browser script", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
-  let selector = "";
+  const heading = new FakeElement("h2");
+  heading.setAttribute("hidden", "");
+  const selectors = [];
 
   vm.runInNewContext(source, {
     Date,
@@ -361,11 +364,16 @@ test("starts normally when loaded as a browser script", () => {
     console,
     document: {
       querySelectorAll(value) {
-        selector = value;
+        selectors.push(value);
+        if (value === "[data-external-blog-heading]") return [heading];
         return [];
       },
     },
   });
 
-  assert.equal(selector, "[data-external-blog]");
+  assert.deepEqual(selectors, [
+    "[data-external-blog-heading]",
+    "[data-external-blog]",
+  ]);
+  assert.equal(heading.attributes.has("hidden"), false);
 });

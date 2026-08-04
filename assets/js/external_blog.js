@@ -12,6 +12,11 @@
   });
 
   function start() {
+    const headings = document.querySelectorAll("[data-external-blog-heading]");
+    for (const heading of headings) {
+      heading.removeAttribute("hidden");
+    }
+
     const containers = document.querySelectorAll("[data-external-blog]");
 
     for (const container of containers) {
