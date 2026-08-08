@@ -4,3 +4,4 @@ __pycache__/
 _site/
 .jekyll-cache/
 .sass-cache/
+.codex/
