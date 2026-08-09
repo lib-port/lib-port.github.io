@@ -8,15 +8,15 @@
 [![Sass/SCSS](https://img.shields.io/badge/Sass-SCSS-CC6699?logo=sass&logoColor=white)](https://sass-lang.com/)
 [![Vanilla JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?logo=javascript&logoColor=000)](https://developer.mozilla.org/docs/Web/JavaScript)
 
-A configurable Jekyll landing page for presenting selected GitHub repositories and recent posts from a Substack feed. It is designed for GitHub Pages and builds on the [Minima theme](https://github.com/jekyll/minima).
+A configurable Jekyll landing page for presenting selected GitHub repositories and recent posts from a blog feed. It is designed for GitHub Pages and builds on the [Minima theme](https://github.com/jekyll/minima).
 
 [View the live demo](https://libport.github.io/)
 
 ## Features
 
-- Configurable introduction, repository grid, and Substack-post sections
+- Configurable introduction, repository grid, and blog-post sections
 - Server-rendered repository metadata with client-side update labels
-- Client-side Substack posts with seven-day local caching
+- Client-side blog posts with seven-day local caching
 - Responsive light and dark themes based on browser preferences
 - Graceful links when JavaScript, RSS2JSON, or the GitHub API is unavailable
 - SEO metadata, a sitemap, and GitHub-flavored Markdown extensions
@@ -39,7 +39,7 @@ A configurable Jekyll landing page for presenting selected GitHub repositories a
 
 ## Configuration
 
-[`_config.yml`](./_config.yml) is the source of truth for site metadata, enabled sections, section order, and Substack settings.
+[`_config.yml`](./_config.yml) is the source of truth for site metadata, enabled sections, section order, and blog settings.
 
 ```yaml
 title: Your Name
@@ -74,8 +74,8 @@ The top-level order of `intro`, `repo_grid`, and `external_blog` determines thei
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
 | `repo_grid.repo_list` | Required, non-empty list of unique repository names when enabled. Repositories must belong to the account hosting the site. |
 | `external_blog.switch` | YAML boolean controlling whether external posts are shown. |
-| `external_blog.feed_url` | Required Substack RSS URL when external posts are enabled. |
-| `external_blog.archive_url` | Required Substack archive URL used by the fallback and “View all posts” links. |
+| `external_blog.feed_url` | Required blog RSS URL when external posts are enabled. |
+| `external_blog.archive_url` | Required blog archive URL used by the fallback and “View all posts” links. |
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
 Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings.
@@ -133,10 +133,10 @@ node --test tests/*.test.js
 | Configuration | `_config.yml` defines site metadata, homepage sections, and external-feed settings; Python validation rejects invalid enabled-section settings. |
 | Page generation | Jekyll, Minima, Liquid includes, and custom Sass generate the static site. |
 | Repository data | `jekyll-github-metadata` supplies repository cards during the build; `assets/js/repo_updates.js` refreshes update labels in the browser and revalidates its local cache weekly using GitHub ETags. |
-| External posts | Browser JavaScript loads the configured Substack feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
+| External posts | Browser JavaScript loads the configured blog feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
 | Deployment | `.github/workflows/jekyll-gh-pages.yml` validates, builds, uploads, and deploys the site. |
 
-Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, and the Substack archive link remains available without JavaScript or RSS2JSON.
+Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, and the blog archive link remains available without JavaScript or RSS2JSON.
 
 ## Deployment
 
@@ -155,7 +155,7 @@ During deployment, the workflow:
 | --- | --- |
 | Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
-| Only “View posts on Substack” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
+| Only “View posts on blog” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
 | The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
 | Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |
 
