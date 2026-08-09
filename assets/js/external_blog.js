@@ -100,25 +100,32 @@
     for (const item of payload.items) {
       if (!item || typeof item !== "object") continue;
 
-      const title = typeof item.title === "string" ? item.title.trim() : "";
-      const url = normalizeHttpUrl(item.link);
-      const publishedAt = parsePublishedAt(item.pubDate);
-      const excerpt = truncateText(htmlToText(item.description || ""), EXCERPT_MAX_LENGTH);
-
-      if (!title || !url || !publishedAt) continue;
-
-      posts.push({
-        publishedAt: publishedAt.toISOString(),
-        title,
-        excerpt,
-        url,
+      const post = normalizePost({
+        publishedAt: item.pubDate,
+        title: item.title,
+        excerpt: truncateText(
+          htmlToText(item.description || ""),
+          EXCERPT_MAX_LENGTH
+        ),
+        url: item.link,
       });
+      if (post) posts.push(post);
     }
 
     posts.sort(
       (left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt)
     );
     return posts.slice(0, parsePostLimit(limit) || MAX_POSTS);
+  }
+
+  function normalizePost(post) {
+    const publishedAt = parsePublishedAt(post?.publishedAt);
+    const title = typeof post?.title === "string" ? post.title.trim() : "";
+    const excerpt = typeof post?.excerpt === "string" ? post.excerpt : "";
+    const url = normalizeHttpUrl(post?.url);
+
+    if (!publishedAt || !title || !url) return null;
+    return { publishedAt: publishedAt.toISOString(), title, excerpt, url };
   }
 
   function normalizeHttpUrl(value) {
@@ -170,42 +177,42 @@
   }
 
   function renderPosts(container, posts, archiveUrl, documentRef = document) {
-    const fragment = documentRef.createDocumentFragment();
-    const list = documentRef.createElement("ul");
-    list.className = "post-list";
+    const create = (tagName, properties = {}, children = []) => {
+      const element = documentRef.createElement(tagName);
+      Object.assign(element, properties);
+      element.append(...children);
+      return element;
+    };
+
+    const list = create("ul", { className: "post-list" });
 
     for (const post of posts) {
-      const item = documentRef.createElement("li");
-      const meta = documentRef.createElement("span");
-      const title = documentRef.createElement("h3");
-      const link = documentRef.createElement("a");
-
-      meta.className = "post-meta";
-      meta.textContent = formatPublishedAt(post.publishedAt);
-      link.className = "post-link";
-      link.href = post.url;
-      link.textContent = post.title;
-      title.append(link);
-      item.append(meta, title);
+      const link = create("a", {
+        className: "post-link",
+        href: post.url,
+        textContent: post.title,
+      });
+      const children = [
+        create("span", {
+          className: "post-meta",
+          textContent: formatPublishedAt(post.publishedAt),
+        }),
+        create("h3", {}, [link]),
+      ];
 
       if (post.excerpt) {
-        const excerpt = documentRef.createElement("p");
-        excerpt.textContent = post.excerpt;
-        item.append(excerpt);
+        children.push(create("p", { textContent: post.excerpt }));
       }
 
-      list.append(item);
+      list.append(create("li", {}, children));
     }
 
-    const archiveParagraph = documentRef.createElement("p");
-    const archiveLink = documentRef.createElement("a");
-    archiveLink.className = "post-link";
-    archiveLink.href = archiveUrl;
-    archiveLink.textContent = "View all posts";
-    archiveParagraph.append(archiveLink);
-
-    fragment.append(list, archiveParagraph);
-    container.replaceChildren(fragment);
+    const archiveLink = create("a", {
+      className: "post-link",
+      href: archiveUrl,
+      textContent: "View all posts",
+    });
+    container.replaceChildren(list, create("p", {}, [archiveLink]));
   }
 
   function getCacheKey(feedUrl) {
@@ -220,6 +227,15 @@
     }
   }
 
+  function discardCache(storage, cacheKey) {
+    try {
+      storage?.removeItem(cacheKey);
+    } catch {
+      // Storage is an optional enhancement.
+    }
+    return null;
+  }
+
   function readCache(feedUrl, storage, now = Date.now()) {
     if (!storage) return null;
 
@@ -230,41 +246,25 @@
       const age = now - fetchedAt;
 
       if (!Number.isFinite(fetchedAt) || age < 0 || age > CACHE_TTL_MS) {
-        storage.removeItem(cacheKey);
-        return null;
+        return discardCache(storage, cacheKey);
       }
 
       const posts = normalizeCachedPosts(cached?.posts);
       if (posts.length === 0) {
-        storage.removeItem(cacheKey);
-        return null;
+        return discardCache(storage, cacheKey);
       }
 
       return posts;
     } catch {
-      try {
-        storage.removeItem(cacheKey);
-      } catch {
-        // Storage is an optional enhancement.
-      }
-      return null;
+      return discardCache(storage, cacheKey);
     }
   }
 
   function normalizeCachedPosts(value) {
     if (!Array.isArray(value)) return [];
 
-    const posts = [];
-    for (const post of value.slice(0, MAX_POSTS)) {
-      const publishedAt = parsePublishedAt(post?.publishedAt);
-      const title = typeof post?.title === "string" ? post.title.trim() : "";
-      const excerpt = typeof post?.excerpt === "string" ? post.excerpt : "";
-      const url = normalizeHttpUrl(post?.url);
-
-      if (!publishedAt || !title || !url) return [];
-      posts.push({ publishedAt: publishedAt.toISOString(), title, excerpt, url });
-    }
-    return posts;
+    const posts = value.slice(0, MAX_POSTS).map(normalizePost);
+    return posts.every(Boolean) ? posts : [];
   }
 
   function writeCache(feedUrl, posts, storage, now = Date.now()) {
