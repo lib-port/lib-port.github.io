@@ -1,10 +1,10 @@
 (() => {
-  const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-  const STALE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-  const FAILURE_TTL_MS = 30 * 60 * 1000;
+  const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const FAILURE_TTL_MS = 6 * 60 * 60 * 1000;
   const FALLBACK_LOADING_TEXT = "Checking for updates...";
   const FALLBACK_UNAVAILABLE_TEXT = "Last updated unavailable";
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const REPO_QUERY = "per_page=100&sort=pushed&direction=desc&type=public";
   const DATE_FORMATTERS = {
     withYear: new Intl.DateTimeFormat("en-US", {
       month: "short",
@@ -30,24 +30,29 @@
     }
   }
 
-  async function loadOwnerUpdates(owner, ownerCards) {
+  async function loadOwnerUpdates(
+    owner,
+    ownerCards,
+    {
+      fetchImpl = fetch,
+      storage = getStorage(),
+      now = Date.now(),
+      logger = console,
+    } = {}
+  ) {
     const storageKey = getStorageKey(owner);
     const failureKey = getFailureKey(owner);
-    const cached = readCache(storageKey);
+    const cached = readCache(storageKey, storage, now);
 
-    renderOwnerCards(ownerCards, cached?.repos || null, {
-      missingText: FALLBACK_LOADING_TEXT,
-    });
+    renderOwnerCards(ownerCards, cached?.repos, FALLBACK_LOADING_TEXT);
 
     if (cached?.isFresh) {
       return;
     }
 
-    if (hasRecentFailure(failureKey)) {
-      if (!cached?.repos) {
-        renderOwnerCards(ownerCards, null, {
-          missingText: FALLBACK_UNAVAILABLE_TEXT,
-        });
+    if (hasRecentFailure(failureKey, storage, now)) {
+      if (!cached) {
+        renderOwnerCards(ownerCards, null, FALLBACK_UNAVAILABLE_TEXT);
       }
       return;
     }
@@ -61,11 +66,11 @@
         headers["If-None-Match"] = cached.etag;
       }
 
-      const response = await fetch(getOwnerRepoListUrl(owner), { headers });
+      const response = await fetchImpl(getOwnerRepoListUrl(owner), { headers });
 
-      if (response.status === 304 && cached?.repos) {
-        touchCache(storageKey, cached);
-        clearFailure(failureKey);
+      if (response.status === 304 && cached) {
+        writeCache(storageKey, cached, storage, now);
+        removeStorageItem(storage, failureKey);
         return;
       }
 
@@ -75,22 +80,23 @@
 
       const repos = normalizeRepoTimestamps(await response.json());
 
-      writeCache(storageKey, {
-        etag: response.headers.get("etag") || "",
-        repos,
-      });
-      clearFailure(failureKey);
-      renderOwnerCards(ownerCards, repos, {
-        missingText: FALLBACK_UNAVAILABLE_TEXT,
-      });
+      writeCache(
+        storageKey,
+        {
+          etag: response.headers.get("etag") || "",
+          repos,
+        },
+        storage,
+        now
+      );
+      removeStorageItem(storage, failureKey);
+      renderOwnerCards(ownerCards, repos, FALLBACK_UNAVAILABLE_TEXT);
     } catch (error) {
-      writeFailure(failureKey);
-      if (!cached?.repos) {
-        renderOwnerCards(ownerCards, null, {
-          missingText: FALLBACK_UNAVAILABLE_TEXT,
-        });
+      writeFailure(failureKey, storage, now);
+      if (!cached) {
+        renderOwnerCards(ownerCards, null, FALLBACK_UNAVAILABLE_TEXT);
       }
-      console.error(`Failed to load updated dates for ${owner}`, error);
+      logger.error(`Failed to load updated dates for ${owner}`, error);
     }
   }
 
@@ -108,14 +114,14 @@
       }
 
       const group = groups.get(owner) || [];
-      group.push({ card, repoName, wrapper, textNode });
+      group.push({ repoName, wrapper, textNode });
       groups.set(owner, group);
     }
 
     return groups;
   }
 
-  function renderOwnerCards(ownerCards, repos, { missingText }) {
+  function renderOwnerCards(ownerCards, repos, missingText) {
     for (const { repoName, wrapper, textNode } of ownerCards) {
       wrapper.classList.add("is-visible");
 
@@ -136,32 +142,19 @@
       if (!repo || typeof repo !== "object") continue;
 
       const name = typeof repo.name === "string" ? repo.name.trim() : "";
-      const pushedAt = getRepoPushedAt(repo);
-
-      if (!name || !pushedAt) continue;
-      normalized[name] = pushedAt;
+      if (!name || !isValidDateString(repo.pushed_at)) continue;
+      normalized[name] = repo.pushed_at;
     }
 
     return normalized;
   }
 
-  function getRepoPushedAt(repo) {
-    if (typeof repo.pushed_at === "string" && repo.pushed_at) {
-      return repo.pushed_at;
-    }
-
-    return "";
+  function isValidDateString(value) {
+    return typeof value === "string" && Boolean(value) && !Number.isNaN(Date.parse(value));
   }
 
   function getOwnerRepoListUrl(owner) {
-    const params = new URLSearchParams({
-      per_page: "100",
-      sort: "pushed",
-      direction: "desc",
-      type: "public",
-    });
-
-    return `https://api.github.com/users/${encodeURIComponent(owner)}/repos?${params.toString()}`;
+    return `https://api.github.com/users/${encodeURIComponent(owner)}/repos?${REPO_QUERY}`;
   }
 
   function getStorageKey(owner) {
@@ -172,35 +165,67 @@
     return `repo-updates:v3:failure:owner:${owner}`;
   }
 
-  function readCache(storageKey) {
+  function getStorage() {
     try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-      const fetchedAt = Number(parsed?.fetchedAt);
-      const etag = typeof parsed?.etag === "string" ? parsed.etag : "";
-      const repos = isRepoMap(parsed?.repos) ? parsed.repos : null;
-
-      if (!Number.isFinite(fetchedAt) || !repos) {
-        return null;
-      }
-
-      const ageMs = Date.now() - fetchedAt;
-      if (ageMs > STALE_CACHE_TTL_MS) {
-        localStorage.removeItem(storageKey);
-        return null;
-      }
-
-      return {
-        etag,
-        fetchedAt,
-        repos,
-        isFresh: ageMs <= CACHE_TTL_MS,
-      };
+      return window.localStorage;
     } catch {
       return null;
     }
+  }
+
+  function removeStorageItem(storage, storageKey) {
+    try {
+      storage?.removeItem(storageKey);
+    } catch {
+      // Ignore storage failures.
+    }
+  }
+
+  function readStoredObject(storage, storageKey) {
+    try {
+      const raw = storage?.getItem(storageKey);
+      if (raw === null || raw === undefined) return null;
+
+      const value = JSON.parse(raw);
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        removeStorageItem(storage, storageKey);
+        return null;
+      }
+
+      return value;
+    } catch {
+      removeStorageItem(storage, storageKey);
+      return null;
+    }
+  }
+
+  function writeStoredJson(storage, storageKey, value) {
+    try {
+      storage?.setItem(storageKey, JSON.stringify(value));
+    } catch {
+      // Ignore storage failures.
+    }
+  }
+
+  function isValidStoredTime(value, now) {
+    return typeof value === "number" && Number.isFinite(value) && value <= now;
+  }
+
+  function readCache(storageKey, storage, now) {
+    const cached = readStoredObject(storage, storageKey);
+    if (!cached) return null;
+
+    if (!isValidStoredTime(cached.fetchedAt, now) || !isRepoMap(cached.repos)) {
+      removeStorageItem(storage, storageKey);
+      return null;
+    }
+
+    return {
+      etag: typeof cached.etag === "string" ? cached.etag : "",
+      fetchedAt: cached.fetchedAt,
+      repos: cached.repos,
+      isFresh: now - cached.fetchedAt < CACHE_TTL_MS,
+    };
   }
 
   function isRepoMap(value) {
@@ -208,75 +233,30 @@
       return false;
     }
 
-    return Object.values(value).every(
-      (repoTimestamp) => typeof repoTimestamp === "string" && Boolean(repoTimestamp)
-    );
+    return Object.values(value).every(isValidDateString);
   }
 
-  function writeCache(storageKey, { etag, repos }) {
-    try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          etag,
-          repos,
-          fetchedAt: Date.now(),
-        })
-      );
-    } catch {
-      // Ignore storage failures.
-    }
+  function writeCache(storageKey, { etag, repos }, storage, now) {
+    writeStoredJson(storage, storageKey, { etag, repos, fetchedAt: now });
   }
 
-  function touchCache(storageKey, cached) {
-    writeCache(storageKey, {
-      etag: cached.etag,
-      repos: cached.repos,
-    });
-  }
+  function hasRecentFailure(failureKey, storage, now) {
+    const failure = readStoredObject(storage, failureKey);
+    if (!failure) return false;
 
-  function hasRecentFailure(failureKey) {
-    try {
-      const raw = localStorage.getItem(failureKey);
-      if (!raw) return false;
-
-      const parsed = JSON.parse(raw);
-      const failedAt = Number(parsed?.failedAt);
-      if (!Number.isFinite(failedAt)) {
-        localStorage.removeItem(failureKey);
-        return false;
-      }
-
-      if (Date.now() - failedAt > FAILURE_TTL_MS) {
-        localStorage.removeItem(failureKey);
-        return false;
-      }
-
-      return true;
-    } catch {
+    if (
+      !isValidStoredTime(failure.failedAt, now) ||
+      now - failure.failedAt >= FAILURE_TTL_MS
+    ) {
+      removeStorageItem(storage, failureKey);
       return false;
     }
+
+    return true;
   }
 
-  function writeFailure(failureKey) {
-    try {
-      localStorage.setItem(
-        failureKey,
-        JSON.stringify({
-          failedAt: Date.now(),
-        })
-      );
-    } catch {
-      // Ignore storage failures.
-    }
-  }
-
-  function clearFailure(failureKey) {
-    try {
-      localStorage.removeItem(failureKey);
-    } catch {
-      // Ignore storage failures.
-    }
+  function writeFailure(failureKey, storage, now) {
+    writeStoredJson(storage, failureKey, { failedAt: now });
   }
 
   function formatPushedAt(isoString, now = new Date()) {
@@ -318,7 +298,18 @@
   }
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { formatPushedAt };
+    module.exports = {
+      CACHE_TTL_MS,
+      FAILURE_TTL_MS,
+      formatPushedAt,
+      getFailureKey,
+      getStorageKey,
+      hasRecentFailure,
+      loadOwnerUpdates,
+      readCache,
+      writeCache,
+      writeFailure,
+    };
   } else {
     start();
   }

@@ -80,6 +80,14 @@ The top-level order of `intro`, `repo_grid`, and `external_blog` determines thei
 
 Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings.
 
+### Repository updates
+
+Repository cards are generated from GitHub metadata during the site build. In the browser, [`assets/js/repo_updates.js`](./assets/js/repo_updates.js) groups the cards by owner and refreshes their “Updated” labels with one GitHub API request per owner.
+
+Successful responses are cached in the visitor's `localStorage`. For seven days after a successful fetch or validation, the page uses the cached repository timestamps without a network request. After seven days, it continues to display the cached timestamps while conditionally revalidating them with GitHub using the stored ETag. An unchanged response renews the cache for another seven days without downloading the response body; a changed response replaces the cached data.
+
+If revalidation fails, the stale timestamps remain available and another request is not attempted for six hours. Cached repository data has no age-based expiration, but malformed and future-dated cache entries are removed.
+
 ### External posts
 
 The page initially displays a normal “View Posts” archive link. When JavaScript is available, [`assets/js/external_blog.js`](./assets/js/external_blog.js) requests the configured feed through the keyless [RSS2JSON API](https://rss2json.com/docs) and replaces the fallback with recent posts.
@@ -124,7 +132,7 @@ node --test tests/*.test.js
 | --- | --- |
 | Configuration | `_config.yml` defines site metadata, homepage sections, and external-feed settings; Python validation rejects invalid enabled-section settings. |
 | Page generation | Jekyll, Minima, Liquid includes, and custom Sass generate the static site. |
-| Repository data | `jekyll-github-metadata` supplies repository cards during the build; `assets/js/repo_updates.js` refreshes update labels in the browser and caches results in `localStorage`. |
+| Repository data | `jekyll-github-metadata` supplies repository cards during the build; `assets/js/repo_updates.js` refreshes update labels in the browser and revalidates its local cache weekly using GitHub ETags. |
 | External posts | Browser JavaScript loads the configured Substack feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
 | Deployment | `.github/workflows/jekyll-gh-pages.yml` validates, builds, uploads, and deploys the site. |
 

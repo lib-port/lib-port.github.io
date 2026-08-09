@@ -9,7 +9,76 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const scriptPath = path.join(__dirname, "..", "assets", "js", "repo_updates.js");
-const { formatPushedAt } = require(scriptPath);
+const {
+  CACHE_TTL_MS,
+  FAILURE_TTL_MS,
+  formatPushedAt,
+  getFailureKey,
+  getStorageKey,
+  hasRecentFailure,
+  loadOwnerUpdates,
+  readCache,
+  writeCache,
+  writeFailure,
+} = require(scriptPath);
+
+const OWNER = "libport";
+const REPO_NAME = "example-repo";
+const PUSHED_AT = "2026-08-02T23:00:00Z";
+const NOW = Date.parse("2026-08-09T00:00:00Z");
+
+class FakeStorage {
+  constructor() {
+    this.values = new Map();
+  }
+
+  getItem(key) {
+    return this.values.has(key) ? this.values.get(key) : null;
+  }
+
+  setItem(key, value) {
+    this.values.set(key, String(value));
+  }
+
+  removeItem(key) {
+    this.values.delete(key);
+  }
+}
+
+function makeOwnerCards() {
+  const classes = new Set();
+  const textNode = { textContent: "" };
+  const wrapper = {
+    classList: {
+      add(value) {
+        classes.add(value);
+      },
+    },
+  };
+
+  return {
+    classes,
+    ownerCards: [{ repoName: REPO_NAME, wrapper, textNode }],
+    textNode,
+  };
+}
+
+function makeResponse({ status = 200, etag = '"etag-2"', repos = [] } = {}) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    headers: {
+      get(name) {
+        return name.toLowerCase() === "etag" ? etag : null;
+      },
+    },
+    async json() {
+      return repos;
+    },
+  };
+}
+
+const silentLogger = { error() {} };
 
 test("formats repository updates by the visitor's local calendar", () => {
   const now = new Date("2026-08-04T00:15:00+10:00");
@@ -61,6 +130,236 @@ test("returns no label for invalid dates", () => {
   assert.equal(formatPushedAt(new Date().toISOString(), new Date("not-a-date")), "");
 });
 
+test("keeps repository caches indefinitely but considers them fresh for seven days", () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER);
+  const repos = { [REPO_NAME]: PUSHED_AT };
+
+  assert.equal(CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000);
+  writeCache(storageKey, { etag: '"etag-1"', repos }, storage, NOW);
+
+  assert.equal(readCache(storageKey, storage, NOW + CACHE_TTL_MS - 1).isFresh, true);
+  assert.equal(readCache(storageKey, storage, NOW + CACHE_TTL_MS).isFresh, false);
+  assert.deepEqual(
+    readCache(storageKey, storage, NOW + 365 * 24 * 60 * 60 * 1000).repos,
+    repos
+  );
+  assert.ok(storage.getItem(storageKey));
+});
+
+test("deletes malformed and future-dated repository caches", () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER);
+  const invalidEntries = [
+    "",
+    "not json",
+    "null",
+    "false",
+    "[]",
+    JSON.stringify({ fetchedAt: NOW, repos: [] }),
+    JSON.stringify({ fetchedAt: "not-a-number", repos: {} }),
+    JSON.stringify({ fetchedAt: NOW, repos: { [REPO_NAME]: "not-a-date" } }),
+    JSON.stringify({
+      fetchedAt: NOW + 1,
+      etag: '"etag-1"',
+      repos: { [REPO_NAME]: PUSHED_AT },
+    }),
+  ];
+
+  for (const invalidEntry of invalidEntries) {
+    storage.setItem(storageKey, invalidEntry);
+    assert.equal(readCache(storageKey, storage, NOW), null);
+    assert.equal(storage.getItem(storageKey), null);
+  }
+});
+
+test("renders a fresh cache without requesting GitHub", async () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER);
+  const { classes, ownerCards, textNode } = makeOwnerCards();
+  let fetchCalls = 0;
+
+  writeCache(
+    storageKey,
+    { etag: '"etag-1"', repos: { [REPO_NAME]: PUSHED_AT } },
+    storage,
+    NOW - CACHE_TTL_MS + 1
+  );
+
+  await loadOwnerUpdates(OWNER, ownerCards, {
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      throw new Error("unexpected fetch");
+    },
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  });
+
+  assert.equal(fetchCalls, 0);
+  assert.equal(classes.has("is-visible"), true);
+  assert.equal(textNode.textContent, formatPushedAt(PUSHED_AT));
+});
+
+test("revalidates a seven-day-old cache with its ETag", async () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER);
+  const failureKey = getFailureKey(OWNER);
+  const { ownerCards } = makeOwnerCards();
+  let request;
+
+  writeCache(
+    storageKey,
+    { etag: '"etag-1"', repos: { [REPO_NAME]: PUSHED_AT } },
+    storage,
+    NOW - CACHE_TTL_MS
+  );
+  writeFailure(failureKey, storage, NOW - FAILURE_TTL_MS);
+
+  await loadOwnerUpdates(OWNER, ownerCards, {
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return makeResponse({ status: 304 });
+    },
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  });
+
+  assert.equal(
+    request.url,
+    "https://api.github.com/users/libport/repos?per_page=100&sort=pushed&direction=desc&type=public"
+  );
+  assert.equal(request.options.headers["If-None-Match"], '"etag-1"');
+  assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW);
+  assert.equal(storage.getItem(failureKey), null);
+  assert.equal(readCache(storageKey, storage, NOW).isFresh, true);
+});
+
+test("replaces stale cache data and ETag after a successful response", async () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER);
+  const { ownerCards, textNode } = makeOwnerCards();
+  const replacementTimestamp = "2026-08-08T12:00:00Z";
+
+  writeCache(
+    storageKey,
+    { etag: "", repos: { [REPO_NAME]: PUSHED_AT } },
+    storage,
+    NOW - CACHE_TTL_MS
+  );
+
+  await loadOwnerUpdates(OWNER, ownerCards, {
+    fetchImpl: async (_url, options) => {
+      assert.equal("If-None-Match" in options.headers, false);
+      return makeResponse({
+        etag: '"etag-2"',
+        repos: [{ name: REPO_NAME, pushed_at: replacementTimestamp }],
+      });
+    },
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  });
+
+  assert.deepEqual(JSON.parse(storage.getItem(storageKey)), {
+    etag: '"etag-2"',
+    repos: { [REPO_NAME]: replacementTimestamp },
+    fetchedAt: NOW,
+  });
+  assert.equal(textNode.textContent, formatPushedAt(replacementTimestamp));
+});
+
+test("retains stale data and backs off for six hours after a failed validation", async () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER);
+  const failureKey = getFailureKey(OWNER);
+  const { ownerCards, textNode } = makeOwnerCards();
+  let fetchCalls = 0;
+
+  writeCache(
+    storageKey,
+    { etag: '"etag-1"', repos: { [REPO_NAME]: PUSHED_AT } },
+    storage,
+    NOW - 100 * CACHE_TTL_MS
+  );
+
+  const fetchImpl = async () => {
+    fetchCalls += 1;
+    throw new Error("offline");
+  };
+
+  await loadOwnerUpdates(OWNER, ownerCards, {
+    fetchImpl,
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  });
+  await loadOwnerUpdates(OWNER, ownerCards, {
+    fetchImpl,
+    storage,
+    now: NOW + FAILURE_TTL_MS - 1,
+    logger: silentLogger,
+  });
+
+  assert.equal(FAILURE_TTL_MS, 6 * 60 * 60 * 1000);
+  assert.equal(fetchCalls, 1);
+  assert.equal(textNode.textContent, formatPushedAt(PUSHED_AT));
+  assert.ok(storage.getItem(storageKey));
+  assert.equal(hasRecentFailure(failureKey, storage, NOW + FAILURE_TTL_MS - 1), true);
+  assert.equal(hasRecentFailure(failureKey, storage, NOW + FAILURE_TTL_MS), false);
+  assert.equal(storage.getItem(failureKey), null);
+});
+
+test("deletes malformed and future-dated failure records", () => {
+  const storage = new FakeStorage();
+  const failureKey = getFailureKey(OWNER);
+  const invalidEntries = [
+    "",
+    "not json",
+    "null",
+    "false",
+    "[]",
+    JSON.stringify({ failedAt: "not-a-number" }),
+    JSON.stringify({ failedAt: NOW + 1 }),
+  ];
+
+  for (const invalidEntry of invalidEntries) {
+    storage.setItem(failureKey, invalidEntry);
+    assert.equal(hasRecentFailure(failureKey, storage, NOW), false);
+    assert.equal(storage.getItem(failureKey), null);
+  }
+});
+
+test("loads from GitHub when local storage is unavailable", async () => {
+  const unavailableStorage = {
+    getItem() {
+      throw new Error("storage disabled");
+    },
+    setItem() {
+      throw new Error("storage disabled");
+    },
+    removeItem() {
+      throw new Error("storage disabled");
+    },
+  };
+  const { ownerCards, textNode } = makeOwnerCards();
+  let fetchCalls = 0;
+
+  await loadOwnerUpdates(OWNER, ownerCards, {
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return makeResponse({ repos: [{ name: REPO_NAME, pushed_at: PUSHED_AT }] });
+    },
+    storage: unavailableStorage,
+    now: NOW,
+    logger: silentLogger,
+  });
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(textNode.textContent, formatPushedAt(PUSHED_AT));
+});
+
 test("starts normally when loaded as a browser script", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
   let selector = "";
@@ -68,7 +367,6 @@ test("starts normally when loaded as a browser script", () => {
   vm.runInNewContext(source, {
     Date,
     Intl,
-    URLSearchParams,
     console,
     document: {
       querySelectorAll(value) {

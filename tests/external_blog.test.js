@@ -191,6 +191,27 @@ test("discards malformed cache entries", () => {
   assert.equal(storage.getItem(cacheKey), null);
 });
 
+test("discards a cached post list when any post is invalid", () => {
+  const storage = new FakeStorage();
+  const cacheKey = getCacheKey(FEED_URL);
+  const now = Date.parse("2026-08-04T00:00:00Z");
+  const posts = [...makePosts(), { ...makePosts()[0], url: "javascript:alert(1)" }];
+  storage.setItem(cacheKey, JSON.stringify({ fetchedAt: now, posts }));
+
+  assert.equal(readCache(FEED_URL, storage, now), null);
+  assert.equal(storage.getItem(cacheKey), null);
+});
+
+test("discards cache entries dated in the future", () => {
+  const storage = new FakeStorage();
+  const cacheKey = getCacheKey(FEED_URL);
+  const now = Date.parse("2026-08-04T00:00:00Z");
+  writeCache(FEED_URL, makePosts(), storage, now + 1);
+
+  assert.equal(readCache(FEED_URL, storage, now), null);
+  assert.equal(storage.getItem(cacheKey), null);
+});
+
 test("renders a fresh cache without requesting the proxy", async () => {
   const storage = new FakeStorage();
   const container = makeContainer();
