@@ -41,7 +41,7 @@ repo_grid:
     - sys-data-AI
     - BA-PO-econ
     - open-banking-lakehouse
-    - libport.github.io
+    - lib-port.github.io
     - agentless-DaC
     - backtest
     - ansible-linux-audit
