@@ -140,7 +140,7 @@ Client-side features use progressive enhancement: repository cards remain availa
 
 ## Deployment
 
-The GitHub Actions workflow deploys pushes to `main` and can also be started manually. README-only changes do not trigger a deployment.
+The GitHub Actions workflow deploys every push to `main` and can also be started manually.
 
 During deployment, the workflow:
 
