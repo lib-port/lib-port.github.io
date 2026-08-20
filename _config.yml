@@ -3,6 +3,7 @@ exclude:
   - requirements.txt
   - scripts/
   - tests/
+  - LICENSE
 
 plugins:
   - jekyll-gfm-admonitions
@@ -40,9 +41,9 @@ repo_grid:
     - sys-data-AI
     - BA-PO-econ
     - open-banking-lakehouse
-    - backtest
     - libport.github.io
     - agentless-DaC
+    - backtest
     - ansible-linux-audit
     - pricing-function-mapper
 
