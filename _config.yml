@@ -38,8 +38,8 @@ intro:
 repo_grid:
   switch: true
   repo_list:
-    - sys-data-AI
-    - BA-PO-econ
+    - tech-lib
+    - bus-lib
     - open-banking-lakehouse
     - lib-port.github.io
     - agentless-DaC
