@@ -15,6 +15,7 @@
 
       {%- if repo -%}
         {%- assign branch = repo.default_branch | default: "main" -%}
+        {%- assign homepage = repo.homepage | default: "" | strip -%}
         <li class="repo-card" data-repo-owner="{{ repo.owner.login | escape }}" data-repo-name="{{ repo.name | escape }}">
           <h3 class="repo-title">
             <a class="repo-link" href="{{ repo.html_url }}">{{ repo.name }}</a>
@@ -41,6 +42,13 @@
               <span class="repo-icon" aria-hidden="true">{% octicon file-zip %}</span>
               <a class="repo-download" href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/archive/refs/heads/{{ branch }}.zip" rel="nofollow">Download <small>(.zip)</small></a>
             </li>
+
+            {%- if homepage != "" -%}
+              <li>
+                <span class="repo-icon" aria-hidden="true">{% octicon link %}</span>
+                <a href="{{ homepage | escape }}" rel="nofollow">Site</a>
+              </li>
+            {%- endif -%}
           </ul>
 
           <p class="repo-updated" aria-live="polite">
