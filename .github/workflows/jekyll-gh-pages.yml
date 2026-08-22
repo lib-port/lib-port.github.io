@@ -65,6 +65,7 @@ jobs:
         env:
           JEKYLL_ENV: production
           JEKYLL_GITHUB_TOKEN: ${{ secrets.PINNED_REPOS_GITHUB_TOKEN != '' && secrets.PINNED_REPOS_GITHUB_TOKEN || github.token }}
+          PAGES_REPO_NWO: ${{ github.repository }}
         run: bundle exec jekyll build -d ./_site
 
       - name: Upload artifact
