@@ -22,7 +22,7 @@ class RepoGridTemplateTests(unittest.TestCase):
         self.assertIn('if homepage != ""', template)
         self.assertIn('{% octicon link %}', template)
         self.assertIn(
-            '<a href="{{ homepage | escape }}" rel="nofollow">Site</a>', template
+            '<a href="{{ homepage | escape }}" rel="nofollow">site</a>', template
         )
         self.assertLess(
             template.index('{% octicon file-zip %}'),

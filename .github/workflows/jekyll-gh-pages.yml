@@ -5,6 +5,12 @@ on:
   # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+      - ".gitignore"
+      - "tests/**"
+      - ".github/workflows/mirror-gitlab.yml"
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -15,11 +21,10 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent deployment and cancel it when a newer revision is ready to publish.
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -53,19 +58,12 @@ jobs:
       - name: Install Python dependencies
         run: python3 -m pip install -r requirements.txt
 
-      - name: Restore Jekyll cache
-        uses: actions/cache@v6
-        with:
-          path: .jekyll-cache
-          key: ${{ runner.os }}-jekyll-${{ hashFiles('Gemfile', '_config.yml', '_includes/**', '_layouts/**', '_posts/**', '_sass/**', '*.html', '*.md') }}
-          restore-keys: |
-            ${{ runner.os }}-jekyll-
-
       - name: Validate config
         run: python3 scripts/validate_site_config.py
 
       - name: Build site
         env:
+          JEKYLL_ENV: production
           JEKYLL_GITHUB_TOKEN: ${{ secrets.PINNED_REPOS_GITHUB_TOKEN != '' && secrets.PINNED_REPOS_GITHUB_TOKEN || github.token }}
         run: bundle exec jekyll build -d ./_site
 
