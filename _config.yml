@@ -18,6 +18,9 @@ markdown: kramdown
 kramdown:
   input: GFM
 
+sass:
+  sourcemap: development
+
 remote_theme: jekyll/minima
 
 minima:

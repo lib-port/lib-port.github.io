@@ -140,7 +140,7 @@ Client-side features use progressive enhancement: repository cards remain availa
 
 ## Deployment
 
-The GitHub Actions workflow deploys every push to `main` and can also be started manually.
+The GitHub Actions workflow deploys pushes to `main` that can affect the published site or its build, and it can also be started manually. Documentation-, test-, and maintenance-only pushes are skipped.
 
 During deployment, the workflow:
 
