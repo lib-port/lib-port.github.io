@@ -28,7 +28,7 @@
           <ul class="repo-meta" aria-label="Repository metadata">
             <li>
               <span class="repo-icon" aria-hidden="true">{% octicon history %}</span>
-              <a href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/commits/" rel="nofollow">History</a>
+              <a href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/commits/" rel="nofollow">history</a>
             </li>
 
             {%- if repo.license and repo.license.spdx_id and repo.license.spdx_id != "NOASSERTION" -%}
@@ -40,13 +40,13 @@
 
             <li>
               <span class="repo-icon" aria-hidden="true">{% octicon file-zip %}</span>
-              <a class="repo-download" href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/archive/refs/heads/{{ branch }}.zip" rel="nofollow">Download <small>(.zip)</small></a>
+              <a class="repo-download" href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/archive/refs/heads/{{ branch }}.zip" rel="nofollow">download <small>(.zip)</small></a>
             </li>
 
             {%- if homepage != "" -%}
               <li>
                 <span class="repo-icon" aria-hidden="true">{% octicon link %}</span>
-                <a href="{{ homepage | escape }}" rel="nofollow">Site</a>
+                <a href="{{ homepage | escape }}" rel="nofollow">site</a>
               </li>
             {%- endif -%}
           </ul>
