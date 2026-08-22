@@ -13,6 +13,22 @@ class RepoGridTemplateTests(unittest.TestCase):
 
         self.assertIn('repo.license.spdx_id != "NOASSERTION"', template)
 
+    def test_homepage_site_link_is_optional_and_follows_download(self) -> None:
+        template = TEMPLATE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'assign homepage = repo.homepage | default: "" | strip', template
+        )
+        self.assertIn('if homepage != ""', template)
+        self.assertIn('{% octicon link %}', template)
+        self.assertIn(
+            '<a href="{{ homepage | escape }}" rel="nofollow">Site</a>', template
+        )
+        self.assertLess(
+            template.index('{% octicon file-zip %}'),
+            template.index('{% octicon link %}'),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
