@@ -35,6 +35,10 @@ class SiteConfigValidationTests(unittest.TestCase):
                 - alpha
                 - beta
 
+            commit_history:
+              switch: true
+              commits: 10
+
             external_blog:
               switch: true
               feed_url: https://example.com/feed
@@ -48,6 +52,8 @@ class SiteConfigValidationTests(unittest.TestCase):
         self.assertTrue(config.intro.enabled)
         self.assertEqual(config.intro.text, "Hello world")
         self.assertEqual(config.repo_grid.repo_list, ["alpha", "beta"])
+        self.assertTrue(config.commit_history.enabled)
+        self.assertEqual(config.commit_history.commits, 10)
         self.assertEqual(config.external_blog.feed_url, "https://example.com/feed")
         self.assertEqual(config.external_blog.archive_url, "https://example.com/archive")
         self.assertEqual(config.external_blog.post_limit, 5)
@@ -66,6 +72,13 @@ class SiteConfigValidationTests(unittest.TestCase):
               switch: false
               repo_list: definitely-not-a-list
 
+            commit_history:
+              switch: false
+              commits:
+                - not
+                - an
+                - integer
+
             external_blog:
               switch: false
               feed_url:
@@ -78,7 +91,28 @@ class SiteConfigValidationTests(unittest.TestCase):
 
         self.assertFalse(config.intro.enabled)
         self.assertFalse(config.repo_grid.enabled)
+        self.assertFalse(config.commit_history.enabled)
+        self.assertEqual(config.commit_history.commits, 0)
         self.assertFalse(config.external_blog.enabled)
+
+    def test_missing_commit_history_is_disabled(self) -> None:
+        config_path = self.write_config(
+            """
+            intro:
+              switch: false
+
+            repo_grid:
+              switch: false
+
+            external_blog:
+              switch: false
+            """
+        )
+
+        config = validate_site_config(config_path)
+
+        self.assertFalse(config.commit_history.enabled)
+        self.assertEqual(config.commit_history.commits, 0)
 
     def test_repo_grid_duplicates_are_rejected(self) -> None:
         config_path = self.write_config(
@@ -208,6 +242,79 @@ class SiteConfigValidationTests(unittest.TestCase):
 
                 config = validate_site_config(config_path)
                 self.assertEqual(config.external_blog.post_limit, post_limit)
+
+    def test_commit_history_commits_must_be_between_one_and_ten(self) -> None:
+        for commits in (0, 11, True, "5"):
+            with self.subTest(commits=commits):
+                config_path = self.write_config(
+                    f"""
+                    intro:
+                      switch: false
+
+                    repo_grid:
+                      switch: false
+
+                    commit_history:
+                      switch: true
+                      commits: {commits!r}
+
+                    external_blog:
+                      switch: false
+                    """
+                )
+
+                with self.assertRaisesRegex(
+                    ConfigValidationError,
+                    r"commit_history\.commits must be an integer between 1 and 10",
+                ):
+                    validate_site_config(config_path)
+
+    def test_enabled_commit_history_requires_commits(self) -> None:
+        config_path = self.write_config(
+            """
+            intro:
+              switch: false
+
+            repo_grid:
+              switch: false
+
+            commit_history:
+              switch: true
+
+            external_blog:
+              switch: false
+            """
+        )
+
+        with self.assertRaisesRegex(
+            ConfigValidationError,
+            r"commit_history\.commits must be an integer between 1 and 10",
+        ):
+            validate_site_config(config_path)
+
+    def test_commit_history_commits_accepts_boundaries(self) -> None:
+        for commits in (1, 10):
+            with self.subTest(commits=commits):
+                config_path = self.write_config(
+                    f"""
+                    intro:
+                      switch: false
+
+                    repo_grid:
+                      switch: false
+
+                    commit_history:
+                      switch: true
+                      commits: {commits}
+
+                    external_blog:
+                      switch: false
+                    """
+                )
+
+                config = validate_site_config(config_path)
+                self.assertTrue(config.commit_history.enabled)
+                self.assertEqual(config.commit_history.commits, commits)
 
     def test_malformed_yaml_is_rejected(self) -> None:
         config_path = self.write_config(

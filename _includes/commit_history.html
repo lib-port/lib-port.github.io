@@ -1,0 +1,58 @@
+{%- assign commit_history = site.commit_history -%}
+{%- if commit_history and commit_history.switch -%}
+  {%- assign github_owner = site.github.owner_name | default: "" | strip -%}
+  {%- assign github_repositories = site.github.public_repositories | default: empty -%}
+<h2>Recent Activity <span class="section-heading-meta">(GitHub commits)</span></h2>
+<div
+  class="commit-history"
+  data-commit-history
+  data-owner="{{ github_owner | escape }}"
+  data-commit-limit="{{ commit_history.commits }}"
+  aria-live="polite"
+>
+  <ul class="commit-history-list" data-commit-history-list hidden>
+    {%- for item_number in (1..commit_history.commits) %}
+    <li class="commit-history-item" data-commit-history-item hidden>
+      <span
+        class="commit-history-marker"
+        data-commit-history-marker
+        aria-hidden="true"
+      >{% octicon git-commit %}</span>
+      <span class="commit-history-content">
+        <a class="commit-history-repo" data-commit-history-repo></a>
+        <span class="commit-history-separator" aria-hidden="true">·</span>
+        <a class="commit-history-message" data-commit-history-message></a>
+        <span class="commit-history-separator" aria-hidden="true">·</span>
+        <time class="commit-history-date" data-commit-history-date></time>
+      </span>
+    </li>
+    {%- endfor %}
+  </ul>
+
+  <p class="commit-history-status" data-commit-history-loading>
+    <span class="commit-history-status-icon" aria-hidden="true">{% octicon gear %}</span>
+    <span>loading recent commits.</span>
+  </p>
+  <p class="commit-history-status" data-commit-history-error hidden>
+    <span class="commit-history-status-icon" aria-hidden="true">{% octicon alert %}</span>
+    <span>unable to load recent commits.</span>
+  </p>
+  <p class="commit-history-status" data-commit-history-empty hidden>
+    No recent commits found.
+  </p>
+
+  <script type="application/json" data-commit-history-repositories>
+    [
+      {%- assign has_repository = false -%}
+      {%- for repo in github_repositories -%}
+        {%- unless repo.fork or repo.archived -%}
+          {%- if has_repository -%},{%- endif -%}
+          {"name":{{ repo.name | jsonify }},"url":{{ repo.html_url | jsonify }}}
+          {%- assign has_repository = true -%}
+        {%- endunless -%}
+      {%- endfor -%}
+    ]
+  </script>
+</div>
+<script src="{{ '/assets/js/commit_history.js' | relative_url }}" defer></script>
+{%- endif -%}

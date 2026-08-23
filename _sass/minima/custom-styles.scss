@@ -35,6 +35,22 @@
   opacity: 0.25;
 }
 
+.home-section-wrapper {
+  display: contents;
+}
+
+.home-section-wrapper[hidden] {
+  display: none;
+}
+
+.home-section-wrapper > .section-divider {
+  display: none;
+}
+
+.home-section-wrapper:not([hidden]) ~ .home-section-wrapper:not([hidden]) > .section-divider {
+  display: block;
+}
+
 .section-heading-meta {
   font-weight: normal;
   font-size: 0.8rem;
@@ -168,6 +184,99 @@
 }
 
 .repo-icon > .octicon {
+  display: block;
+  vertical-align: 0;
+}
+
+.commit-history-list {
+  list-style: none;
+  margin-block: 0;
+  padding-inline-start: 0;
+}
+
+.commit-history-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  column-gap: 0.5rem;
+  align-items: start;
+  padding-block: 0 0.75rem;
+  line-height: 1.5;
+}
+
+.commit-history-item[data-commit-history-last] {
+  padding-block-end: 0;
+}
+
+.commit-history-item[hidden],
+.commit-history-list[hidden],
+.commit-history-status[hidden] {
+  display: none;
+}
+
+.commit-history-marker {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  justify-content: center;
+  width: 1.5rem;
+  color: var(--minima-brand-color);
+}
+
+.commit-history-marker > .octicon {
+  position: relative;
+  z-index: 1;
+  width: 1rem;
+  height: 1rem;
+  margin-block-start: 0.25em;
+}
+
+.commit-history-item:not([data-commit-history-last]) > .commit-history-marker::after {
+  position: absolute;
+  top: calc(0.25em + 1rem);
+  bottom: calc(-0.75rem - 0.25em);
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--minima-border-color-02);
+  content: "";
+}
+
+.commit-history-content {
+  min-width: 0;
+}
+
+.commit-history-repo,
+.commit-history-message {
+  overflow-wrap: anywhere;
+}
+
+.commit-history-separator {
+  margin-inline: 0.2em;
+  opacity: 0.65;
+}
+
+.commit-history-date {
+  white-space: nowrap;
+}
+
+.commit-history-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-block: 0;
+}
+
+.commit-history-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.commit-history-status-icon > .octicon {
   display: block;
   vertical-align: 0;
 }

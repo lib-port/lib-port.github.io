@@ -50,6 +50,10 @@ repo_grid:
     - ansible-linux-audit
     - pricing-function-mapper
 
+commit_history:
+  switch: true
+  commits: 10
+
 external_blog:
   switch: false
   feed_url:
