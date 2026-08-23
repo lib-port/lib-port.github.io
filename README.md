@@ -162,6 +162,7 @@ node --test tests/*.test.js
 | External posts | Browser JavaScript loads the configured blog feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
 | Theme preference | Minima supplies the light and dark palettes; `assets/js/theme_toggle.js` applies and persists the visitor's explicit override. |
 | Deployment | `.github/workflows/jekyll-gh-pages.yml` validates, builds, uploads, and deploys the site. |
+| Repository mirror | `.github/workflows/gitlab-main-mirror.yml` keeps GitLab `main` aligned with GitHub `main`. |
 
 Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, the recent-commit section stays hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system color preference without the switcher.
 
@@ -176,6 +177,12 @@ During deployment, the workflow:
 3. builds the site with authenticated GitHub metadata
 4. uploads and deploys `_site` to GitHub Pages
 
+## GitLab mirror
+
+GitHub `main` is the source of truth for the GitLab mirror. Every push to `main` starts the `Mirror main to GitLab` workflow, which also supports manual dispatch. The workflow verifies that both repositories finish on the same commit SHA and may force-update GitLab after a GitHub history rewrite.
+
+Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` access. The token owner must be allowed to push to GitLab's protected `main` branch, and Maintainers must be allowed to force-push so rewritten GitHub history can be synchronized. The cleanup workflow keeps the latest completed run for each workflow so the most recent mirror result remains available for troubleshooting.
+
 ## Troubleshooting
 
 | Symptom | Resolution |
@@ -187,6 +194,7 @@ During deployment, the workflow:
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
 | Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
 | The theme no longer follows the system | Clear the site's `lib-port:theme:v1` local-storage entry to remove the explicit light or dark preference. |
+| The GitLab mirror is stale | Check the latest `Mirror main to GitLab` run, confirm the token still has `write_repository` access, confirm protected `main` permits Maintainer force-pushes, and manually dispatch the workflow after correcting the problem. |
 | The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
 | Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |
 
