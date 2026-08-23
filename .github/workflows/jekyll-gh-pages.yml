@@ -10,7 +10,7 @@ on:
       - "LICENSE"
       - ".gitignore"
       - "tests/**"
-      - ".github/workflows/mirror-gitlab.yml"
+      - ".github/workflows/gitlab-main-mirror.yml"
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
