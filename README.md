@@ -1,7 +1,7 @@
 # Dev Writer Landing Page
 
-[![Deploy Jekyll with GitHub Pages](https://github.com/libport/libport.github.io/actions/workflows/jekyll-gh-pages.yml/badge.svg)](https://github.com/libport/libport.github.io/actions/workflows/jekyll-gh-pages.yml)
-[![Live site](https://img.shields.io/website?url=https%3A%2F%2Flibport.github.io%2F&up_message=online&down_message=offline&label=site)](https://libport.github.io/)
+[![Deploy Jekyll with GitHub Pages](https://github.com/lib-port/lib-port.github.io/actions/workflows/jekyll-gh-pages.yml/badge.svg)](https://github.com/lib-port/lib-port.github.io/actions/workflows/jekyll-gh-pages.yml)
+[![Live site](https://img.shields.io/website?url=https%3A%2F%2Flib-port.github.io%2F&up_message=online&down_message=offline&label=site)](https://lib-port.github.io/)
 [![Jekyll 4.4.1](https://img.shields.io/badge/Jekyll-4.4.1-CC0000?logo=jekyll&logoColor=white)](https://jekyllrb.com/)
 [![Ruby 3.3](https://img.shields.io/badge/Ruby-3.3-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
 [![Liquid templates](https://img.shields.io/badge/Templates-Liquid-7AB55C)](https://shopify.github.io/liquid/)
@@ -10,7 +10,7 @@
 
 A configurable Jekyll landing page for presenting selected GitHub repositories and recent posts from a blog feed. It is designed for GitHub Pages and builds on the [Minima theme](https://github.com/jekyll/minima).
 
-[View the live demo](https://libport.github.io/)
+[View the live demo](https://lib-port.github.io/)
 
 ## Features
 
@@ -62,6 +62,8 @@ external_blog:
 
 description: A short description shown in site metadata and the footer.
 ```
+
+Replace the example feed and archive URLs with the URLs for your blog.
 
 The top-level order of `intro`, `repo_grid`, and `external_blog` determines their order on the homepage.
 
@@ -140,7 +142,7 @@ Client-side features use progressive enhancement: repository cards remain availa
 
 ## Deployment
 
-The GitHub Actions workflow deploys pushes to `main` that can affect the published site or its build, and it can also be started manually. Documentation-, test-, and maintenance-only pushes are skipped.
+The GitHub Actions workflow deploys pushes to `main` that can affect the published site or its build, and it can also be started manually. Pushes that change only the README, license, `.gitignore`, tests, or GitLab mirror workflow are skipped.
 
 During deployment, the workflow:
 
@@ -155,7 +157,7 @@ During deployment, the workflow:
 | --- | --- |
 | Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
-| Only “View posts on blog” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
+| Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
 | The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
 | Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |
 
