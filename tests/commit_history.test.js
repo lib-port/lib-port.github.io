@@ -122,12 +122,12 @@ function makeContainer({ limit = 2, repositories = [REPOSITORY] } = {}) {
   const list = new FakeElement();
   list.setAttribute("hidden", "");
   const loading = new FakeElement();
-  loading.textContent = "loading recent commits.";
+  loading.textContent = "loading recent commits";
   const error = new FakeElement();
-  error.textContent = "unable to load recent commits.";
+  error.textContent = "unable to load recent commits";
   error.setAttribute("hidden", "");
   const empty = new FakeElement();
-  empty.textContent = "No recent commits found.";
+  empty.textContent = "No recent commits found";
   empty.setAttribute("hidden", "");
   const items = Array.from({ length: limit }, makeItem);
 
@@ -316,7 +316,7 @@ test("shows only the loading status while the initial request is pending", async
   });
 
   assertOnlyVisible({ list, loading, error, empty }, "loading");
-  assert.equal(loading.textContent, "loading recent commits.");
+  assert.equal(loading.textContent, "loading recent commits");
 
   resolveFetch(makeResponse({ payload: [makeCommit()] }));
   assert.equal(await pending, true);
@@ -341,7 +341,7 @@ test("uses a distinct empty state after a successful search finds no commits", a
   assert.equal(loaded, true);
   assert.equal(calls, 2, "the linked-author fallback should also complete");
   assertOnlyVisible({ list, loading, error, empty }, "empty");
-  assert.equal(empty.textContent, "No recent commits found.");
+  assert.equal(empty.textContent, "No recent commits found");
 });
 
 test("loads author-filtered commits and caches them for seven days", async () => {
@@ -389,7 +389,7 @@ test("treats a malformed successful GitHub payload as a refresh failure", async 
 
   assert.equal(loaded, false);
   assertOnlyVisible({ list, loading, error, empty }, "error");
-  assert.equal(error.textContent, "unable to load recent commits.");
+  assert.equal(error.textContent, "unable to load recent commits");
   assert.equal(
     hasRecentFailure(getFailureKey(OWNER, 1), storage, NOW),
     true
