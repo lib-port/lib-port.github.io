@@ -36,7 +36,7 @@ title: Library + Portfolio
 
 intro:
   switch: true
-  text: Course notes, projects, and essays.
+  text: Course notes and projects
 
 repo_grid:
   switch: true
@@ -64,4 +64,4 @@ external_blog:
 # End of landing page settings
 ################################
 
-description: A blog and portfolio site focusing on the intersection of technology, social sciences, and humanities.
+description: lib-port.github.io
