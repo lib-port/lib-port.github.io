@@ -2,7 +2,9 @@
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   {%- seo -%}
+  {%- include theme_bootstrap.html -%}
   <link id="main-stylesheet" rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
   {% if site.external_blog and site.external_blog.switch and site.external_blog.feed_url %}
   <link rel="alternate" type="application/rss+xml" title="{{ site.title | escape }}" href="{{ site.external_blog.feed_url | escape }}" />
