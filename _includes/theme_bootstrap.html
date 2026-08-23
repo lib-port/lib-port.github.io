@@ -1,0 +1,29 @@
+<script data-theme-bootstrap>
+  (() => {
+    const storageKey = "lib-port:theme:v1";
+    let theme = null;
+
+    try {
+      const storedTheme = window.localStorage.getItem(storageKey);
+      if (storedTheme === "light" || storedTheme === "dark") {
+        theme = storedTheme;
+      } else if (storedTheme !== null) {
+        window.localStorage.removeItem(storageKey);
+      }
+    } catch {
+      // Storage is optional; the system preference remains available.
+    }
+
+    if (!theme) {
+      try {
+        theme = window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+      } catch {
+        theme = "light";
+      }
+    }
+
+    document.documentElement.dataset.theme = theme;
+  })();
+</script>

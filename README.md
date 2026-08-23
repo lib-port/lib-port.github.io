@@ -18,7 +18,7 @@ A configurable Jekyll landing page for presenting selected GitHub repositories a
 - Server-rendered repository metadata with client-side update labels
 - Client-side GitHub-style recent-commit timeline with conditional caching
 - Client-side blog posts with seven-day local caching
-- Responsive light and dark themes based on browser preferences
+- Responsive light and dark themes with a persistent visitor-controlled switcher
 - Explicit loading and failure states for client-side GitHub activity
 - SEO metadata, a sitemap, and GitHub-flavored Markdown extensions
 - Automated deployment to GitHub Pages
@@ -103,7 +103,7 @@ When enabled, [`assets/js/commit_history.js`](./assets/js/commit_history.js) loa
 
 The browser requests at most the configured number of author-filtered commits from each eligible repository, combines the responses, sorts them by committed time, and displays the newest entries. If GitHub temporarily returns no results for the username filter, the loader falls back to repository history and retains only commits linked to the owner account.
 
-Commits are rendered as a semantic unordered list in the form `repository · commit message · date`. GitHub commit Octicons replace the native bullets, and a vertical connector turns the list into a GitHub-style commit timeline. A successful request with no qualifying commits displays `No recent commits found`
+Commits are rendered as a semantic unordered list in the form `repository · commit message · date`. Decorative repository, log, and calendar Octicons identify each detail, while GitHub commit Octicons replace the native bullets and a vertical connector turns the list into a GitHub-style commit timeline. A successful request with no qualifying commits displays `No recent commits found`.
 
 The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. Once the cache expires, the section displays a gear Octicon with `loading recent commits` while each repository is conditionally revalidated with its ETag. If the refresh fails, the prior cached list or successful empty state is restored and another request is not attempted for six hours. When no displayable cached result is available, an alert Octicon with `unable to load recent commits` replaces the loading state; no GitHub profile fallback link is shown. Cached commits have no age-based expiration, while malformed and future-dated entries are removed.
 
@@ -112,6 +112,12 @@ The commit cache follows the repository-card policy: results remain fresh for se
 The page initially displays a normal “View Posts” archive link. When JavaScript is available, [`assets/js/external_blog.js`](./assets/js/external_blog.js) requests the configured feed through the keyless [RSS2JSON API](https://rss2json.com/docs) and replaces the fallback with recent posts.
 
 Successful responses are cached in the visitor's `localStorage` for seven days, keyed by feed URL. During that period the page renders the cached posts without another proxy request. Invalid, unavailable, or expired cached data falls back to a new request; if that request fails, the archive link remains available.
+
+### Theme preference
+
+The page initially follows the visitor's operating-system light or dark preference. A fixed button in the bottom-right corner uses moon and sun GitHub Octicons to show the theme available on activation. Once selected, the explicit `light` or `dark` preference is stored in `localStorage` and reused across visits and open tabs.
+
+The theme is selected before the main stylesheet loads to avoid a mismatched-color flash. If JavaScript or browser storage is unavailable, Minima's automatic color scheme remains the fallback; storage failures do not prevent switching for the current page.
 
 ## Local development
 
@@ -154,9 +160,10 @@ node --test tests/*.test.js
 | Repository data | `jekyll-github-metadata` supplies repository cards during the build; `assets/js/repo_updates.js` refreshes update labels in the browser and revalidates its local cache weekly using GitHub ETags. |
 | Recent commits | Build metadata supplies eligible repository names; `assets/js/commit_history.js` loads author-linked commits, renders the timeline and status states, and conditionally revalidates its weekly local cache. |
 | External posts | Browser JavaScript loads the configured blog feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
+| Theme preference | Minima supplies the light and dark palettes; `assets/js/theme_toggle.js` applies and persists the visitor's explicit override. |
 | Deployment | `.github/workflows/jekyll-gh-pages.yml` validates, builds, uploads, and deploys the site. |
 
-Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, the recent-commit section stays hidden without JavaScript, and the blog archive link remains available without JavaScript or RSS2JSON.
+Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, the recent-commit section stays hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system color preference without the switcher.
 
 ## Deployment
 
@@ -179,6 +186,7 @@ During deployment, the workflow:
 | The recent-commit section is missing | Confirm JavaScript is enabled; the entire section intentionally remains hidden when JavaScript does not initialize. |
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
 | Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
+| The theme no longer follows the system | Clear the site's `lib-port:theme:v1` local-storage entry to remove the explicit light or dark preference. |
 | The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
 | Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |
 

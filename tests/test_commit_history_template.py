@@ -62,7 +62,13 @@ class CommitHistoryTemplateTests(unittest.TestCase):
         self.assertIn('<li class="commit-history-item"', template)
         self.assertIn("data-commit-history-marker", template)
         self.assertIn("{% octicon git-commit %}", template)
-        self.assertNotIn("{% octicon repo %}", template)
+        context_icons = {
+            "repo": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon repo %}</span>',
+            "log": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon log %}</span>',
+            "calendar": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon calendar %}</span>',
+        }
+        for icon_markup in context_icons.values():
+            self.assertIn(icon_markup, template)
         self.assertIn("data-commit-history-repo", template)
         self.assertIn("data-commit-history-message", template)
         self.assertIn("<time", template)
@@ -71,19 +77,32 @@ class CommitHistoryTemplateTests(unittest.TestCase):
         )[1].split("</li>", 1)[0]
         self.assertLess(
             item_markup.index("data-commit-history-marker"),
+            item_markup.index(context_icons["repo"]),
+        )
+        self.assertLess(
+            item_markup.index(context_icons["repo"]),
             item_markup.index("data-commit-history-repo"),
         )
         self.assertLess(
             item_markup.index("data-commit-history-repo"),
+            item_markup.index(context_icons["log"]),
+        )
+        self.assertLess(
+            item_markup.index(context_icons["log"]),
             item_markup.index("data-commit-history-message"),
         )
         self.assertLess(
             item_markup.index("data-commit-history-message"),
+            item_markup.index(context_icons["calendar"]),
+        )
+        self.assertLess(
+            item_markup.index(context_icons["calendar"]),
             item_markup.index("data-commit-history-date"),
         )
         self.assertEqual(item_markup.count(">·</span>"), 2)
         list_rule = styles.split(".commit-history-list", 1)[1].split("}", 1)[0]
         self.assertIn("list-style: none", list_rule)
+        self.assertIn(".commit-history-context-icon", styles)
 
     def test_styles_connect_timeline_markers_except_after_the_last_item(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")
@@ -93,7 +112,8 @@ class CommitHistoryTemplateTests(unittest.TestCase):
             ".commit-history-item:not([data-commit-history-last])", styles
         )
         self.assertIn("::after", styles)
-        self.assertRegex(styles, r"width:\s*3px")
+        self.assertRegex(styles, r"width:\s*2px")
+        self.assertRegex(styles, r"opacity:\s*0\.5")
         self.assertIn("position: relative", styles)
 
     def test_all_client_states_can_be_hidden(self) -> None:
