@@ -93,7 +93,7 @@ class CommitHistoryTemplateTests(unittest.TestCase):
             ".commit-history-item:not([data-commit-history-last])", styles
         )
         self.assertIn("::after", styles)
-        self.assertRegex(styles, r"width:\s*1px")
+        self.assertRegex(styles, r"width:\s*3px")
         self.assertIn("position: relative", styles)
 
     def test_all_client_states_can_be_hidden(self) -> None:
