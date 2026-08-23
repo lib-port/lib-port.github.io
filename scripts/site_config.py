@@ -15,6 +15,7 @@ CONFIG_PATH = REPO_ROOT / "_config.yml"
 TRUTHY_SWITCH_VALUES = {True}
 FALSY_SWITCH_VALUES = {False, None}
 MAX_EXTERNAL_BLOG_POST_LIMIT = 10
+MAX_COMMIT_HISTORY_COMMITS = 10
 
 
 class ConfigValidationError(ValueError):
@@ -34,6 +35,12 @@ class RepoGridConfig:
 
 
 @dataclass(frozen=True)
+class CommitHistoryConfig:
+    enabled: bool
+    commits: int
+
+
+@dataclass(frozen=True)
 class ExternalBlogConfig:
     enabled: bool
     feed_url: str
@@ -45,6 +52,7 @@ class ExternalBlogConfig:
 class SiteConfig:
     intro: IntroConfig
     repo_grid: RepoGridConfig
+    commit_history: CommitHistoryConfig
     external_blog: ExternalBlogConfig
     raw: dict[str, Any]
 
@@ -71,6 +79,7 @@ def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     return SiteConfig(
         intro=validate_intro(raw),
         repo_grid=validate_repo_grid(raw),
+        commit_history=validate_commit_history(raw),
         external_blog=validate_external_blog(raw),
         raw=raw,
     )
@@ -124,6 +133,26 @@ def validate_repo_grid(raw_config: dict[str, Any]) -> RepoGridConfig:
         )
 
     return RepoGridConfig(enabled=True, repo_list=normalized)
+
+
+def validate_commit_history(raw_config: dict[str, Any]) -> CommitHistoryConfig:
+    section = _get_section_mapping(raw_config, "commit_history")
+    enabled = _get_switch(section, "commit_history")
+    if not enabled:
+        return CommitHistoryConfig(enabled=False, commits=0)
+
+    raw_commits = section.get("commits")
+    if (
+        not isinstance(raw_commits, int)
+        or isinstance(raw_commits, bool)
+        or not 1 <= raw_commits <= MAX_COMMIT_HISTORY_COMMITS
+    ):
+        raise ConfigValidationError(
+            f"{CONFIG_PATH}: commit_history.switch is true, but commit_history.commits "
+            f"must be an integer between 1 and {MAX_COMMIT_HISTORY_COMMITS}"
+        )
+
+    return CommitHistoryConfig(enabled=True, commits=raw_commits)
 
 
 def validate_external_blog(raw_config: dict[str, Any]) -> ExternalBlogConfig:
