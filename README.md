@@ -103,9 +103,9 @@ When enabled, [`assets/js/commit_history.js`](./assets/js/commit_history.js) loa
 
 The browser requests at most the configured number of author-filtered commits from each eligible repository, combines the responses, sorts them by committed time, and displays the newest entries. If GitHub temporarily returns no results for the username filter, the loader falls back to repository history and retains only commits linked to the owner account.
 
-Commits are rendered as a semantic unordered list in the form `repository · commit message · date`. GitHub commit Octicons replace the native bullets, and a vertical connector turns the list into a GitHub-style commit timeline. A successful request with no qualifying commits displays `No recent commits found.`
+Commits are rendered as a semantic unordered list in the form `repository · commit message · date`. GitHub commit Octicons replace the native bullets, and a vertical connector turns the list into a GitHub-style commit timeline. A successful request with no qualifying commits displays `No recent commits found`
 
-The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. Once the cache expires, the section displays a gear Octicon with `loading recent commits.` while each repository is conditionally revalidated with its ETag. If the refresh fails, the prior cached list or successful empty state is restored and another request is not attempted for six hours. When no displayable cached result is available, an alert Octicon with `unable to load recent commits.` replaces the loading state; no GitHub profile fallback link is shown. Cached commits have no age-based expiration, while malformed and future-dated entries are removed.
+The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. Once the cache expires, the section displays a gear Octicon with `loading recent commits` while each repository is conditionally revalidated with its ETag. If the refresh fails, the prior cached list or successful empty state is restored and another request is not attempted for six hours. When no displayable cached result is available, an alert Octicon with `unable to load recent commits` replaces the loading state; no GitHub profile fallback link is shown. Cached commits have no age-based expiration, while malformed and future-dated entries are removed.
 
 ### External posts
 
@@ -175,7 +175,7 @@ During deployment, the workflow:
 | --- | --- |
 | Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
 | Recent commits are stale | The browser cache lasts seven days. After that, the loading state appears during revalidation and the cached result is restored only if the refresh fails. Clear the site's `localStorage` to force a new request. |
-| “unable to load recent commits.” appears | Confirm the browser can reach `api.github.com` and has not exhausted GitHub's unauthenticated API limit. Forked and archived repositories are intentionally excluded. |
+| “unable to load recent commits” appears | Confirm the browser can reach `api.github.com` and has not exhausted GitHub's unauthenticated API limit. Forked and archived repositories are intentionally excluded. |
 | The recent-commit section is missing | Confirm JavaScript is enabled; the entire section intentionally remains hidden when JavaScript does not initialize. |
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
 | Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
