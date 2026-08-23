@@ -43,6 +43,13 @@ class ThemeToggleTemplateTests(unittest.TestCase):
         self.assertIn("@include dm-highlight", styles)
         self.assertRegex(styles, r"\.theme-toggle\s*\{[^}]*width:\s*2\.75rem")
         self.assertRegex(styles, r"\.theme-toggle\s*\{[^}]*height:\s*2\.75rem")
+        self.assertRegex(
+            styles, r"\.theme-toggle\s*\{[^}]*border:\s*1px solid currentColor"
+        )
+        self.assertNotRegex(
+            styles,
+            r"\.theme-toggle(?::[a-z-]+)?\s*\{[^}]*box-shadow",
+        )
         self.assertIn("safe-area-inset-right", styles)
         self.assertIn("safe-area-inset-bottom", styles)
         self.assertIn(".theme-toggle:focus-visible", styles)
