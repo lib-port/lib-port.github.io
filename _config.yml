@@ -51,9 +51,9 @@ repo_grid:
     - pricing-function-mapper
 
 external_blog:
-  switch: true
-  feed_url: https://example.com/feed.xml
-  archive_url: https://example.com/archive
+  switch: false
+  feed_url:
+  archive_url:
   post_limit: 7
 
 ################################
