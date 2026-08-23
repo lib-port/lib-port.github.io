@@ -268,29 +268,29 @@
     const dayDifference = localCalendarDay(now) - localCalendarDay(date);
 
     if (dayDifference === 0) {
-      return "Updated today";
+      return "updated today";
     }
 
     if (dayDifference === 1) {
-      return "Updated yesterday";
+      return "updated yesterday";
     }
 
     if (dayDifference > 1 && dayDifference < 7) {
-      return `Updated ${dayDifference} days ago`;
+      return `updated ${dayDifference} days ago`;
     }
 
     if (dayDifference >= 7 && dayDifference < 14) {
-      return "Updated last week";
+      return "updated last week";
     }
 
     if (dayDifference >= 14 && dayDifference < 28) {
       const weeks = Math.floor(dayDifference / 7);
-      return `Updated ${weeks} weeks ago`;
+      return `updated ${weeks} weeks ago`;
     }
 
     const sameYear = date.getFullYear() === now.getFullYear();
     const formatter = sameYear ? DATE_FORMATTERS.withoutYear : DATE_FORMATTERS.withYear;
-    return `Updated on ${formatter.format(date)}`;
+    return `updated on ${formatter.format(date)}`;
   }
 
   function localCalendarDay(date) {
