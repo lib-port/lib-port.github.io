@@ -312,6 +312,8 @@ html[data-theme="dark"] {
 
 .commit-history-context-icon > .octicon {
   display: block;
+  width: 1em;
+  height: 1em;
   vertical-align: 0;
 }
 
@@ -361,19 +363,15 @@ html[data-theme="dark"] {
   width: 2.75rem;
   height: 2.75rem;
   padding: 0;
-  border: 1px solid var(--minima-border-color-01);
+  border: 1px solid currentColor;
   border-radius: 50%;
   appearance: none;
   background: var(--minima-background-color);
-  box-shadow: 0 0.25rem 1rem
-    color-mix(in srgb, var(--minima-text-color) 18%, transparent);
   color: var(--minima-text-color);
   cursor: pointer;
   touch-action: manipulation;
   transition:
     background-color 120ms ease,
-    border-color 120ms ease,
-    box-shadow 120ms ease,
     color 120ms ease,
     transform 120ms ease;
 }
@@ -384,7 +382,6 @@ html[data-theme="dark"] {
 
 @media (hover: hover) {
   .theme-toggle:hover {
-    border-color: var(--minima-link-base-color);
     background: color-mix(
       in srgb,
       var(--minima-background-color) 92%,
@@ -396,8 +393,6 @@ html[data-theme="dark"] {
 }
 
 .theme-toggle:active {
-  box-shadow: 0 0.125rem 0.5rem
-    color-mix(in srgb, var(--minima-text-color) 14%, transparent);
   transform: translateY(0);
 }
 
