@@ -383,6 +383,7 @@
       const issueNumber = item.number;
       const issueTitle =
         typeof item.title === "string" ? item.title.trim() : "";
+      const issueLabels = normalizeIssueLabels(item.labels);
       const issueUrl = normalizeGitHubUrl(item.html_url);
       const closedAt = normalizeDate(item.closed_at);
       const updatedAt = normalizeDate(item.updated_at);
@@ -400,6 +401,7 @@
         !Number.isInteger(issueNumber) ||
         issueNumber < 1 ||
         !issueTitle ||
+        !issueLabels ||
         !issueUrl ||
         !closedAt ||
         !updatedAt ||
@@ -420,6 +422,7 @@
         latestClosedIssue: {
           number: issueNumber,
           title: issueTitle,
+          labels: issueLabels,
           url: issueUrl,
           closedAt,
         },
@@ -427,6 +430,19 @@
     }
 
     return compactMilestones(milestones);
+  }
+
+  function normalizeIssueLabels(value) {
+    if (!Array.isArray(value)) return null;
+
+    const labels = [];
+    for (const label of value) {
+      const name =
+        typeof label?.name === "string" ? label.name.trim() : "";
+      if (!name) return null;
+      labels.push(name);
+    }
+    return labels;
   }
 
   function compactMilestones(milestones) {
@@ -572,6 +588,12 @@
     const latestClosedIssue = item.querySelector?.(
       "[data-recent-milestone-latest-closed-issue]"
     );
+    const latestClosedIssueLabelDetail = item.querySelector?.(
+      "[data-recent-milestone-latest-closed-issue-label-detail]"
+    );
+    const latestClosedIssueLabels = item.querySelector?.(
+      "[data-recent-milestone-latest-closed-issue-labels]"
+    );
 
     if (
       !title ||
@@ -584,7 +606,10 @@
       !progress ||
       !progressValue ||
       !percentage ||
-      !latestClosedIssue
+      !latestClosedIssue ||
+      !latestClosedIssueLabelDetail ||
+      !latestClosedIssueLabels ||
+      !Array.isArray(milestone?.latestClosedIssue?.labels)
     ) {
       return false;
     }
@@ -614,6 +639,12 @@
     progressValue.style.width = `${percentComplete}%`;
     percentage.textContent = `${percentComplete}%`;
     latestClosedIssue.textContent = milestone.latestClosedIssue.title;
+    latestClosedIssueLabels.textContent =
+      milestone.latestClosedIssue.labels.join(", ");
+    latestClosedIssueLabelDetail.toggleAttribute(
+      "hidden",
+      milestone.latestClosedIssue.labels.length === 0
+    );
     return true;
   }
 
@@ -683,7 +714,7 @@
   }
 
   function getStorageKey(owner, limit) {
-    return `recent-milestones:v3:${owner.toLowerCase()}:limit:${limit}`;
+    return `recent-milestones:v4:${owner.toLowerCase()}:limit:${limit}`;
   }
 
   function getFailureKey(owner, repositories, limit) {
@@ -692,11 +723,11 @@
       .slice()
       .sort()
       .join(",");
-    return `recent-milestones:v3:failure:${owner.toLowerCase()}:limit:${limit}:${repoKey}`;
+    return `recent-milestones:v4:failure:${owner.toLowerCase()}:limit:${limit}:${repoKey}`;
   }
 
   function getLegacyStorageKey(owner, limit) {
-    return `recent-milestones:v2:${owner.toLowerCase()}:limit:${limit}`;
+    return `recent-milestones:v3:${owner.toLowerCase()}:limit:${limit}`;
   }
 
   function getLegacyFailureKey(owner, repositories, limit) {
@@ -705,7 +736,7 @@
       .slice()
       .sort()
       .join(",");
-    return `recent-milestones:v2:failure:${owner.toLowerCase()}:limit:${limit}:${repoKey}`;
+    return `recent-milestones:v3:failure:${owner.toLowerCase()}:limit:${limit}:${repoKey}`;
   }
 
   function getStorage() {
@@ -908,13 +939,33 @@
   function normalizeCachedClosedIssue(value) {
     const number = value?.number;
     const title = typeof value?.title === "string" ? value.title.trim() : "";
+    const labels = normalizeCachedIssueLabels(value?.labels);
     const url = normalizeGitHubUrl(value?.url);
     const closedAt = normalizeDate(value?.closedAt);
 
-    if (!Number.isInteger(number) || number < 1 || !title || !url || !closedAt) {
+    if (
+      !Number.isInteger(number) ||
+      number < 1 ||
+      !title ||
+      !labels ||
+      !url ||
+      !closedAt
+    ) {
       return null;
     }
-    return { number, title, url, closedAt };
+    return { number, title, labels, url, closedAt };
+  }
+
+  function normalizeCachedIssueLabels(value) {
+    if (!Array.isArray(value)) return null;
+
+    const labels = [];
+    for (const label of value) {
+      const name = typeof label === "string" ? label.trim() : "";
+      if (!name) return null;
+      labels.push(name);
+    }
+    return labels;
   }
 
   function writeCache(storageKey, cache, storage) {

@@ -106,7 +106,9 @@ class RecentCommitsTemplateTests(unittest.TestCase):
             item_markup.index(context_icons["calendar"]),
             item_markup.index("data-commit-history-date"),
         )
-        self.assertEqual(item_markup.count(">·</span>"), 2)
+        self.assertNotIn("commit-history-separator", item_markup)
+        self.assertNotIn("·", item_markup)
+        self.assertNotIn(".commit-history-separator", styles)
         list_rule = styles.split(".commit-history-list", 1)[1].split("}", 1)[0]
         self.assertIn("list-style: none", list_rule)
         icon_rule = styles.split(

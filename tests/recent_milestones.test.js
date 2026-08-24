@@ -122,6 +122,8 @@ function makeItem() {
     "[data-recent-milestone-progress-value]",
     "[data-recent-milestone-percentage]",
     "[data-recent-milestone-latest-closed-issue]",
+    "[data-recent-milestone-latest-closed-issue-label-detail]",
+    "[data-recent-milestone-latest-closed-issue-labels]",
   ];
   for (const selector of selectors) {
     item.selectors.set(selector, new FakeElement());
@@ -184,6 +186,7 @@ function makeApiIssue({
   closedAt = "2026-08-24T08:00:00Z",
   issueNumber = 101,
   issueTitle = "Complete the current milestone task",
+  labels = [{ name: "documentation" }],
   issueUrl = `https://github.com/${OWNER}/tech-lib/issues/${issueNumber}`,
   milestoneUpdatedAt = "2026-08-01T00:00:00Z",
   dueOn = "2027-03-31T00:00:00Z",
@@ -195,6 +198,7 @@ function makeApiIssue({
   const issue = {
     number: issueNumber,
     title: issueTitle,
+    labels,
     html_url: issueUrl,
     state: issueState,
     state_reason: stateReason,
@@ -295,6 +299,7 @@ test("normalizes closed issues for open milestones and rejects malformed candida
         number: 1,
         title: "  Current work  ",
         issueTitle: "  Finished task  ",
+        labels: [{ name: "  documentation  " }, { name: "notes" }],
         stateReason: "not_planned",
         dueOn: null,
       }),
@@ -311,6 +316,7 @@ test("normalizes closed issues for open milestones and rejects malformed candida
         closedAt: "2026-08-24T10:00:00Z",
         updatedAt: "2026-08-24T09:00:00Z",
       }),
+      makeApiIssue({ number: 11, labels: [{ name: "" }] }),
     ],
     "tech-lib"
   );
@@ -327,6 +333,7 @@ test("normalizes closed issues for open milestones and rejects malformed candida
       latestClosedIssue: {
         number: 101,
         title: "Finished task",
+        labels: ["documentation", "notes"],
         url: "https://github.com/lib-port/tech-lib/issues/101",
         closedAt: "2026-08-24T08:00:00.000Z",
       },
@@ -471,6 +478,7 @@ test("renders the GitHub-style milestone fields and safe text values", () => {
   const milestone = makeNormalizedMilestone("tech-lib", {
     title: "<strong>Current</strong>",
     issueTitle: "<em>Finished issue</em>",
+    labels: [{ name: "<em>documentation</em>" }, { name: "notes" }],
     issueUrl: "https://github.com/lib-port/tech-lib/issues/101",
     openIssues: 3,
     closedIssues: 1,
@@ -500,6 +508,12 @@ test("renders the GitHub-style milestone fields and safe text values", () => {
   const latestClosedIssue = items[0].querySelector(
     "[data-recent-milestone-latest-closed-issue]"
   );
+  const latestClosedIssueLabelDetail = items[0].querySelector(
+    "[data-recent-milestone-latest-closed-issue-label-detail]"
+  );
+  const latestClosedIssueLabels = items[0].querySelector(
+    "[data-recent-milestone-latest-closed-issue-labels]"
+  );
 
   assert.equal(title.textContent, "<strong>Current</strong>");
   assert.match(title.href, /\/tech-lib\/milestone\/1$/);
@@ -511,32 +525,41 @@ test("renders the GitHub-style milestone fields and safe text values", () => {
   assert.equal(progressValue.style.width, "25%");
   assert.equal(latestClosedIssue.textContent, "<em>Finished issue</em>");
   assert.equal(latestClosedIssue.href, "");
+  assert.equal(latestClosedIssueLabelDetail.hidden, false);
+  assert.equal(
+    latestClosedIssueLabels.textContent,
+    "<em>documentation</em>, notes"
+  );
 });
 
-test("fails safely when the latest closed-issue binding is missing", () => {
-  const view = makeContainer({ limit: 1 });
-  view.items[0].selectors.delete(
-    "[data-recent-milestone-latest-closed-issue]"
-  );
+test("fails safely when a latest closed-issue binding is missing", () => {
+  for (const selector of [
+    "[data-recent-milestone-latest-closed-issue]",
+    "[data-recent-milestone-latest-closed-issue-label-detail]",
+    "[data-recent-milestone-latest-closed-issue-labels]",
+  ]) {
+    const view = makeContainer({ limit: 1 });
+    view.items[0].selectors.delete(selector);
 
-  assert.equal(
-    renderMilestones(
-      view.container,
-      [makeNormalizedMilestone("tech-lib")],
-      1,
-      OWNER
-    ),
-    false
-  );
-  assertOnlyVisible(
-    {
-      list: view.list,
-      loading: view.loading,
-      error: view.error,
-      empty: view.empty,
-    },
-    "error"
-  );
+    assert.equal(
+      renderMilestones(
+        view.container,
+        [makeNormalizedMilestone("tech-lib")],
+        1,
+        OWNER
+      ),
+      false
+    );
+    assertOnlyVisible(
+      {
+        list: view.list,
+        loading: view.loading,
+        error: view.error,
+        empty: view.empty,
+      },
+      "error"
+    );
+  }
 });
 
 test("renders missing optional fields, zero progress, and the empty state", () => {
@@ -544,6 +567,7 @@ test("renders missing optional fields, zero progress, and the empty state", () =
   const milestone = makeNormalizedMilestone("tech-lib", {
     description: "",
     dueOn: null,
+    labels: [],
     openIssues: 0,
     closedIssues: 0,
   });
@@ -569,6 +593,18 @@ test("renders missing optional fields, zero progress, and the empty state", () =
   assert.equal(
     first.items[0].querySelector("[data-recent-milestone-percentage]").textContent,
     "0%"
+  );
+  assert.equal(
+    first.items[0].querySelector(
+      "[data-recent-milestone-latest-closed-issue-label-detail]"
+    ).hidden,
+    true
+  );
+  assert.equal(
+    first.items[0].querySelector(
+      "[data-recent-milestone-latest-closed-issue-labels]"
+    ).textContent,
+    ""
   );
 
   const second = makeContainer({ limit: 1 });
@@ -626,6 +662,44 @@ test("resets the optional due-date detail when reusing a milestone item", () => 
   );
   assert.equal(dueDetail.hidden, false);
   assert.equal(due.textContent, "Due by March 31, 2027");
+});
+
+test("resets optional issue labels when reusing a milestone item", () => {
+  const view = makeContainer({ limit: 1 });
+  const labelDetail = view.items[0].querySelector(
+    "[data-recent-milestone-latest-closed-issue-label-detail]"
+  );
+  const labels = view.items[0].querySelector(
+    "[data-recent-milestone-latest-closed-issue-labels]"
+  );
+
+  assert.equal(
+    renderMilestones(
+      view.container,
+      [
+        makeNormalizedMilestone("tech-lib", {
+          labels: [{ name: "documentation" }, { name: "notes" }],
+        }),
+      ],
+      1,
+      OWNER
+    ),
+    true
+  );
+  assert.equal(labelDetail.hidden, false);
+  assert.equal(labels.textContent, "documentation, notes");
+
+  assert.equal(
+    renderMilestones(
+      view.container,
+      [makeNormalizedMilestone("tech-lib", { labels: [] })],
+      1,
+      OWNER
+    ),
+    true
+  );
+  assert.equal(labelDetail.hidden, true);
+  assert.equal(labels.textContent, "");
 });
 
 test("continues through duplicate-heavy pages until enough closed milestones exist", async () => {
@@ -785,10 +859,10 @@ test("keeps complete milestone caches indefinitely but fresh for seven days", ()
   const storageKey = getStorageKey(OWNER, 1);
   const repositories = { "tech-lib": makeEntry("tech-lib") };
 
-  assert.match(storageKey, /^recent-milestones:v3:/);
+  assert.match(storageKey, /^recent-milestones:v4:/);
   assert.match(
     getFailureKey(OWNER, ["tech-lib"], 1),
-    /^recent-milestones:v3:failure:/
+    /^recent-milestones:v4:failure:/
   );
   assert.equal(CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000);
   writeCache(
@@ -817,13 +891,13 @@ test("keeps complete milestone caches indefinitely but fresh for seven days", ()
   );
 });
 
-test("removes only the current v2 data and failure keys", async () => {
+test("removes only the matching v3 data and failure keys", async () => {
   const storage = new FakeStorage();
   const storageKey = getStorageKey(OWNER, 1);
-  const legacyDataKey = `recent-milestones:v2:${OWNER}:limit:1`;
+  const legacyDataKey = `recent-milestones:v3:${OWNER}:limit:1`;
   const legacyFailureKey =
-    `recent-milestones:v2:failure:${OWNER}:limit:1:tech-lib`;
-  const unrelatedLegacyKey = `recent-milestones:v2:${OWNER}:limit:2`;
+    `recent-milestones:v3:failure:${OWNER}:limit:1:tech-lib`;
+  const unrelatedLegacyKey = `recent-milestones:v3:${OWNER}:limit:2`;
   storage.setItem(legacyDataKey, "legacy data");
   storage.setItem(legacyFailureKey, "legacy failure");
   storage.setItem(unrelatedLegacyKey, "keep me");
@@ -841,7 +915,7 @@ test("removes only the current v2 data and failure keys", async () => {
   assert.equal(
     await loadRecentMilestones(container, {
       fetchImpl: async () => {
-        throw new Error("fresh v3 cache should prevent a request");
+        throw new Error("fresh v4 cache should prevent a request");
       },
       storage,
       now: NOW,
@@ -854,7 +928,7 @@ test("removes only the current v2 data and failure keys", async () => {
   assert.equal(storage.getItem(unrelatedLegacyKey), "keep me");
 });
 
-test("compacts duplicate v3 candidates per cached page", () => {
+test("compacts duplicate v4 candidates per cached page", () => {
   const storage = new FakeStorage();
   const storageKey = getStorageKey(OWNER, 2);
   const older = makeNormalizedMilestone("tech-lib", {
@@ -924,7 +998,7 @@ test("compacts duplicate v3 candidates per cached page", () => {
     ),
     [1, 1]
   );
-  assert.match(storageKey, /^recent-milestones:v3:/);
+  assert.match(storageKey, /^recent-milestones:v4:/);
 });
 
 test("deletes malformed and future-dated milestone caches", () => {
@@ -935,6 +1009,11 @@ test("deletes malformed and future-dated milestone caches", () => {
   const unsafeIssueUrl = makeEntry("tech-lib");
   unsafeIssueUrl.pages[0].milestones[0].latestClosedIssue.url =
     "https://example.com/issues/101";
+  const malformedIssueLabels = makeEntry("tech-lib");
+  malformedIssueLabels.pages[0].milestones[0].latestClosedIssue.labels = [
+    "documentation",
+    3,
+  ];
   const invalidEntries = [
     "not json",
     "[]",
@@ -958,6 +1037,11 @@ test("deletes malformed and future-dated milestone caches", () => {
       fetchedAt: NOW,
       repoNames: ["tech-lib"],
       repositories: { "tech-lib": unsafeIssueUrl },
+    }),
+    JSON.stringify({
+      fetchedAt: NOW,
+      repoNames: ["tech-lib"],
+      repositories: { "tech-lib": malformedIssueLabels },
     }),
   ];
 
@@ -997,6 +1081,12 @@ test("renders a fresh cache without requesting GitHub", async () => {
   assert.equal(loaded, true);
   assert.equal(fetchCalls, 0);
   assert.equal(isVisible(items[0]), true);
+  assert.equal(
+    items[0].querySelector(
+      "[data-recent-milestone-latest-closed-issue-labels]"
+    ).textContent,
+    "documentation"
+  );
 });
 
 test("shows loading while the initial request is pending", async () => {
