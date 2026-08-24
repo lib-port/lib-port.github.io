@@ -15,7 +15,8 @@ CONFIG_PATH = REPO_ROOT / "_config.yml"
 TRUTHY_SWITCH_VALUES = {True}
 FALSY_SWITCH_VALUES = {False, None}
 MAX_EXTERNAL_BLOG_POST_LIMIT = 10
-MAX_COMMIT_HISTORY_COMMITS = 10
+MAX_RECENT_COMMITS = 10
+MAX_RECENT_MILESTONES = 10
 
 
 class ConfigValidationError(ValueError):
@@ -35,7 +36,14 @@ class RepoGridConfig:
 
 
 @dataclass(frozen=True)
-class CommitHistoryConfig:
+class RecentMilestonesConfig:
+    enabled: bool
+    milestones: int
+    repo_list: list[str]
+
+
+@dataclass(frozen=True)
+class RecentCommitsConfig:
     enabled: bool
     commits: int
 
@@ -52,7 +60,8 @@ class ExternalBlogConfig:
 class SiteConfig:
     intro: IntroConfig
     repo_grid: RepoGridConfig
-    commit_history: CommitHistoryConfig
+    recent_milestones: RecentMilestonesConfig
+    recent_commits: RecentCommitsConfig
     external_blog: ExternalBlogConfig
     raw: dict[str, Any]
 
@@ -79,7 +88,8 @@ def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     return SiteConfig(
         intro=validate_intro(raw),
         repo_grid=validate_repo_grid(raw),
-        commit_history=validate_commit_history(raw),
+        recent_milestones=validate_recent_milestones(raw),
+        recent_commits=validate_recent_commits(raw),
         external_blog=validate_external_blog(raw),
         raw=raw,
     )
@@ -135,24 +145,84 @@ def validate_repo_grid(raw_config: dict[str, Any]) -> RepoGridConfig:
     return RepoGridConfig(enabled=True, repo_list=normalized)
 
 
-def validate_commit_history(raw_config: dict[str, Any]) -> CommitHistoryConfig:
-    section = _get_section_mapping(raw_config, "commit_history")
-    enabled = _get_switch(section, "commit_history")
+def validate_recent_milestones(
+    raw_config: dict[str, Any],
+) -> RecentMilestonesConfig:
+    if "recent_milestones" not in raw_config:
+        return RecentMilestonesConfig(enabled=False, milestones=0, repo_list=[])
+
+    section = raw_config.get("recent_milestones")
+    if not isinstance(section, dict):
+        raise ConfigValidationError(
+            f"{CONFIG_PATH}: recent_milestones must be a mapping"
+        )
+
+    raw_milestones = section.get("milestones")
+    if (
+        not isinstance(raw_milestones, int)
+        or isinstance(raw_milestones, bool)
+        or not 1 <= raw_milestones <= MAX_RECENT_MILESTONES
+    ):
+        raise ConfigValidationError(
+            f"{CONFIG_PATH}: recent_milestones.milestones must be an integer "
+            f"between 1 and {MAX_RECENT_MILESTONES}"
+        )
+
+    repo_list = section.get("repo_list")
+    if not isinstance(repo_list, list) or not repo_list:
+        raise ConfigValidationError(
+            f"{CONFIG_PATH}: recent_milestones.repo_list must be a non-empty "
+            "list of repository names"
+        )
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    duplicates: list[str] = []
+
+    for index, item in enumerate(repo_list):
+        if not isinstance(item, str) or not item.strip():
+            raise ConfigValidationError(
+                f"{CONFIG_PATH}: recent_milestones.repo_list[{index}] must be "
+                "a non-blank string"
+            )
+        repo_name = item.strip()
+        normalized.append(repo_name)
+        if repo_name in seen and repo_name not in duplicates:
+            duplicates.append(repo_name)
+        seen.add(repo_name)
+
+    if duplicates:
+        duplicate_list = ", ".join(duplicates)
+        raise ConfigValidationError(
+            f"{CONFIG_PATH}: recent_milestones.repo_list contains duplicate "
+            f"repository names: {duplicate_list}"
+        )
+
+    return RecentMilestonesConfig(
+        enabled=True,
+        milestones=raw_milestones,
+        repo_list=normalized,
+    )
+
+
+def validate_recent_commits(raw_config: dict[str, Any]) -> RecentCommitsConfig:
+    section = _get_section_mapping(raw_config, "recent_commits")
+    enabled = _get_switch(section, "recent_commits")
     if not enabled:
-        return CommitHistoryConfig(enabled=False, commits=0)
+        return RecentCommitsConfig(enabled=False, commits=0)
 
     raw_commits = section.get("commits")
     if (
         not isinstance(raw_commits, int)
         or isinstance(raw_commits, bool)
-        or not 1 <= raw_commits <= MAX_COMMIT_HISTORY_COMMITS
+        or not 1 <= raw_commits <= MAX_RECENT_COMMITS
     ):
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: commit_history.switch is true, but commit_history.commits "
-            f"must be an integer between 1 and {MAX_COMMIT_HISTORY_COMMITS}"
+            f"{CONFIG_PATH}: recent_commits.switch is true, but recent_commits.commits "
+            f"must be an integer between 1 and {MAX_RECENT_COMMITS}"
         )
 
-    return CommitHistoryConfig(enabled=True, commits=raw_commits)
+    return RecentCommitsConfig(enabled=True, commits=raw_commits)
 
 
 def validate_external_blog(raw_config: dict[str, Any]) -> ExternalBlogConfig:

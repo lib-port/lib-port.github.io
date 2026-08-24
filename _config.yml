@@ -50,7 +50,12 @@ repo_grid:
     - ansible-linux-audit
     - pricing-function-mapper
 
-commit_history:
+recent_milestones:
+  milestones: 1
+  repo_list:
+    - tech-lib
+
+recent_commits:
   switch: true
   commits: 10
 

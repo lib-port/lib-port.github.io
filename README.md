@@ -8,14 +8,15 @@
 [![Sass/SCSS](https://img.shields.io/badge/Sass-SCSS-CC6699?logo=sass&logoColor=white)](https://sass-lang.com/)
 [![Vanilla JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?logo=javascript&logoColor=000)](https://developer.mozilla.org/docs/Web/JavaScript)
 
-A configurable Jekyll landing page for presenting selected GitHub repositories and recent posts from a blog feed. It is designed for GitHub Pages and builds on the [Minima theme](https://github.com/jekyll/minima).
+A configurable Jekyll landing page for presenting selected GitHub repositories, recent milestones and commits, and posts from a blog feed. It is designed for GitHub Pages and builds on the [Minima theme](https://github.com/jekyll/minima).
 
 [View the live demo](https://lib-port.github.io/)
 
 ## Features
 
-- Configurable introduction, repository grid, recent-commit, and blog-post sections
+- Configurable introduction, repository grid, recent-milestone, recent-commit, and blog-post sections
 - Server-rendered repository metadata with client-side update labels
+- Client-side GitHub milestone feed merged across configured repositories
 - Client-side GitHub-style recent-commit timeline with conditional caching
 - Client-side blog posts with seven-day local caching
 - Responsive light and dark themes with a persistent visitor-controlled switcher
@@ -55,7 +56,13 @@ repo_grid:
     - first-repository
     - second-repository
 
-commit_history:
+recent_milestones:
+  milestones: 3
+  repo_list:
+    - first-repository
+    - second-repository
+
+recent_commits:
   switch: true
   commits: 10
 
@@ -70,7 +77,7 @@ description: A short description shown in site metadata and the footer.
 
 Replace the example feed and archive URLs with the URLs for your blog.
 
-The top-level order of `intro`, `repo_grid`, `commit_history`, and `external_blog` determines their order on the homepage.
+The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commits`, and `external_blog` determines their order on the homepage.
 
 | Setting | Requirement |
 | --- | --- |
@@ -80,14 +87,16 @@ The top-level order of `intro`, `repo_grid`, `commit_history`, and `external_blo
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
 | `repo_grid.repo_list` | Required, non-empty list of unique repository names when enabled. Repositories must belong to the account hosting the site. |
-| `commit_history.switch` | YAML boolean controlling whether recent GitHub commits are loaded. |
-| `commit_history.commits` | Required integer from 1 through 10 when enabled. |
+| `recent_milestones.milestones` | Required integer from 1 through 10 controlling how many globally recent milestones are shown. |
+| `recent_milestones.repo_list` | Required, non-empty list of unique public repository names to poll under the account hosting the site. |
+| `recent_commits.switch` | YAML boolean controlling whether recent GitHub commits are loaded. |
+| `recent_commits.commits` | Required integer from 1 through 10 when enabled. |
 | `external_blog.switch` | YAML boolean controlling whether external posts are shown. |
 | `external_blog.feed_url` | Required blog RSS URL when external posts are enabled. |
 | `external_blog.archive_url` | Required blog archive URL used by the fallback and “View all posts” links. |
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
-Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings.
+Use unquoted `true` and `false` values for section switches. Disabled switched sections ignore their inner settings. Remove `recent_milestones` entirely to disable that section.
 
 ### Repository updates
 
@@ -97,9 +106,17 @@ Successful responses are cached in the visitor's `localStorage`. For seven days 
 
 If revalidation fails, the stale timestamps remain available and another request is not attempted for six hours. Cached repository data has no age-based expiration, but malformed and future-dated cache entries are removed.
 
+### Recent GitHub milestones
+
+When configured, [`assets/js/recent_milestones.js`](./assets/js/recent_milestones.js) requests closed, milestone-bearing issues from each repository in `recent_milestones.repo_list`. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
+
+The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title of its latest closed issue. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with completed issues found`.
+
+Results use the same cache policy as the other GitHub sections. Compacted closed-issue page summaries remain fresh in `localStorage` for seven days, with duplicate appearances of a milestone reduced to its newest closed issue within each page. After that, every cached API page is conditionally revalidated with its ETag; stale data is retained indefinitely, malformed or future-dated entries are removed, and failures prevent another attempt for six hours. Successful and cached repository data is combined silently if only part of a refresh fails. The section is hidden unless JavaScript initializes. The v3 cache format replaces and removes incompatible v2 milestone entries.
+
 ### Recent GitHub commits
 
-When enabled, [`assets/js/commit_history.js`](./assets/js/commit_history.js) loads commits from the default branches of public repositories owned by the account hosting the site. Forks and archived repositories are excluded at build time and are never polled. The section is hidden unless JavaScript initializes.
+When `recent_commits.switch` is enabled, [`assets/js/recent_commits.js`](./assets/js/recent_commits.js) loads commits from the default branches of public repositories owned by the account hosting the site. Forks and archived repositories are excluded at build time and are never polled. The section is hidden unless JavaScript initializes.
 
 The browser requests at most the configured number of author-filtered commits from each eligible repository, combines the responses, sorts them by committed time, and displays the newest entries. If GitHub temporarily returns no results for the username filter, the loader falls back to repository history and retains only commits linked to the owner account.
 
@@ -158,13 +175,14 @@ node --test tests/*.test.js
 | Configuration | `_config.yml` defines site metadata, homepage sections, and external-feed settings; Python validation rejects invalid enabled-section settings. |
 | Page generation | Jekyll, Minima, Liquid includes, and custom Sass generate the static site. |
 | Repository data | `jekyll-github-metadata` supplies repository cards during the build; `assets/js/repo_updates.js` refreshes update labels in the browser and revalidates its local cache weekly using GitHub ETags. |
-| Recent commits | Build metadata supplies eligible repository names; `assets/js/commit_history.js` loads author-linked commits, renders the timeline and status states, and conditionally revalidates its weekly local cache. |
+| Recent milestones | `assets/js/recent_milestones.js` polls closed milestone-bearing issues in configured public repositories, globally ranks open milestones by their latest closed issue, renders progress and latest-issue metadata, and conditionally revalidates its weekly paginated cache. |
+| Recent commits | Build metadata supplies eligible repository names; `assets/js/recent_commits.js` loads author-linked commits, renders the timeline and status states, and conditionally revalidates its weekly local cache. |
 | External posts | Browser JavaScript loads the configured blog feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
 | Theme preference | Minima supplies the light and dark palettes; `assets/js/theme_toggle.js` applies and persists the visitor's explicit override. |
 | Deployment | `.github/workflows/jekyll-gh-pages.yml` validates, builds, uploads, and deploys the site. |
 | Repository mirror | `.github/workflows/gitlab-main-mirror.yml` keeps GitLab `main` aligned with GitHub `main`. |
 
-Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, the recent-commit section stays hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system color preference without the switcher.
+Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, the recent-milestone and recent-commit sections stay hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system color preference without the switcher.
 
 ## Deployment
 
@@ -188,9 +206,12 @@ Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` ac
 | Symptom | Resolution |
 | --- | --- |
 | Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
+| Recent milestones are stale | The browser cache lasts seven days. Clear the site's `recent-milestones:v3:` local-storage entry to force an immediate refresh. |
+| “unable to load recent milestones” appears | Confirm every configured repository is public and belongs to the site owner, the browser can reach `api.github.com`, and the visitor has not exhausted GitHub's unauthenticated API limit. |
+| The recent-milestone section is missing | Confirm `recent_milestones` is configured and JavaScript is enabled; the section intentionally remains hidden when JavaScript does not initialize. |
 | Recent commits are stale | The browser cache lasts seven days. After that, the loading state appears during revalidation and the cached result is restored only if the refresh fails. Clear the site's `localStorage` to force a new request. |
 | “unable to load recent commits” appears | Confirm the browser can reach `api.github.com` and has not exhausted GitHub's unauthenticated API limit. Forked and archived repositories are intentionally excluded. |
-| The recent-commit section is missing | Confirm JavaScript is enabled; the entire section intentionally remains hidden when JavaScript does not initialize. |
+| The recent-commit section is missing | Confirm `recent_commits.switch` is enabled and JavaScript is available; the entire section intentionally remains hidden when JavaScript does not initialize. |
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
 | Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
 | The theme no longer follows the system | Clear the site's `lib-port:theme:v1` local-storage entry to remove the explicit light or dark preference. |

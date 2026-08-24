@@ -6,7 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
-const scriptPath = path.join(__dirname, "..", "assets", "js", "commit_history.js");
+const scriptPath = path.join(__dirname, "..", "assets", "js", "recent_commits.js");
 const {
   AUTHOR_MODE,
   CACHE_TTL_MS,
@@ -796,4 +796,5 @@ test("starts by selecting commit-history containers in a browser", () => {
   });
 
   assert.equal(selector, "[data-commit-history]");
+  assert.match(source, /\[data-home-section="recent_commits"\]/);
 });

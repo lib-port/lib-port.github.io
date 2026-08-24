@@ -1,7 +1,7 @@
 (() => {
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const FAILURE_TTL_MS = 6 * 60 * 60 * 1000;
-  const MAX_COMMITS = 10;
+  const MAX_RECENT_COMMITS = 10;
   const API_BASE_URL = "https://api.github.com";
   const AUTHOR_MODE = "author";
   const LINKED_AUTHOR_MODE = "linked-author";
@@ -10,7 +10,7 @@
     const containers = document.querySelectorAll("[data-commit-history]");
 
     for (const container of containers) {
-      const section = container.closest?.('[data-home-section="commit_history"]');
+      const section = container.closest?.('[data-home-section="recent_commits"]');
       section?.removeAttribute("hidden");
       void loadCommitHistory(container);
     }
@@ -147,7 +147,7 @@
       "[data-commit-history-repositories]"
     );
 
-    if (!owner || !Number.isInteger(limit) || limit < 1 || limit > MAX_COMMITS) {
+    if (!owner || !Number.isInteger(limit) || limit < 1 || limit > MAX_RECENT_COMMITS) {
       return null;
     }
 
@@ -609,7 +609,7 @@
     }
 
     const commits = [];
-    for (const value of entry.commits.slice(0, MAX_COMMITS)) {
+    for (const value of entry.commits.slice(0, MAX_RECENT_COMMITS)) {
       const sha = typeof value?.sha === "string" ? value.sha.trim() : "";
       const message = getMessageSubject(value?.message);
       const committedAt = normalizeDate(value?.committedAt);
