@@ -152,6 +152,12 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn(milestone_link, template)
         self.assertLess(template.index(milestone_icon), template.index(milestone_link))
 
+        styles = STYLES_PATH.read_text(encoding="utf-8")
+        title_icon_rule = styles.split(
+            ".recent-milestone-title > .recent-milestone-icon {", 1
+        )[1].split("\n}", 1)[0]
+        self.assertIn("opacity: 0.8;", title_icon_rule)
+
     def test_template_contains_loading_error_and_empty_states(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
 
