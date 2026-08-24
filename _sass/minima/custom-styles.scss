@@ -190,13 +190,20 @@ html[data-theme="dark"] {
 }
 
 .repo-meta,
-.recent-milestone-details {
+.recent-milestone-details,
+.recent-milestone-latest-issue,
+.commit-history-content {
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
+}
+
+.repo-meta,
+.recent-milestone-details,
+.recent-milestone-latest-issue {
   font-size: 0.875em;
 }
 
@@ -223,14 +230,28 @@ html[data-theme="dark"] {
 }
 
 .repo-meta > li,
-.recent-milestone-details > li {
+.recent-milestone-details > li,
+.recent-milestone-latest-issue > li,
+.commit-history-content > li {
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
+}
+
+.repo-meta > li,
+.recent-milestone-details > li {
   white-space: nowrap;
 }
 
-.repo-icon {
+.recent-milestone-latest-issue > li,
+.commit-history-content > li {
+  min-width: 0;
+}
+
+.repo-icon,
+.recent-milestone-icon,
+.recent-milestones-status-icon,
+.commit-history-context-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -240,8 +261,13 @@ html[data-theme="dark"] {
   flex: 0 0 auto;
 }
 
-.repo-icon > .octicon {
+.repo-icon > .octicon,
+.recent-milestone-icon > .octicon,
+.recent-milestones-status-icon > .octicon,
+.commit-history-context-icon > .octicon {
   display: block;
+  width: 1em;
+  height: 1em;
   vertical-align: 0;
 }
 
@@ -315,25 +341,6 @@ html[data-theme="dark"] {
   margin: 0;
 }
 
-.recent-milestone-icon,
-.recent-milestones-status-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1em;
-  height: 1em;
-  line-height: 1;
-  flex: 0 0 auto;
-}
-
-.recent-milestone-icon > .octicon,
-.recent-milestones-status-icon > .octicon {
-  display: block;
-  width: 1em;
-  height: 1em;
-  vertical-align: 0;
-}
-
 .recent-milestone-progress-section {
   margin: 0;
   display: flex;
@@ -360,29 +367,16 @@ html[data-theme="dark"] {
 }
 
 .recent-milestone-latest-issue {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35em;
-  font-size: 0.875em;
   line-height: 1.4;
   opacity: 0.8;
 }
 
 .recent-milestone-latest-issue
-  > [data-recent-milestone-latest-closed-issue],
-.recent-milestone-latest-issue-label-detail
-  > [data-recent-milestone-latest-closed-issue-labels] {
+  [data-recent-milestone-latest-closed-issue],
+.recent-milestone-latest-issue
+  [data-recent-milestone-latest-closed-issue-labels] {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.recent-milestone-latest-issue-label-detail {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
 }
 
 .recent-milestones-status {
@@ -462,29 +456,18 @@ html[data-theme="dark"] {
 
 .commit-history-content {
   min-width: 0;
-}
-
-.commit-history-context-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1em;
-  height: 1em;
-  margin-inline-end: 0.2em;
-  line-height: 1;
-  vertical-align: -0.125em;
-}
-
-.commit-history-context-icon > .octicon {
-  display: block;
-  width: 1em;
-  height: 1em;
-  vertical-align: 0;
+  font-size: 1em;
 }
 
 .commit-history-repo,
 .commit-history-message {
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.commit-history-date-detail {
+  opacity: 0.8;
+  white-space: nowrap;
 }
 
 .commit-history-date {

@@ -67,6 +67,10 @@ class RecentCommitsTemplateTests(unittest.TestCase):
 
         self.assertIn('<ul class="commit-history-list"', template)
         self.assertIn('<li class="commit-history-item"', template)
+        self.assertIn(
+            '<ul class="commit-history-content" aria-label="Commit details">',
+            template,
+        )
         self.assertIn("data-commit-history-marker", template)
         self.assertIn("{% octicon git-commit %}", template)
         context_icons = {
@@ -81,7 +85,12 @@ class RecentCommitsTemplateTests(unittest.TestCase):
         self.assertIn("<time", template)
         item_markup = template.split(
             '<li class="commit-history-item"', 1
-        )[1].split("</li>", 1)[0]
+        )[1].split("\n    </li>", 1)[0]
+        self.assertEqual(item_markup.count('class="commit-history-detail'), 3)
+        self.assertIn(
+            'class="commit-history-detail commit-history-date-detail"',
+            item_markup,
+        )
         self.assertLess(
             item_markup.index("data-commit-history-marker"),
             item_markup.index(context_icons["repo"]),
@@ -111,11 +120,49 @@ class RecentCommitsTemplateTests(unittest.TestCase):
         self.assertNotIn(".commit-history-separator", styles)
         list_rule = styles.split(".commit-history-list", 1)[1].split("}", 1)[0]
         self.assertIn("list-style: none", list_rule)
+        row_rule = styles.split(".commit-history-content {", 1)[1].split(
+            "\n}", 1
+        )[0]
+        self.assertIn("margin: 0", row_rule)
+        self.assertIn("padding: 0", row_rule)
+        self.assertIn("list-style: none", row_rule)
+        self.assertIn("display: flex", row_rule)
+        self.assertIn("flex-wrap: wrap", row_rule)
+        self.assertIn("gap: 0.5rem 0.75rem", row_rule)
+        self.assertNotIn("font-size: 0.875em", row_rule)
+        content_rule = styles.split(".commit-history-content {", 2)[2].split(
+            "\n}", 1
+        )[0]
+        self.assertIn("min-width: 0", content_rule)
+        self.assertIn("font-size: 1em", content_rule)
+        self.assertIn(
+            ".recent-milestone-latest-issue > li,\n"
+            ".commit-history-content > li {\n"
+            "  min-width: 0;",
+            styles,
+        )
+        self.assertIn(
+            "align-items: center",
+            styles.split(".commit-history-content > li {", 1)[1].split(
+                "\n}", 1
+            )[0],
+        )
+        self.assertIn(
+            "gap: 0.35em",
+            styles.split(".commit-history-content > li {", 1)[1].split(
+                "\n}", 1
+            )[0],
+        )
         icon_rule = styles.split(
             ".commit-history-context-icon > .octicon", 1
         )[1].split("}", 1)[0]
         self.assertIn("width: 1em", icon_rule)
         self.assertIn("height: 1em", icon_rule)
+        date_rule = styles.split(".commit-history-date-detail", 1)[1].split(
+            "}", 1
+        )[0]
+        self.assertIn("opacity: 0.8", date_rule)
+        self.assertIn("white-space: nowrap", date_rule)
 
     def test_styles_connect_timeline_markers_except_after_the_last_item(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")

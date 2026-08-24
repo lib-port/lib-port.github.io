@@ -53,18 +53,20 @@
         >
           <span class="recent-milestone-progress-value" data-recent-milestone-progress-value></span>
         </span>
-        <p class="recent-milestone-latest-issue">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon issue-closed %}</span>
-          <span data-recent-milestone-latest-closed-issue></span>
-          <span
-            class="recent-milestone-latest-issue-label-detail"
+        <ul class="recent-milestone-latest-issue" aria-label="Latest closed issue">
+          <li class="recent-milestone-latest-issue-detail">
+            <span class="recent-milestone-icon" aria-hidden="true">{% octicon issue-closed %}</span>
+            <span data-recent-milestone-latest-closed-issue></span>
+          </li>
+          <li
+            class="recent-milestone-latest-issue-detail recent-milestone-latest-issue-label-detail"
             data-recent-milestone-latest-closed-issue-label-detail
             hidden
           >
             <span class="recent-milestone-icon" aria-hidden="true">{% octicon tag %}</span>
             <span data-recent-milestone-latest-closed-issue-labels></span>
-          </span>
-        </p>
+          </li>
+        </ul>
       </div>
     </li>
     {%- endfor %}

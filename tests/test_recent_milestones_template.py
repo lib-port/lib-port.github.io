@@ -77,6 +77,11 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
             "<span data-recent-milestone-latest-closed-issue-labels></span>",
             template,
         )
+        self.assertIn(
+            '<ul class="recent-milestone-latest-issue" '
+            'aria-label="Latest closed issue">',
+            template,
+        )
         self.assertNotIn("<a data-recent-milestone-latest-closed-issue", template)
 
         metadata_markup = template.split(
@@ -124,8 +129,14 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertLess(latest_issue_tag, latest_issue_labels)
 
         latest_issue_markup = template.split(
-            '<p class="recent-milestone-latest-issue">', 1
-        )[1].split("</p>", 1)[0]
+            '<ul class="recent-milestone-latest-issue" '
+            'aria-label="Latest closed issue">',
+            1,
+        )[1].split("</ul>", 1)[0]
+        self.assertEqual(
+            latest_issue_markup.count("recent-milestone-latest-issue-detail"),
+            2,
+        )
         self.assertNotIn("recent-milestone-separator", latest_issue_markup)
         self.assertNotIn("·", latest_issue_markup)
 
@@ -178,37 +189,57 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn("gap: 0.5rem 1rem;", rule(".recent-milestone-heading"))
         self.assertIn("margin: 0;", rule(".recent-milestone-description"))
         self.assertIn(
-            ".repo-meta,\n.recent-milestone-details {",
+            ".repo-meta,\n"
+            ".recent-milestone-details,\n"
+            ".recent-milestone-latest-issue,\n"
+            ".commit-history-content {",
             styles,
         )
         self.assertIn(
-            ".repo-meta > li,\n.recent-milestone-details > li {",
+            ".repo-meta > li,\n"
+            ".recent-milestone-details > li,\n"
+            ".recent-milestone-latest-issue > li,\n"
+            ".commit-history-content > li {",
             styles,
         )
-        milestone_metadata_rule = rule(".recent-milestone-details")
+        milestone_metadata_rule = styles.split(
+            ".commit-history-content {", 1
+        )[1].split("\n}", 1)[0]
         self.assertIn("margin: 0;", milestone_metadata_rule)
         self.assertIn("padding: 0;", milestone_metadata_rule)
         self.assertIn("list-style: none;", milestone_metadata_rule)
         self.assertIn("gap: 0.5rem 0.75rem;", milestone_metadata_rule)
-        self.assertIn("font-size: 0.875em;", milestone_metadata_rule)
         self.assertNotIn("color:", milestone_metadata_rule)
+        milestone_font_rule = styles.split(
+            ".recent-milestone-latest-issue {", 1
+        )[1].split("\n}", 1)[0]
+        self.assertIn("font-size: 0.875em;", milestone_font_rule)
         self.assertIn(
             "white-space: nowrap;",
             rule(".recent-milestone-details > li"),
         )
         self.assertIn("margin: 0;", rule(".recent-milestone-progress-section"))
         self.assertIn("gap: 0.5rem;", rule(".recent-milestone-progress-section"))
-        self.assertIn("margin: 0;", rule(".recent-milestone-latest-issue"))
-        self.assertIn("flex-wrap: wrap;", rule(".recent-milestone-latest-issue"))
         self.assertIn(
-            "display: inline-flex;",
-            rule(".recent-milestone-latest-issue-label-detail"),
+            "flex-wrap: wrap;",
+            milestone_metadata_rule,
+        )
+        latest_issue_rule = styles.split(
+            ".recent-milestone-latest-issue {", 2
+        )[2].split("\n}", 1)[0]
+        self.assertIn("line-height: 1.4;", latest_issue_rule)
+        self.assertIn("opacity: 0.8;", latest_issue_rule)
+        self.assertIn(
+            ".recent-milestone-latest-issue > li,\n"
+            ".commit-history-content > li {\n"
+            "  min-width: 0;",
+            styles,
         )
         self.assertNotIn("--milestone-progress-spacing", styles)
         self.assertNotIn(".recent-milestone-percentage {", styles)
         self.assertIn(".recent-milestone-latest-issue", styles)
         self.assertIn(
-            "> [data-recent-milestone-latest-closed-issue]",
+            "[data-recent-milestone-latest-closed-issue]",
             styles,
         )
         self.assertIn("overflow-wrap: anywhere", styles)
