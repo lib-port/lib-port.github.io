@@ -57,6 +57,7 @@ repo_grid:
     - second-repository
 
 recent_milestones:
+  switch: true
   milestones: 3
   repo_list:
     - first-repository
@@ -87,8 +88,9 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
 | `repo_grid.repo_list` | Required, non-empty list of unique repository names when enabled. Repositories must belong to the account hosting the site. |
-| `recent_milestones.milestones` | Required integer from 1 through 10 controlling how many globally recent milestones are shown. |
-| `recent_milestones.repo_list` | Required, non-empty list of unique public repository names to poll under the account hosting the site. |
+| `recent_milestones.switch` | YAML boolean controlling whether recent GitHub milestones are loaded. |
+| `recent_milestones.milestones` | Required integer from 1 through 10 controlling how many globally recent milestones are shown when enabled. |
+| `recent_milestones.repo_list` | Required, non-empty list of unique public repository names to poll under the account hosting the site when enabled. |
 | `recent_commits.switch` | YAML boolean controlling whether recent GitHub commits are loaded. |
 | `recent_commits.commits` | Required integer from 1 through 10 when enabled. |
 | `external_blog.switch` | YAML boolean controlling whether external posts are shown. |
@@ -96,7 +98,7 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `external_blog.archive_url` | Required blog archive URL used by the fallback and “View all posts” links. |
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
-Use unquoted `true` and `false` values for section switches. Disabled switched sections ignore their inner settings. Remove `recent_milestones` entirely to disable that section.
+Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings.
 
 ### Repository updates
 
@@ -108,7 +110,7 @@ If revalidation fails, the stale timestamps remain available and another request
 
 ### Recent GitHub milestones
 
-When configured, [`assets/js/recent_milestones.js`](./assets/js/recent_milestones.js) requests closed, milestone-bearing issues from each repository in `recent_milestones.repo_list`. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
+When `recent_milestones.switch` is enabled, [`assets/js/recent_milestones.js`](./assets/js/recent_milestones.js) requests closed, milestone-bearing issues from each repository in `recent_milestones.repo_list`. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
 
 The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title and labels of its latest closed issue. The label group is omitted when that issue has no labels. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with completed issues found`.
 
@@ -208,7 +210,7 @@ Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` ac
 | Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
 | Recent milestones are stale | The browser cache lasts seven days. Clear the site's `recent-milestones:v4:` local-storage entry to force an immediate refresh. |
 | “unable to load recent milestones” appears | Confirm every configured repository is public and belongs to the site owner, the browser can reach `api.github.com`, and the visitor has not exhausted GitHub's unauthenticated API limit. |
-| The recent-milestone section is missing | Confirm `recent_milestones` is configured and JavaScript is enabled; the section intentionally remains hidden when JavaScript does not initialize. |
+| The recent-milestone section is missing | Confirm `recent_milestones.switch` is `true` and JavaScript is enabled; the section intentionally remains hidden when JavaScript does not initialize. |
 | Recent commits are stale | The browser cache lasts seven days. After that, the loading state appears during revalidation and the cached result is restored only if the refresh fails. Clear the site's `localStorage` to force a new request. |
 | “unable to load recent commits” appears | Confirm the browser can reach `api.github.com` and has not exhausted GitHub's unauthenticated API limit. Forked and archived repositories are intentionally excluded. |
 | The recent-commit section is missing | Confirm `recent_commits.switch` is enabled and JavaScript is available; the entire section intentionally remains hidden when JavaScript does not initialize. |

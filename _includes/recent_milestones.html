@@ -1,5 +1,5 @@
 {%- assign recent_milestones = site.recent_milestones -%}
-{%- if recent_milestones and recent_milestones.milestones and recent_milestones.repo_list -%}
+{%- if recent_milestones and recent_milestones.switch -%}
   {%- assign github_owner = site.github.owner_name | default: "" | strip -%}
 <h2>Recent Tasks <span class="section-heading-meta">(GitHub issues)</span></h2>
 <div

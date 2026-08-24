@@ -36,6 +36,7 @@ class SiteConfigValidationTests(unittest.TestCase):
                 - beta
 
             recent_milestones:
+              switch: true
               milestones: 3
               repo_list:
                 - alpha
@@ -79,6 +80,14 @@ class SiteConfigValidationTests(unittest.TestCase):
 
             repo_grid:
               switch: false
+              repo_list: definitely-not-a-list
+
+            recent_milestones:
+              switch: false
+              milestones:
+                - not
+                - an
+                - integer
               repo_list: definitely-not-a-list
 
             recent_commits:
@@ -167,6 +176,22 @@ class SiteConfigValidationTests(unittest.TestCase):
         self.assertEqual(config.recent_milestones.milestones, 0)
         self.assertEqual(config.recent_milestones.repo_list, [])
 
+    def test_missing_recent_milestones_switch_is_disabled(self) -> None:
+        config_path = self.write_config(
+            """
+            recent_milestones:
+              milestones: 3
+              repo_list:
+                - tech-lib
+            """
+        )
+
+        config = validate_site_config(config_path)
+
+        self.assertFalse(config.recent_milestones.enabled)
+        self.assertEqual(config.recent_milestones.milestones, 0)
+        self.assertEqual(config.recent_milestones.repo_list, [])
+
     def test_recent_milestones_must_be_a_mapping(self) -> None:
         config_path = self.write_config(
             """
@@ -187,6 +212,7 @@ class SiteConfigValidationTests(unittest.TestCase):
                 config_path = self.write_config(
                     f"""
                     recent_milestones:
+                      switch: true
                       milestones: {milestones!r}
                       repo_list:
                         - tech-lib
@@ -205,6 +231,7 @@ class SiteConfigValidationTests(unittest.TestCase):
                 config_path = self.write_config(
                     f"""
                     recent_milestones:
+                      switch: true
                       milestones: {milestones}
                       repo_list:
                         - tech-lib
@@ -220,6 +247,7 @@ class SiteConfigValidationTests(unittest.TestCase):
                 config_path = self.write_config(
                     f"""
                     recent_milestones:
+                      switch: true
                       milestones: 1
                       {repo_list}
                     """
@@ -235,6 +263,7 @@ class SiteConfigValidationTests(unittest.TestCase):
         blank_config = self.write_config(
             """
             recent_milestones:
+              switch: true
               milestones: 1
               repo_list:
                 - tech-lib
@@ -250,6 +279,7 @@ class SiteConfigValidationTests(unittest.TestCase):
         duplicate_config = self.write_config(
             """
             recent_milestones:
+              switch: true
               milestones: 1
               repo_list:
                 - tech-lib
@@ -278,6 +308,23 @@ class SiteConfigValidationTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ConfigValidationError, r"intro\.switch must be a YAML boolean"):
+            validate_site_config(config_path)
+
+    def test_recent_milestones_switch_must_be_a_yaml_boolean(self) -> None:
+        config_path = self.write_config(
+            """
+            recent_milestones:
+              switch: "true"
+              milestones: 1
+              repo_list:
+                - tech-lib
+            """
+        )
+
+        with self.assertRaisesRegex(
+            ConfigValidationError,
+            r"recent_milestones\.switch must be a YAML boolean",
+        ):
             validate_site_config(config_path)
 
     def test_missing_external_blog_feed_url_is_rejected(self) -> None:

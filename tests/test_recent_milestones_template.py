@@ -19,6 +19,10 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn('{%- when "recent_milestones" -%}', index)
         self.assertIn('{%- include recent_milestones.html -%}', index)
         self.assertIn('section_key == "recent_milestones" %} hidden', index)
+        recent_milestones_config = config.split("recent_milestones:", 1)[1].split(
+            "recent_commits:", 1
+        )[0]
+        self.assertIn("switch: true", recent_milestones_config)
         self.assertLess(
             config.index("recent_milestones:"),
             config.index("recent_commits:"),
@@ -27,6 +31,10 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
     def test_template_exposes_configuration_and_deferred_loader(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
 
+        self.assertIn(
+            "{%- if recent_milestones and recent_milestones.switch -%}",
+            template,
+        )
         self.assertIn("site.github.owner_name", template)
         self.assertIn("recent_milestones.milestones", template)
         self.assertIn("recent_milestones.repo_list | jsonify", template)
