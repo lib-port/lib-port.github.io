@@ -5,19 +5,26 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEMPLATE_PATH = REPO_ROOT / "_includes" / "commit_history.html"
+TEMPLATE_PATH = REPO_ROOT / "_includes" / "recent_commits.html"
 INDEX_PATH = REPO_ROOT / "index.html"
 STYLES_PATH = REPO_ROOT / "_sass" / "minima" / "custom-styles.scss"
 
 
-class CommitHistoryTemplateTests(unittest.TestCase):
+class RecentCommitsTemplateTests(unittest.TestCase):
+    def test_template_reads_recent_commits_configuration(self) -> None:
+        template = TEMPLATE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("site.recent_commits", template)
+        self.assertIn("recent_commits.switch", template)
+        self.assertIn("recent_commits.commits", template)
+
     def test_homepage_dispatches_to_an_initially_hidden_section(self) -> None:
         index = INDEX_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('{%- when "commit_history" -%}', index)
-        self.assertIn('{%- include commit_history.html -%}', index)
+        self.assertIn('{%- when "recent_commits" -%}', index)
+        self.assertIn('{%- include recent_commits.html -%}', index)
         self.assertIn('data-home-section="{{ section_key | escape }}"', index)
-        self.assertIn('section_key == "commit_history" %} hidden', index)
+        self.assertIn('section_key == "recent_commits" %} hidden', index)
 
     def test_visibility_aware_dividers_ignore_hidden_sections(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")
@@ -117,7 +124,7 @@ class CommitHistoryTemplateTests(unittest.TestCase):
         )
         self.assertIn("::after", styles)
         self.assertRegex(styles, r"width:\s*2px")
-        self.assertRegex(styles, r"opacity:\s*0\.5")
+        self.assertRegex(styles, r"opacity:\s*0\.25")
         self.assertIn("position: relative", styles)
 
     def test_all_client_states_can_be_hidden(self) -> None:
@@ -128,7 +135,7 @@ class CommitHistoryTemplateTests(unittest.TestCase):
     def test_template_loads_the_client_script_deferred(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
 
-        self.assertRegex(template, r"commit_history\.js[^>]*defer")
+        self.assertRegex(template, r"recent_commits\.js[^>]*defer")
 
 
 if __name__ == "__main__":
