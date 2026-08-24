@@ -163,6 +163,11 @@ html[data-theme="dark"] {
   line-height: 1.2;
 }
 
+.repo-title > .repo-icon,
+.recent-milestone-title > .recent-milestone-icon {
+  opacity: 0.8;
+}
+
 .repo-link:is(:link, :visited) {
   color: var(--repo-accent);
   text-decoration: none;
