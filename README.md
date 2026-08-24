@@ -1,4 +1,4 @@
-# Dev Writer Landing Page
+# Developer Landing Page
 
 [![Deploy Jekyll with GitHub Pages](https://github.com/lib-port/lib-port.github.io/actions/workflows/jekyll-gh-pages.yml/badge.svg)](https://github.com/lib-port/lib-port.github.io/actions/workflows/jekyll-gh-pages.yml)
 [![Live site](https://img.shields.io/website?url=https%3A%2F%2Flib-port.github.io%2F&up_message=online&down_message=offline&label=site)](https://lib-port.github.io/)
