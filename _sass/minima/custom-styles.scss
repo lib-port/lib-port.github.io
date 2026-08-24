@@ -189,17 +189,21 @@ html[data-theme="dark"] {
   outline-offset: 3px;
 }
 
-.repo-meta {
-  position: relative;
-  z-index: 2;
+.repo-meta,
+.recent-milestone-details {
   margin: 0;
-  margin-top: auto;
   padding: 0;
   list-style: none;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
   font-size: 0.875em;
+}
+
+.repo-meta {
+  position: relative;
+  z-index: 2;
+  margin-top: auto;
 }
 
 .repo-desc { margin: 0; }
@@ -218,7 +222,8 @@ html[data-theme="dark"] {
   opacity: 0.8;
 }
 
-.repo-meta > li {
+.repo-meta > li,
+.recent-milestone-details > li {
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
@@ -260,13 +265,17 @@ html[data-theme="dark"] {
   border: 1px solid color-mix(in srgb, var(--minima-text-color) 12%, transparent);
   border-radius: 0.75rem;
   background: var(--milestone-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .recent-milestone-item[hidden],
 .recent-milestones-list[hidden],
 .recent-milestones-status[hidden],
 .recent-milestone-description[hidden],
-.recent-milestone-detail[hidden] {
+.recent-milestone-detail[hidden],
+.recent-milestone-latest-issue-label-detail[hidden] {
   display: none;
 }
 
@@ -275,13 +284,16 @@ html[data-theme="dark"] {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.4rem 1rem;
+  gap: 0.5rem 1rem;
 }
 
 .recent-milestone-title {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
   font-size: 1.15rem;
-  line-height: 1.3;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
@@ -300,37 +312,7 @@ html[data-theme="dark"] {
 }
 
 .recent-milestone-description {
-  margin: 0.65rem 0 0;
-}
-
-.recent-milestone-details {
-  margin-block-start: 0.65rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.3rem 0.35em;
-  color: var(--minima-brand-color);
-  font-size: 0.875em;
-}
-
-.recent-milestone-detail {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
-}
-
-.recent-milestone-separator {
-  opacity: 0.65;
-}
-
-.recent-milestone-percentage {
-  color: var(--minima-text-color);
-}
-
-.recent-milestone-detail[hidden]
-  + .recent-milestone-detail
-  > .recent-milestone-separator {
-  display: none;
+  margin: 0;
 }
 
 .recent-milestone-icon,
@@ -353,9 +335,10 @@ html[data-theme="dark"] {
 }
 
 .recent-milestone-progress-section {
-  --milestone-progress-spacing: 0.8rem;
-
-  margin-block-start: var(--milestone-progress-spacing);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .recent-milestone-progress {
@@ -378,8 +361,8 @@ html[data-theme="dark"] {
 
 .recent-milestone-latest-issue {
   margin: 0;
-  margin-block-start: var(--milestone-progress-spacing);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.35em;
   font-size: 0.875em;
@@ -388,9 +371,18 @@ html[data-theme="dark"] {
 }
 
 .recent-milestone-latest-issue
-  > [data-recent-milestone-latest-closed-issue] {
+  > [data-recent-milestone-latest-closed-issue],
+.recent-milestone-latest-issue-label-detail
+  > [data-recent-milestone-latest-closed-issue-labels] {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.recent-milestone-latest-issue-label-detail {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
 }
 
 .recent-milestones-status {
@@ -493,11 +485,6 @@ html[data-theme="dark"] {
 .commit-history-repo,
 .commit-history-message {
   overflow-wrap: anywhere;
-}
-
-.commit-history-separator {
-  margin-inline: 0.2em;
-  opacity: 0.65;
 }
 
 .commit-history-date {
