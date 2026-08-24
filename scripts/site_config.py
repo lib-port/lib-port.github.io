@@ -148,14 +148,10 @@ def validate_repo_grid(raw_config: dict[str, Any]) -> RepoGridConfig:
 def validate_recent_milestones(
     raw_config: dict[str, Any],
 ) -> RecentMilestonesConfig:
-    if "recent_milestones" not in raw_config:
+    section = _get_section_mapping(raw_config, "recent_milestones")
+    enabled = _get_switch(section, "recent_milestones")
+    if not enabled:
         return RecentMilestonesConfig(enabled=False, milestones=0, repo_list=[])
-
-    section = raw_config.get("recent_milestones")
-    if not isinstance(section, dict):
-        raise ConfigValidationError(
-            f"{CONFIG_PATH}: recent_milestones must be a mapping"
-        )
 
     raw_milestones = section.get("milestones")
     if (
@@ -164,15 +160,17 @@ def validate_recent_milestones(
         or not 1 <= raw_milestones <= MAX_RECENT_MILESTONES
     ):
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: recent_milestones.milestones must be an integer "
+            f"{CONFIG_PATH}: recent_milestones.switch is true, but "
+            "recent_milestones.milestones must be an integer "
             f"between 1 and {MAX_RECENT_MILESTONES}"
         )
 
     repo_list = section.get("repo_list")
     if not isinstance(repo_list, list) or not repo_list:
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: recent_milestones.repo_list must be a non-empty "
-            "list of repository names"
+            f"{CONFIG_PATH}: recent_milestones.switch is true, but "
+            "recent_milestones.repo_list must be a non-empty list of "
+            "repository names"
         )
 
     normalized: list[str] = []

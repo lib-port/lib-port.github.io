@@ -51,6 +51,7 @@ repo_grid:
     - pricing-function-mapper
 
 recent_milestones:
+  switch: true
   milestones: 1
   repo_list:
     - tech-lib
