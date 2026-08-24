@@ -18,11 +18,20 @@
         data-commit-history-marker
         aria-hidden="true"
       >{% octicon git-commit %}</span>
-      <span class="commit-history-content">
-        <span class="commit-history-context-icon" aria-hidden="true">{% octicon repo %}</span><a class="commit-history-repo" data-commit-history-repo></a>
-        <span class="commit-history-context-icon" aria-hidden="true">{% octicon comment %}</span><a class="commit-history-message" data-commit-history-message></a>
-        <span class="commit-history-context-icon" aria-hidden="true">{% octicon calendar %}</span><time class="commit-history-date" data-commit-history-date></time>
-      </span>
+      <ul class="commit-history-content" aria-label="Commit details">
+        <li class="commit-history-detail">
+          <span class="commit-history-context-icon" aria-hidden="true">{% octicon repo %}</span>
+          <a class="commit-history-repo" data-commit-history-repo></a>
+        </li>
+        <li class="commit-history-detail">
+          <span class="commit-history-context-icon" aria-hidden="true">{% octicon comment %}</span>
+          <a class="commit-history-message" data-commit-history-message></a>
+        </li>
+        <li class="commit-history-detail commit-history-date-detail">
+          <span class="commit-history-context-icon" aria-hidden="true">{% octicon calendar %}</span>
+          <time class="commit-history-date" data-commit-history-date></time>
+        </li>
+      </ul>
     </li>
     {%- endfor %}
   </ul>
