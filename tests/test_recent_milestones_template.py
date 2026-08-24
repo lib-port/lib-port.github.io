@@ -38,7 +38,7 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
 
         self.assertIn(
-            '<h2>Recent Milestones <span class="section-heading-meta">(GitHub)</span></h2>',
+            '<h2>Recent Tasks <span class="section-heading-meta">(GitHub issues)</span></h2>',
             template,
         )
         self.assertIn('<ul class="recent-milestones-list"', template)
