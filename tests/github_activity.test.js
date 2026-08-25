@@ -44,12 +44,15 @@ function makeDocument(value) {
   };
 }
 
-function makeResponse(status = 200) {
+function makeResponse(status = 200, payload = {}) {
   return {
     status,
     ok: status >= 200 && status < 300,
+    async json() {
+      return payload;
+    },
     clone() {
-      return makeResponse(status);
+      return makeResponse(status, payload);
     },
   };
 }
@@ -196,13 +199,14 @@ test("runs immediately when viewport observation is unavailable", () => {
 
 test("deduplicates identical in-flight GitHub requests", async () => {
   const storage = new FakeStorage();
+  const payload = { repositories: 2 };
   let calls = 0;
   const coordinator = shared.createRequestCoordinator({
     owner: OWNER,
     storage,
     fetchImpl: async () => {
       calls += 1;
-      return makeResponse();
+      return makeResponse(200, payload);
     },
   });
 
@@ -215,6 +219,92 @@ test("deduplicates identical in-flight GitHub requests", async () => {
   assert.equal(first.status, 200);
   assert.equal(second.status, 200);
   assert.notEqual(first, second);
+  assert.deepEqual(await first.json(), payload);
+  assert.deepEqual(await second.json(), payload);
+});
+
+test("times out and aborts a GitHub request that never responds", async () => {
+  const storage = new FakeStorage();
+  let requestSignal;
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => 1000,
+    requestTimeoutMs: 10,
+    fetchImpl: (_url, options) => {
+      requestSignal = options.signal;
+      return new Promise(() => {});
+    },
+  });
+
+  assert.equal(shared.REQUEST_TIMEOUT_MS, 15_000);
+  await assert.rejects(
+    coordinator.fetch("https://api.github.com/hung"),
+    (error) => error.name === "TimeoutError"
+  );
+  assert.equal(requestSignal.aborted, true);
+  assert.equal(coordinator.activeCount, 0);
+  assert.equal(coordinator.queuedCount, 0);
+  assert.equal(
+    JSON.parse(storage.getItem(shared.getGlobalFailureKey(OWNER))).kind,
+    "timeout"
+  );
+});
+
+test("times out while reading a GitHub response body", async () => {
+  const storage = new FakeStorage();
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => 1000,
+    requestTimeoutMs: 10,
+    fetchImpl: async () => ({
+      status: 200,
+      ok: true,
+      headers: { get() { return null; } },
+      json: () => new Promise(() => {}),
+    }),
+  });
+
+  await assert.rejects(
+    coordinator.fetch("https://api.github.com/hung-body"),
+    (error) => error.name === "TimeoutError"
+  );
+  assert.equal(coordinator.activeCount, 0);
+});
+
+test("preserves caller cancellation when coordinating a request", async () => {
+  const storage = new FakeStorage();
+  const callerController = new AbortController();
+  let requestSignal;
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    requestTimeoutMs: 1000,
+    fetchImpl: (_url, options) => {
+      requestSignal = options.signal;
+      return new Promise((_resolve, reject) => {
+        if (requestSignal.aborted) {
+          reject(requestSignal.reason);
+          return;
+        }
+        requestSignal.addEventListener(
+          "abort",
+          () => reject(requestSignal.reason),
+          { once: true }
+        );
+      });
+    },
+  });
+
+  const request = coordinator.fetch("https://api.github.com/cancelled", {
+    signal: callerController.signal,
+  });
+  callerController.abort(new Error("cancelled by caller"));
+
+  await assert.rejects(request, /cancelled by caller/);
+  assert.equal(requestSignal.aborted, true);
+  assert.equal(coordinator.activeCount, 0);
 });
 
 test("limits concurrent GitHub requests", async () => {
@@ -241,6 +331,7 @@ test("limits concurrent GitHub requests", async () => {
   const requests = Array.from({ length: 5 }, (_value, index) =>
     coordinator.fetch(`https://api.github.com/example/${index}`)
   );
+  await Promise.resolve();
   assert.equal(pendingResponses.length, 2);
   assert.equal(coordinator.queuedCount, 3);
 

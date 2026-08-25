@@ -103,7 +103,7 @@ Use unquoted `true` and `false` values for section switches. Disabled sections i
 
 ### GitHub activity controller
 
-Repository updates, recent milestones, and recent commits share [`assets/js/github_activity.js`](./assets/js/github_activity.js), one page-level configuration block, and one request coordinator. The coordinator deduplicates identical in-flight requests, limits GitHub traffic to four concurrent requests, shares a six-hour rate-limit or network-failure pause across the features, and uses browser locks and storage events where available to avoid duplicate work between open tabs.
+Repository updates, recent milestones, and recent commits share [`assets/js/github_activity.js`](./assets/js/github_activity.js), one page-level configuration block, and one request coordinator. The coordinator deduplicates identical in-flight requests, limits GitHub traffic to four concurrent requests, and ends requests that have not finished reading their response after 15 seconds. Timeouts follow the same cached fallback, failure message, and six-hour pause as other network failures. Browser locks and storage events avoid duplicate work between open tabs where those APIs are available.
 
 Repository-card updates start immediately. Milestone and commit collection starts only when the corresponding section is within 800 pixels of the viewport; browsers without `IntersectionObserver` load those sections immediately. This changes when the work occurs, without changing the visible content or status states.
 

@@ -12,6 +12,7 @@ const scriptPath = path.join(
   "js",
   "github_activity.js"
 );
+const githubActivity = require(scriptPath);
 const {
   API_VERSION,
   CACHE_TTL_MS,
@@ -32,7 +33,8 @@ const {
   readCache,
   renderMilestones,
   writeCache,
-} = require(scriptPath).recentMilestones;
+} = githubActivity.recentMilestones;
+const { createRequestCoordinator } = githubActivity.shared;
 
 const OWNER = "lib-port";
 const NOW = Date.parse("2026-08-24T12:00:00Z");
@@ -1196,10 +1198,17 @@ test("restores stale data after failure and backs off for six hours", async () =
     storage
   );
 
-  const fetchImpl = async () => {
-    fetchCalls += 1;
-    throw new Error("offline");
-  };
+  const coordinator = createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => NOW,
+    requestTimeoutMs: 10,
+    fetchImpl: () => {
+      fetchCalls += 1;
+      return new Promise(() => {});
+    },
+  });
+  const fetchImpl = coordinator.fetch;
   assert.equal(
     await loadRecentMilestones(first.container, {
       fetchImpl,
@@ -1265,6 +1274,33 @@ test("distinguishes a complete empty result from an unavailable result", async (
     },
     "error"
   );
+});
+
+test("shows the failure state when a milestone response body times out", async () => {
+  const storage = new FakeStorage();
+  const { container, empty, error, list, loading } = makeContainer({ limit: 1 });
+  const coordinator = createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => NOW,
+    requestTimeoutMs: 10,
+    fetchImpl: async () => ({
+      ...makeResponse(),
+      json: () => new Promise(() => {}),
+    }),
+  });
+
+  const loaded = await loadRecentMilestones(container, {
+    fetchImpl: coordinator.fetch,
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  });
+
+  assert.equal(loaded, false);
+  assertOnlyVisible({ list, loading, error, empty }, "error");
+  assert.equal(error.textContent, "unable to load recent milestones");
+  assert.equal(container.attributes.has("aria-busy"), false);
 });
 
 test("shows an error for invalid runtime configuration", async () => {
