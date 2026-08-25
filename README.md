@@ -16,8 +16,9 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 
 - Configurable introduction, repository grid, recent-milestone, recent-commit, and blog-post sections
 - Server-rendered repository metadata with client-side update labels
-- Client-side GitHub milestone feed merged across configured repositories
-- Client-side GitHub-style recent-commit timeline with conditional caching
+- One switch-aware GitHub activity controller with shared requests and caching
+- Viewport-loaded milestone feed merged across configured repositories
+- GitHub-style recent-commit timeline that refreshes only pushed repositories
 - Client-side blog posts with seven-day local caching
 - Responsive light and dark themes with a persistent visitor-controlled switcher
 - Explicit loading and failure states for client-side GitHub activity
@@ -98,11 +99,17 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `external_blog.archive_url` | Required blog archive URL used by the fallback and “View all posts” links. |
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
-Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings.
+Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings. When all three GitHub sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
+
+### GitHub activity controller
+
+Repository updates, recent milestones, and recent commits share [`assets/js/github_activity.js`](./assets/js/github_activity.js), one page-level configuration block, and one request coordinator. The coordinator deduplicates identical in-flight requests, limits GitHub traffic to four concurrent requests, shares a six-hour rate-limit or network-failure pause across the features, and uses browser locks and storage events where available to avoid duplicate work between open tabs.
+
+Repository-card updates start immediately. Milestone and commit collection starts only when the corresponding section is within 800 pixels of the viewport; browsers without `IntersectionObserver` load those sections immediately. This changes when the work occurs, without changing the visible content or status states.
 
 ### Repository updates
 
-Repository cards are generated from GitHub metadata during the site build. In the browser, [`assets/js/repo_updates.js`](./assets/js/repo_updates.js) groups the cards by owner and refreshes their “Updated” labels with one GitHub API request per owner.
+Repository cards are generated from GitHub metadata during the site build. In the browser, the shared activity controller groups the cards by owner and refreshes their “Updated” labels with one GitHub API request per owner. The resulting repository catalogue is also reused by the commit loader.
 
 Successful responses are cached in the visitor's `localStorage`. For seven days after a successful fetch or validation, the page uses the cached repository timestamps without a network request. After seven days, it continues to display the cached timestamps while conditionally revalidating them with GitHub using the stored ETag. An unchanged response renews the cache for another seven days without downloading the response body; a changed response replaces the cached data.
 
@@ -110,21 +117,23 @@ If revalidation fails, the stale timestamps remain available and another request
 
 ### Recent GitHub milestones
 
-When `recent_milestones.switch` is enabled, [`assets/js/recent_milestones.js`](./assets/js/recent_milestones.js) requests closed, milestone-bearing issues from each repository in `recent_milestones.repo_list`. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
+When `recent_milestones.switch` is enabled and the section approaches the viewport, the activity controller requests closed, milestone-bearing issues from each repository in `recent_milestones.repo_list`. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
 
 The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title and labels of its latest closed issue. The label group is omitted when that issue has no labels. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with completed issues found`.
 
-Results use the same cache policy as the other GitHub sections. Compacted closed-issue page summaries remain fresh in `localStorage` for seven days, with duplicate appearances of a milestone reduced to its newest closed issue within each page. After that, every cached API page is conditionally revalidated with its ETag; stale data is retained indefinitely, malformed or future-dated entries are removed, and failures prevent another attempt for six hours. Successful and cached repository data is combined silently if only part of a refresh fails. The section is hidden unless JavaScript initializes. The v4 cache format adds latest-issue labels and replaces incompatible v3 milestone entries.
+Results use the same cache policy as the other GitHub sections. Compacted closed-issue page summaries remain fresh in `localStorage` for seven days, with duplicate appearances of a milestone reduced to its newest closed issue within each page. After that, every cached API page is conditionally revalidated with its ETag; stale data is retained indefinitely, malformed or future-dated entries are removed, and failures prevent another attempt for six hours. Successful and cached repository data is combined silently if only part of a refresh fails. The section is hidden unless JavaScript initialises. The v4 cache format adds latest-issue labels and replaces incompatible v3 milestone entries.
 
 ### Recent GitHub commits
 
-When `recent_commits.switch` is enabled, [`assets/js/recent_commits.js`](./assets/js/recent_commits.js) loads commits from the default branches of public repositories owned by the account hosting the site. Forks and archived repositories are excluded at build time and are never polled. The section is hidden unless JavaScript initializes.
+When `recent_commits.switch` is enabled and the section approaches the viewport, the activity controller loads commits from the default branches of public repositories owned by the account hosting the site. Forks and archived repositories are excluded at build time and rechecked against the current repository catalogue before polling. The section is hidden unless JavaScript initialises.
 
 The browser requests at most the configured number of author-filtered commits from each eligible repository, combines the responses, sorts them by committed time, and displays the newest entries. If GitHub temporarily returns no results for the username filter, the loader falls back to repository history and retains only commits linked to the owner account.
 
 Commits are rendered as a semantic unordered list in the form `repository · commit message · date`. Decorative repository, comment, and calendar Octicons identify each detail, while GitHub commit Octicons replace the native bullets and a vertical connector turns the list into a GitHub-style commit timeline. A successful request with no qualifying commits displays `No recent commits found`.
 
-The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. Once the cache expires, the section displays a gear Octicon with `loading recent commits` while each repository is conditionally revalidated with its ETag. If the refresh fails, the prior cached list or successful empty state is restored and another request is not attempted for six hours. When no displayable cached result is available, an alert Octicon with `unable to load recent commits` replaces the loading state; no GitHub profile fallback link is shown. Cached commits have no age-based expiration, while malformed and future-dated entries are removed.
+The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. Once the cache expires, the loader first revalidates the shared repository catalogue, compares each repository's `pushed_at` value with the value stored alongside its commit result, and requests commits only for repositories that changed. If none changed, no commit endpoints are called. Changed repositories still use ETags, while unchanged cached entries are merged into the displayed timeline.
+
+During revalidation, the section displays a gear Octicon with `loading recent commits`. If the refresh fails, the prior cached list or successful empty state is restored and another request is not attempted for six hours. When no displayable cached result is available, an alert Octicon with `unable to load recent commits` replaces the loading state; no GitHub profile fallback link is shown. Cached commits have no age-based expiration, while malformed and future-dated entries are removed.
 
 ### External posts
 
@@ -136,7 +145,7 @@ Successful responses are cached in the visitor's `localStorage` for seven days, 
 
 The page initially follows the visitor's operating-system light or dark preference. A fixed button in the bottom-right corner uses moon and sun GitHub Octicons to show the theme available on activation. Once selected, the explicit `light` or `dark` preference is stored in `localStorage` and reused across visits and open tabs.
 
-The theme is selected before the main stylesheet loads to avoid a mismatched-color flash. If JavaScript or browser storage is unavailable, Minima's automatic color scheme remains the fallback; storage failures do not prevent switching for the current page.
+The theme is selected before the main stylesheet loads to avoid a mismatched-colour flash. If JavaScript or browser storage is unavailable, Minima's automatic colour scheme remains the fallback; storage failures do not prevent switching for the current page.
 
 ## Local development
 
@@ -176,19 +185,20 @@ node --test tests/*.test.js
 | --- | --- |
 | Configuration | `_config.yml` defines site metadata, homepage sections, and external-feed settings; Python validation rejects invalid enabled-section settings. |
 | Page generation | Jekyll, Minima, Liquid includes, and custom Sass generate the static site. |
-| Repository data | `jekyll-github-metadata` supplies repository cards during the build; `assets/js/repo_updates.js` refreshes update labels in the browser and revalidates its local cache weekly using GitHub ETags. |
-| Recent milestones | `assets/js/recent_milestones.js` polls closed milestone-bearing issues in configured public repositories, globally ranks open milestones by their latest closed issue, renders progress and latest-issue metadata, and conditionally revalidates its weekly paginated cache. |
-| Recent commits | Build metadata supplies eligible repository names; `assets/js/recent_commits.js` loads author-linked commits, renders the timeline and status states, and conditionally revalidates its weekly local cache. |
+| GitHub activity | `assets/js/github_activity.js` coordinates repository updates, milestones, and commits through one switch-aware configuration, request queue, failure policy, and cross-tab cache integration. |
+| Repository data | `jekyll-github-metadata` supplies repository cards during the build; the shared controller refreshes update labels and revalidates its local catalogue weekly using GitHub ETags. |
+| Recent milestones | The controller polls closed milestone-bearing issues in configured public repositories near the viewport, globally ranks open milestones by their latest closed issue, renders progress and latest-issue metadata, and conditionally revalidates its weekly paginated cache. |
+| Recent commits | Build metadata supplies eligible repository names; the controller loads author-linked commits near the viewport and, on weekly refresh, polls only repositories whose push timestamp changed. |
 | External posts | Browser JavaScript loads the configured blog feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
 | Theme preference | Minima supplies the light and dark palettes; `assets/js/theme_toggle.js` applies and persists the visitor's explicit override. |
 | Deployment | `.github/workflows/jekyll-gh-pages.yml` validates, builds, uploads, and deploys the site. |
 | Repository mirror | `.github/workflows/gitlab-main-mirror.yml` keeps GitLab `main` aligned with GitHub `main`. |
 
-Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, the recent-milestone and recent-commit sections stay hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system color preference without the switcher.
+Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, the recent-milestone and recent-commit sections stay hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system colour preference without the switcher.
 
 ## Deployment
 
-The GitHub Actions workflow deploys pushes to `main` that can affect the published site or its build, and it can also be started manually. Pushes that change only the README, license, `.gitignore`, tests, or GitLab mirror workflow are skipped.
+The GitHub Actions workflow deploys pushes to `main` that can affect the published site or its build, and it can also be started manually. Pushes that change only the README, `LICENSE`, `.gitignore`, tests, or GitLab mirror workflow are skipped.
 
 During deployment, the workflow:
 
@@ -201,7 +211,7 @@ During deployment, the workflow:
 
 GitHub `main` is the source of truth for the GitLab mirror. Every push to `main` starts the `Mirror main to GitLab` workflow, which also supports manual dispatch. The workflow verifies that both repositories finish on the same commit SHA and may force-update GitLab after a GitHub history rewrite.
 
-Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` access. The token owner must be allowed to push to GitLab's protected `main` branch, and Maintainers must be allowed to force-push so rewritten GitHub history can be synchronized. The cleanup workflow keeps the latest completed run for each workflow so the most recent mirror result remains available for troubleshooting.
+Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` access. The token owner must be allowed to push to GitLab's protected `main` branch, and Maintainers must be allowed to force-push so rewritten GitHub history can be synchronised. The cleanup workflow keeps the latest completed run for each workflow so the most recent mirror result remains available for troubleshooting.
 
 ## Troubleshooting
 
@@ -210,10 +220,10 @@ Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` ac
 | Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
 | Recent milestones are stale | The browser cache lasts seven days. Clear the site's `recent-milestones:v4:` local-storage entry to force an immediate refresh. |
 | “unable to load recent milestones” appears | Confirm every configured repository is public and belongs to the site owner, the browser can reach `api.github.com`, and the visitor has not exhausted GitHub's unauthenticated API limit. |
-| The recent-milestone section is missing | Confirm `recent_milestones.switch` is `true` and JavaScript is enabled; the section intentionally remains hidden when JavaScript does not initialize. |
+| The recent-milestone section is missing | Confirm `recent_milestones.switch` is `true` and JavaScript is enabled; the section intentionally remains hidden when JavaScript does not initialise. |
 | Recent commits are stale | The browser cache lasts seven days. After that, the loading state appears during revalidation and the cached result is restored only if the refresh fails. Clear the site's `localStorage` to force a new request. |
 | “unable to load recent commits” appears | Confirm the browser can reach `api.github.com` and has not exhausted GitHub's unauthenticated API limit. Forked and archived repositories are intentionally excluded. |
-| The recent-commit section is missing | Confirm `recent_commits.switch` is enabled and JavaScript is available; the entire section intentionally remains hidden when JavaScript does not initialize. |
+| The recent-commit section is missing | Confirm `recent_commits.switch` is enabled and JavaScript is available; the entire section intentionally remains hidden when JavaScript does not initialise. |
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
 | Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
 | The theme no longer follows the system | Clear the site's `lib-port:theme:v1` local-storage entry to remove the explicit light or dark preference. |
@@ -221,12 +231,12 @@ Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` ac
 | The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
 | Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |
 
-## Customization notes
+## Customisation notes
 
-Custom homepage markup lives in `_includes`, while component styling lives in [`_sass/minima/custom-styles.scss`](./_sass/minima/custom-styles.scss). Refer to the [Minima documentation](https://github.com/jekyll/minima) for broader theme customization.
+Custom homepage markup lives in `_includes`, while component styling lives in [`_sass/minima/custom-styles.scss`](./_sass/minima/custom-styles.scss). Refer to the [Minima documentation](https://github.com/jekyll/minima) for broader theme customisation.
 
 Minima's built-in feed configuration can conflict with this project's external-feed settings. The `jekyll-feed` dependency remains because Minima expects it, but the homepage intentionally links to the configured external feed instead of presenting the generated site feed.
 
-## License
+## Licence
 
-This project is available under the [MIT License](./LICENSE).
+This project is available under the [MIT Licence](./LICENSE).

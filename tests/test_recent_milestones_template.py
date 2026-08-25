@@ -9,6 +9,7 @@ CONFIG_PATH = REPO_ROOT / "_config.yml"
 INDEX_PATH = REPO_ROOT / "index.html"
 STYLES_PATH = REPO_ROOT / "_sass" / "minima" / "custom-styles.scss"
 TEMPLATE_PATH = REPO_ROOT / "_includes" / "recent_milestones.html"
+ACTIVITY_TEMPLATE_PATH = REPO_ROOT / "_includes" / "github_activity.html"
 
 
 class RecentMilestonesTemplateTests(unittest.TestCase):
@@ -30,17 +31,22 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
 
     def test_template_exposes_configuration_and_deferred_loader(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
+        activity_template = ACTIVITY_TEMPLATE_PATH.read_text(encoding="utf-8")
 
         self.assertIn(
             "{%- if recent_milestones and recent_milestones.switch -%}",
             template,
         )
-        self.assertIn("site.github.owner_name", template)
+        self.assertIn("site.github.owner_name", activity_template)
         self.assertIn("recent_milestones.milestones", template)
-        self.assertIn("recent_milestones.repo_list | jsonify", template)
+        self.assertIn(
+            "recent_milestones.repo_list | jsonify", activity_template
+        )
         self.assertIn("data-recent-milestones", template)
-        self.assertIn("data-milestone-limit", template)
-        self.assertRegex(template, r"recent_milestones\.js[^>]*defer")
+        self.assertNotIn("data-milestone-limit", template)
+        self.assertNotIn("<script", template)
+        self.assertRegex(activity_template, r"github_activity\.js[^>]*defer")
+        self.assertNotIn("recent_milestones.js", activity_template)
 
     def test_template_contains_semantic_milestone_rows_and_progress(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")

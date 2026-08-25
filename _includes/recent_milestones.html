@@ -1,12 +1,9 @@
 {%- assign recent_milestones = site.recent_milestones -%}
 {%- if recent_milestones and recent_milestones.switch -%}
-  {%- assign github_owner = site.github.owner_name | default: "" | strip -%}
 <h2>Recent Tasks <span class="section-heading-meta">(GitHub issues)</span></h2>
 <div
   class="recent-milestones"
   data-recent-milestones
-  data-owner="{{ github_owner | escape }}"
-  data-milestone-limit="{{ recent_milestones.milestones }}"
   aria-live="polite"
 >
   <ul class="recent-milestones-list" data-recent-milestones-list hidden>
@@ -84,9 +81,5 @@
     No open milestones with completed issues found
   </p>
 
-  <script type="application/json" data-recent-milestones-repositories>
-    {{- recent_milestones.repo_list | jsonify -}}
-  </script>
 </div>
-<script src="{{ '/assets/js/recent_milestones.js' | relative_url }}" defer></script>
 {%- endif -%}

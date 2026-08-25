@@ -8,19 +8,19 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
-const scriptPath = path.join(__dirname, "..", "assets", "js", "repo_updates.js");
+const scriptPath = path.join(__dirname, "..", "assets", "js", "github_activity.js");
+const githubActivity = require(scriptPath);
 const {
   CACHE_TTL_MS,
   FAILURE_TTL_MS,
   formatPushedAt,
   getFailureKey,
   getStorageKey,
-  hasRecentFailure,
   loadOwnerUpdates,
   readCache,
   writeCache,
-  writeFailure,
-} = require(scriptPath);
+} = githubActivity.repositoryUpdates;
+const { hasRecentFailure, writeFailure } = githubActivity.shared;
 
 const OWNER = "libport";
 const REPO_NAME = "example-repo";
@@ -63,6 +63,17 @@ function makeOwnerCards() {
   };
 }
 
+function makeCatalogue(pushedAt = PUSHED_AT) {
+  return {
+    [REPO_NAME]: {
+      archived: false,
+      fork: false,
+      pushedAt: new Date(pushedAt).toISOString(),
+      url: `https://github.com/${OWNER}/${REPO_NAME}`,
+    },
+  };
+}
+
 function makeResponse({ status = 200, etag = '"etag-2"', repos = [] } = {}) {
   return {
     status,
@@ -73,7 +84,12 @@ function makeResponse({ status = 200, etag = '"etag-2"', repos = [] } = {}) {
       },
     },
     async json() {
-      return repos;
+      return repos.map((repository) => ({
+        archived: false,
+        fork: false,
+        html_url: `https://github.com/${OWNER}/${repository.name}`,
+        ...repository,
+      }));
     },
   };
 }
@@ -133,16 +149,16 @@ test("returns no label for invalid dates", () => {
 test("keeps repository caches indefinitely but considers them fresh for seven days", () => {
   const storage = new FakeStorage();
   const storageKey = getStorageKey(OWNER);
-  const repos = { [REPO_NAME]: PUSHED_AT };
+  const repositories = makeCatalogue();
 
   assert.equal(CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000);
-  writeCache(storageKey, { etag: '"etag-1"', repos }, storage, NOW);
+  writeCache(storageKey, { etag: '"etag-1"', repositories }, storage, NOW);
 
   assert.equal(readCache(storageKey, storage, NOW + CACHE_TTL_MS - 1).isFresh, true);
   assert.equal(readCache(storageKey, storage, NOW + CACHE_TTL_MS).isFresh, false);
   assert.deepEqual(
-    readCache(storageKey, storage, NOW + 365 * 24 * 60 * 60 * 1000).repos,
-    repos
+    readCache(storageKey, storage, NOW + 365 * 24 * 60 * 60 * 1000).repositories,
+    repositories
   );
   assert.ok(storage.getItem(storageKey));
 });
@@ -156,13 +172,16 @@ test("deletes malformed and future-dated repository caches", () => {
     "null",
     "false",
     "[]",
-    JSON.stringify({ fetchedAt: NOW, repos: [] }),
-    JSON.stringify({ fetchedAt: "not-a-number", repos: {} }),
-    JSON.stringify({ fetchedAt: NOW, repos: { [REPO_NAME]: "not-a-date" } }),
+    JSON.stringify({ fetchedAt: NOW, repositories: [] }),
+    JSON.stringify({ fetchedAt: "not-a-number", repositories: {} }),
+    JSON.stringify({
+      fetchedAt: NOW,
+      repositories: { [REPO_NAME]: { pushedAt: "not-a-date" } },
+    }),
     JSON.stringify({
       fetchedAt: NOW + 1,
       etag: '"etag-1"',
-      repos: { [REPO_NAME]: PUSHED_AT },
+      repositories: makeCatalogue(),
     }),
   ];
 
@@ -181,7 +200,7 @@ test("renders a fresh cache without requesting GitHub", async () => {
 
   writeCache(
     storageKey,
-    { etag: '"etag-1"', repos: { [REPO_NAME]: PUSHED_AT } },
+    { etag: '"etag-1"', repositories: makeCatalogue() },
     storage,
     NOW - CACHE_TTL_MS + 1
   );
@@ -210,7 +229,7 @@ test("revalidates a seven-day-old cache with its ETag", async () => {
 
   writeCache(
     storageKey,
-    { etag: '"etag-1"', repos: { [REPO_NAME]: PUSHED_AT } },
+    { etag: '"etag-1"', repositories: makeCatalogue() },
     storage,
     NOW - CACHE_TTL_MS
   );
@@ -244,7 +263,7 @@ test("replaces stale cache data and ETag after a successful response", async () 
 
   writeCache(
     storageKey,
-    { etag: "", repos: { [REPO_NAME]: PUSHED_AT } },
+    { etag: "", repositories: makeCatalogue() },
     storage,
     NOW - CACHE_TTL_MS
   );
@@ -264,8 +283,8 @@ test("replaces stale cache data and ETag after a successful response", async () 
 
   assert.deepEqual(JSON.parse(storage.getItem(storageKey)), {
     etag: '"etag-2"',
-    repos: { [REPO_NAME]: replacementTimestamp },
     fetchedAt: NOW,
+    repositories: makeCatalogue(replacementTimestamp),
   });
   assert.equal(textNode.textContent, formatPushedAt(replacementTimestamp));
 });
@@ -279,7 +298,7 @@ test("retains stale data and backs off for six hours after a failed validation",
 
   writeCache(
     storageKey,
-    { etag: '"etag-1"', repos: { [REPO_NAME]: PUSHED_AT } },
+    { etag: '"etag-1"', repositories: makeCatalogue() },
     storage,
     NOW - 100 * CACHE_TTL_MS
   );
@@ -360,7 +379,7 @@ test("loads from GitHub when local storage is unavailable", async () => {
   assert.equal(textNode.textContent, formatPushedAt(PUSHED_AT));
 });
 
-test("starts normally when loaded as a browser script", () => {
+test("starts the unified browser controller by reading its page configuration", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
   let selector = "";
 
@@ -369,12 +388,12 @@ test("starts normally when loaded as a browser script", () => {
     Intl,
     console,
     document: {
-      querySelectorAll(value) {
+      querySelector(value) {
         selector = value;
-        return [];
+        return null;
       },
     },
   });
 
-  assert.equal(selector, ".repo-card[data-repo-owner][data-repo-name]");
+  assert.equal(selector, "[data-github-activity-config]");
 });
