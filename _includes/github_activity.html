@@ -1,0 +1,28 @@
+{%- assign github_owner = site.github.owner_name | default: "" | strip -%}
+{%- assign github_repositories = site.github.public_repositories | default: empty -%}
+{%- assign recent_commits = site.recent_commits -%}
+{%- assign recent_milestones = site.recent_milestones -%}
+<script type="application/json" data-github-activity-config>
+{
+  "owner": {{ github_owner | jsonify }},
+  "repositoryUpdates": {% if site.repo_grid and site.repo_grid.switch %}true{% else %}false{% endif %},
+  "repositories": [
+    {%- if recent_commits and recent_commits.switch -%}
+      {%- assign has_repository = false -%}
+      {%- for repo in github_repositories -%}
+        {%- unless repo.fork or repo.archived -%}
+          {%- if has_repository -%},{%- endif -%}
+          {"name":{{ repo.name | jsonify }},"url":{{ repo.html_url | jsonify }}}
+          {%- assign has_repository = true -%}
+        {%- endunless -%}
+      {%- endfor -%}
+    {%- endif -%}
+  ],
+  "commitLimit": {% if recent_commits and recent_commits.switch %}{{ recent_commits.commits | jsonify }}{% else %}null{% endif %},
+  "milestones": {% if recent_milestones and recent_milestones.switch %}{
+    "limit": {{ recent_milestones.milestones | jsonify }},
+    "repositories": {{ recent_milestones.repo_list | jsonify }}
+  }{% else %}null{% endif %}
+}
+</script>
+<script src="{{ '/assets/js/github_activity.js' | relative_url }}" defer></script>

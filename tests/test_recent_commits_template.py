@@ -6,6 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = REPO_ROOT / "_includes" / "recent_commits.html"
+ACTIVITY_TEMPLATE_PATH = REPO_ROOT / "_includes" / "github_activity.html"
 INDEX_PATH = REPO_ROOT / "index.html"
 STYLES_PATH = REPO_ROOT / "_sass" / "minima" / "custom-styles.scss"
 
@@ -36,7 +37,7 @@ class RecentCommitsTemplateTests(unittest.TestCase):
         )
 
     def test_template_excludes_forks_and_archived_repositories(self) -> None:
-        template = TEMPLATE_PATH.read_text(encoding="utf-8")
+        template = ACTIVITY_TEMPLATE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("site.github.owner_name", template)
         self.assertIn("site.github.public_repositories", template)
@@ -186,8 +187,11 @@ class RecentCommitsTemplateTests(unittest.TestCase):
 
     def test_template_loads_the_client_script_deferred(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
+        activity_template = ACTIVITY_TEMPLATE_PATH.read_text(encoding="utf-8")
 
-        self.assertRegex(template, r"recent_commits\.js[^>]*defer")
+        self.assertNotIn("<script", template)
+        self.assertRegex(activity_template, r"github_activity\.js[^>]*defer")
+        self.assertNotIn("recent_commits.js", activity_template)
 
 
 if __name__ == "__main__":

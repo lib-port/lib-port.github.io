@@ -3,6 +3,10 @@ layout: home
 hide_site_title: true
 ---
 
+{%- assign github_activity_enabled = false -%}
+{%- if site.repo_grid.switch or site.recent_milestones.switch or site.recent_commits.switch -%}
+  {%- assign github_activity_enabled = true -%}
+{%- endif -%}
 <header class="post-header"><h1 class="post-title">{{ site.title | escape }}</h1></header>
 {%- for section_key in site.keys -%}
   {%- capture home_section -%}
@@ -32,3 +36,6 @@ hide_site_title: true
 </div>
   {%- endif -%}
 {%- endfor -%}
+{%- if github_activity_enabled -%}
+  {%- include github_activity.html -%}
+{%- endif -%}

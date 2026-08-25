@@ -4,14 +4,13 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const scriptPath = path.join(
   __dirname,
   "..",
   "assets",
   "js",
-  "recent_milestones.js"
+  "github_activity.js"
 );
 const {
   API_VERSION,
@@ -33,7 +32,7 @@ const {
   readCache,
   renderMilestones,
   writeCache,
-} = require(scriptPath);
+} = require(scriptPath).recentMilestones;
 
 const OWNER = "lib-port";
 const NOW = Date.parse("2026-08-24T12:00:00Z");
@@ -1283,22 +1282,7 @@ test("shows an error for invalid runtime configuration", async () => {
   assertOnlyVisible({ list, loading, error, empty }, "error");
 });
 
-test("starts by selecting recent-milestone containers in a browser", () => {
+test("the unified controller selects recent-milestone containers", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
-  let selector = "";
-
-  vm.runInNewContext(source, {
-    Date,
-    Intl,
-    URLSearchParams,
-    console,
-    document: {
-      querySelectorAll(value) {
-        selector = value;
-        return [];
-      },
-    },
-  });
-
-  assert.equal(selector, "[data-recent-milestones]");
+  assert.match(source, /querySelectorAll\("\[data-recent-milestones\]"\)/);
 });

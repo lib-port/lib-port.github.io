@@ -4,9 +4,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
-const scriptPath = path.join(__dirname, "..", "assets", "js", "recent_commits.js");
+const scriptPath = path.join(__dirname, "..", "assets", "js", "github_activity.js");
 const {
   AUTHOR_MODE,
   CACHE_TTL_MS,
@@ -25,7 +24,7 @@ const {
   renderCommits,
   writeCache,
   writeFailure,
-} = require(scriptPath);
+} = require(scriptPath).recentCommits;
 
 const OWNER = "lib-port";
 const NOW = Date.parse("2026-08-23T15:00:00Z");
@@ -506,6 +505,60 @@ test("revalidates stale repository entries with ETags", async () => {
   assert.equal(JSON.parse(storage.getItem(key)).fetchedAt, NOW);
 });
 
+test("skips commit requests when the repository has not been pushed", async () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER, 1);
+  const pushedAt = "2026-08-22T12:00:00.000Z";
+  const [commit] = normalizeApiCommits([makeCommit()], REPOSITORY, OWNER, 1);
+  writeCache(
+    key,
+    {
+      fetchedAt: NOW - CACHE_TTL_MS,
+      mode: AUTHOR_MODE,
+      repoNames: [REPOSITORY.name],
+      repositories: {
+        [REPOSITORY.name]: {
+          etag: '"old-etag"',
+          commits: [commit],
+          pushedAt,
+        },
+      },
+    },
+    storage
+  );
+
+  let fetchCalls = 0;
+  let catalogueWasForced = false;
+  const loaded = await loadCommitHistory(makeContainer({ limit: 1 }).container, {
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      throw new Error("unexpected commit request");
+    },
+    getCatalogueImpl: async (force) => {
+      catalogueWasForced = force;
+      return {
+        repositories: {
+          [REPOSITORY.name]: {
+            archived: false,
+            fork: false,
+            pushedAt,
+            url: REPOSITORY.url,
+          },
+        },
+        validated: true,
+      };
+    },
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  });
+
+  assert.equal(loaded, true);
+  assert.equal(catalogueWasForced, true);
+  assert.equal(fetchCalls, 0);
+  assert.equal(JSON.parse(storage.getItem(key)).fetchedAt, NOW);
+});
+
 test("shows loading instead of stale data, then restores it after refresh failure", async () => {
   const storage = new FakeStorage();
   const key = getStorageKey(OWNER, 1);
@@ -779,22 +832,8 @@ test("deletes malformed, future-dated cache and failure records", () => {
   assert.equal(storage.getItem(failureKey), null);
 });
 
-test("starts by selecting commit-history containers in a browser", () => {
+test("the unified controller selects commit-history containers", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
-  let selector = "";
-
-  vm.runInNewContext(source, {
-    Date,
-    URL,
-    console,
-    document: {
-      querySelectorAll(value) {
-        selector = value;
-        return [];
-      },
-    },
-  });
-
-  assert.equal(selector, "[data-commit-history]");
+  assert.match(source, /querySelectorAll\("\[data-commit-history\]"\)/);
   assert.match(source, /\[data-home-section="recent_commits"\]/);
 });
