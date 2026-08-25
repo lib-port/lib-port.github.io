@@ -166,6 +166,31 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         )[1].split("\n}", 1)[0]
         self.assertIn("opacity: 0.8;", title_icon_rule)
 
+    def test_repository_label_matches_recent_commit_context_formatting(self) -> None:
+        styles = STYLES_PATH.read_text(encoding="utf-8")
+
+        repo_rule = styles.split(".recent-milestone-repo {", 1)[1].split(
+            "\n}", 1
+        )[0]
+        self.assertIn("display: inline-flex", repo_rule)
+        self.assertIn("align-items: center", repo_rule)
+        self.assertIn("gap: 0.35em", repo_rule)
+        self.assertIn("min-width: 0", repo_rule)
+        self.assertIn("font-size: 1em", repo_rule)
+        self.assertNotIn("white-space: nowrap", repo_rule)
+
+        self.assertIn(
+            ".recent-milestone-repo > a,\n"
+            ".commit-history-repo,\n"
+            ".commit-history-message {",
+            styles,
+        )
+        repo_link_rule = styles.split(".recent-milestone-repo > a,", 1)[1].split(
+            "\n}", 1
+        )[0]
+        self.assertIn("min-width: 0", repo_link_rule)
+        self.assertIn("overflow-wrap: anywhere", repo_link_rule)
+
     def test_template_contains_loading_error_and_empty_states(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
 
