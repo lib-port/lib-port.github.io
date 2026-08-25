@@ -50,6 +50,14 @@ class ThemeToggleTemplateTests(unittest.TestCase):
             styles,
             r"\.theme-toggle(?::[a-z-]+)?\s*\{[^}]*box-shadow",
         )
+        self.assertNotRegex(
+            styles,
+            r"\.theme-toggle(?::[a-z-]+)?\s*\{[^}]*\btransform\s*:",
+        )
+        self.assertNotRegex(
+            styles,
+            r"\.theme-toggle\s*\{[^}]*\btransition\s*:[^;]*\btransform\b",
+        )
         self.assertIn("safe-area-inset-right", styles)
         self.assertIn("safe-area-inset-bottom", styles)
         self.assertIn(".theme-toggle:focus-visible", styles)
