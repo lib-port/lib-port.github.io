@@ -197,6 +197,68 @@ test("runs immediately when viewport observation is unavailable", () => {
   assert.equal(runs, 1);
 });
 
+test("observes concrete activity containers instead of their wrappers", () => {
+  const observed = [];
+  const revealed = [];
+  const makeSection = (name) => ({
+    removeAttribute(attribute) {
+      revealed.push([name, attribute]);
+    },
+  });
+  const milestoneSection = makeSection("milestones");
+  const commitSection = makeSection("commits");
+  const milestoneContainer = {
+    closest(selector) {
+      assert.equal(selector, '[data-home-section="recent_milestones"]');
+      return milestoneSection;
+    },
+  };
+  const commitContainer = {
+    closest(selector) {
+      assert.equal(selector, '[data-home-section="recent_commits"]');
+      return commitSection;
+    },
+  };
+  const documentImpl = {
+    querySelector(selector) {
+      assert.equal(selector, "[data-github-activity-config]");
+      return makeConfigElement({
+        owner: OWNER,
+        repositoryUpdates: false,
+        repositories: REPOSITORIES,
+        commitLimit: 1,
+        milestones: { limit: 1, repositories: ["alpha"] },
+      });
+    },
+    querySelectorAll(selector) {
+      if (selector === "[data-recent-milestones]") return [milestoneContainer];
+      if (selector === "[data-commit-history]") return [commitContainer];
+      assert.fail(`Unexpected selector: ${selector}`);
+    },
+  };
+
+  const instance = controller.createController({
+    documentImpl,
+    observerFactory() {
+      return {
+        disconnect() {},
+        observe(target) {
+          observed.push(target);
+        },
+      };
+    },
+    windowImpl: null,
+  });
+
+  assert.equal(instance.start(), true);
+  assert.deepEqual(observed, [milestoneContainer, commitContainer]);
+  assert.deepEqual(revealed, [
+    ["milestones", "hidden"],
+    ["commits", "hidden"],
+  ]);
+  instance.destroy();
+});
+
 test("deduplicates identical in-flight GitHub requests", async () => {
   const storage = new FakeStorage();
   const payload = { repositories: 2 };
