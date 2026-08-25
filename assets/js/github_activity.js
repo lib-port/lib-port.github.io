@@ -1062,6 +1062,7 @@
   const shared = (() => {
     const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const FAILURE_TTL_MS = 6 * 60 * 60 * 1000;
+    const REQUEST_TIMEOUT_MS = 15 * 1000;
     const API_VERSION = "2026-03-10";
 
     function getStorage() {
@@ -1174,15 +1175,45 @@
       return `github-activity:v1:failure:global:${owner.toLowerCase()}`;
     }
 
+    function createTimeoutError(timeoutMs) {
+      const error = new Error(`GitHub request timed out after ${timeoutMs} ms`);
+      error.name = "TimeoutError";
+      return error;
+    }
+
+    function createBufferedResponse(response, payload) {
+      const buffered = {
+        headers: response.headers,
+        ok: response.ok,
+        redirected: response.redirected,
+        status: response.status,
+        statusText: response.statusText,
+        type: response.type,
+        url: response.url,
+        async json() {
+          return payload;
+        },
+      };
+      buffered.clone = () => createBufferedResponse(response, payload);
+      return buffered;
+    }
+
     function createRequestCoordinator({
       owner,
       fetchImpl = getFetch(),
       storage = getStorage(),
       now = () => Date.now(),
       maxConcurrent = 4,
+      requestTimeoutMs = REQUEST_TIMEOUT_MS,
     }) {
       const inFlight = new Map();
       const queue = [];
+      const effectiveRequestTimeoutMs =
+        typeof requestTimeoutMs === "number" &&
+        Number.isFinite(requestTimeoutMs) &&
+        requestTimeoutMs > 0
+          ? requestTimeoutMs
+          : REQUEST_TIMEOUT_MS;
       let active = 0;
 
       function requestKey(url, options) {
@@ -1199,6 +1230,53 @@
         }
       }
 
+      async function fetchWithTimeout(url, options) {
+        const callerSignal = options?.signal;
+        const controller =
+          typeof AbortController === "function" ? new AbortController() : null;
+        const requestOptions = { ...options };
+        let callerAbortHandler = null;
+        let timeoutId = null;
+
+        if (controller) {
+          callerAbortHandler = () => controller.abort(callerSignal?.reason);
+          if (callerSignal?.aborted) {
+            callerAbortHandler();
+          } else {
+            callerSignal?.addEventListener?.("abort", callerAbortHandler, {
+              once: true,
+            });
+          }
+          requestOptions.signal = controller.signal;
+        }
+
+        const operation = Promise.resolve().then(async () => {
+          const response = await fetchImpl(url, requestOptions);
+          if (!response?.ok) return response;
+          if (typeof response.json !== "function") {
+            throw new Error("GitHub API returned a response without a JSON body");
+          }
+          const payload = await response.json();
+          return createBufferedResponse(response, payload);
+        });
+        const timeout = new Promise((_resolve, reject) => {
+          timeoutId = setTimeout(() => {
+            const error = createTimeoutError(effectiveRequestTimeoutMs);
+            reject(error);
+            controller?.abort(error);
+          }, effectiveRequestTimeoutMs);
+        });
+
+        try {
+          return await Promise.race([operation, timeout]);
+        } finally {
+          if (timeoutId !== null) clearTimeout(timeoutId);
+          if (callerAbortHandler) {
+            callerSignal?.removeEventListener?.("abort", callerAbortHandler);
+          }
+        }
+      }
+
       async function run({ url, options, resolve, reject }) {
         const failureKey = getGlobalFailureKey(owner);
         try {
@@ -1210,7 +1288,7 @@
             throw new Error("Fetch API unavailable");
           }
 
-          const response = await fetchImpl(url, options);
+          const response = await fetchWithTimeout(url, options);
           if (response?.status === 403 || response?.status === 429) {
             writeFailure(failureKey, storage, now(), "rate-limit");
           } else if (response?.ok || response?.status === 304) {
@@ -1219,7 +1297,12 @@
           resolve(response);
         } catch (error) {
           if (!hasRecentFailure(failureKey, storage, now())) {
-            writeFailure(failureKey, storage, now(), "network");
+            writeFailure(
+              failureKey,
+              storage,
+              now(),
+              error?.name === "TimeoutError" ? "timeout" : "network"
+            );
           }
           reject(error);
         } finally {
@@ -1269,6 +1352,7 @@
       API_VERSION,
       CACHE_TTL_MS,
       FAILURE_TTL_MS,
+      REQUEST_TIMEOUT_MS,
       buildHeaders,
       createRequestCoordinator,
       getFetch,

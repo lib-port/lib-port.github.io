@@ -6,6 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const scriptPath = path.join(__dirname, "..", "assets", "js", "github_activity.js");
+const githubActivity = require(scriptPath);
 const {
   AUTHOR_MODE,
   CACHE_TTL_MS,
@@ -24,7 +25,8 @@ const {
   renderCommits,
   writeCache,
   writeFailure,
-} = require(scriptPath).recentCommits;
+} = githubActivity.recentCommits;
+const { createRequestCoordinator } = githubActivity.shared;
 
 const OWNER = "lib-port";
 const NOW = Date.parse("2026-08-23T15:00:00Z");
@@ -395,6 +397,30 @@ test("treats a malformed successful GitHub payload as a refresh failure", async 
   );
 });
 
+test("shows the failure state when a commit request times out", async () => {
+  const storage = new FakeStorage();
+  const { container, empty, error, list, loading } = makeContainer({ limit: 1 });
+  const coordinator = createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => NOW,
+    requestTimeoutMs: 10,
+    fetchImpl: () => new Promise(() => {}),
+  });
+
+  const loaded = await loadCommitHistory(container, {
+    fetchImpl: coordinator.fetch,
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  });
+
+  assert.equal(loaded, false);
+  assertOnlyVisible({ list, loading, error, empty }, "error");
+  assert.equal(error.textContent, "unable to load recent commits");
+  assert.equal(container.attributes.has("aria-busy"), false);
+});
+
 test("falls back to linked author history, paginates, and remembers the mode", async () => {
   const storage = new FakeStorage();
   const { container, items } = makeContainer({ limit: 2 });
@@ -576,10 +602,17 @@ test("shows loading instead of stale data, then restores it after refresh failur
   );
 
   let calls = 0;
-  const fetchImpl = async () => {
-    calls += 1;
-    throw new Error("offline");
-  };
+  const coordinator = createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => NOW,
+    requestTimeoutMs: 10,
+    fetchImpl: () => {
+      calls += 1;
+      return new Promise(() => {});
+    },
+  });
+  const fetchImpl = coordinator.fetch;
   const first = makeContainer({ limit: 1 });
   const refresh = loadCommitHistory(first.container, {
     fetchImpl,
