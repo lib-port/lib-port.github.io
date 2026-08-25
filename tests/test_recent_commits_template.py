@@ -171,10 +171,13 @@ class RecentCommitsTemplateTests(unittest.TestCase):
         self.assertIn(
             ".commit-history-item:not([data-commit-history-last])", styles
         )
-        self.assertIn("::after", styles)
-        self.assertRegex(styles, r"width:\s*2px")
-        self.assertRegex(styles, r"opacity:\s*0\.25")
-        self.assertIn("position: relative", styles)
+        connector_rule = styles.split(
+            ".commit-history-item:not([data-commit-history-last])", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("::after", connector_rule)
+        self.assertRegex(connector_rule, r"width:\s*2px")
+        self.assertRegex(connector_rule, r"opacity:\s*0\.5")
+        self.assertIn("position: absolute", connector_rule)
 
     def test_all_client_states_can_be_hidden(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")
