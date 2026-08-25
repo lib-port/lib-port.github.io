@@ -511,8 +511,7 @@ html[data-theme="dark"] {
   touch-action: manipulation;
   transition:
     background-color 120ms ease,
-    color 120ms ease,
-    transform 120ms ease;
+    color 120ms ease;
 }
 
 .theme-toggle[hidden] {
@@ -527,12 +526,7 @@ html[data-theme="dark"] {
       var(--minima-link-base-color)
     );
     color: var(--minima-link-base-color);
-    transform: translateY(-1px);
   }
-}
-
-.theme-toggle:active {
-  transform: translateY(0);
 }
 
 .theme-toggle:focus-visible {
