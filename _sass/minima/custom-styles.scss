@@ -338,8 +338,8 @@ html[data-theme="dark"] {
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
-  font-size: 0.875em;
-  white-space: nowrap;
+  min-width: 0;
+  font-size: 1em;
 }
 
 .recent-milestone-description {
@@ -464,6 +464,7 @@ html[data-theme="dark"] {
   font-size: 1em;
 }
 
+.recent-milestone-repo > a,
 .commit-history-repo,
 .commit-history-message {
   min-width: 0;
