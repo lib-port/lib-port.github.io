@@ -16,17 +16,17 @@
       {%- if repo -%}
         {%- assign branch = repo.default_branch | default: "main" -%}
         {%- assign homepage = repo.homepage | default: "" | strip -%}
-        <li class="repo-card" data-repo-owner="{{ repo.owner.login | escape }}" data-repo-name="{{ repo.name | escape }}">
+        <li class="repo-card linked-card" data-repo-owner="{{ repo.owner.login | escape }}" data-repo-name="{{ repo.name | escape }}">
           <h3 class="repo-title">
             <span class="repo-icon" aria-hidden="true">{% octicon repo %}</span>
-            <a class="repo-link" href="{{ repo.html_url }}">{{ repo.name }}</a>
+            <a class="repo-link linked-card-primary-link" href="{{ repo.html_url }}">{{ repo.name }}</a>
           </h3>
 
           {%- if repo.description != "" -%}
             <p class="repo-desc">{{ repo.description }}</p>
           {%- endif -%}
 
-          <ul class="repo-meta" aria-label="Repository metadata">
+          <ul class="repo-meta linked-card-foreground" aria-label="Repository metadata">
             <li>
               <span class="repo-icon" aria-hidden="true">{% octicon history %}</span>
               <a href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/commits/" rel="nofollow">history</a>

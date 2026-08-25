@@ -56,7 +56,7 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
             template,
         )
         self.assertIn('<ul class="recent-milestones-list"', template)
-        self.assertIn('<li class="recent-milestone-item"', template)
+        self.assertIn('<li class="recent-milestone-item linked-card"', template)
         self.assertIn("data-recent-milestone-title", template)
         self.assertIn("data-recent-milestone-repo", template)
         self.assertIn("data-recent-milestone-due-detail", template)
@@ -160,7 +160,10 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
             '<span class="recent-milestone-icon" aria-hidden="true">'
             "{% octicon milestone %}</span>"
         )
-        milestone_link = "<a data-recent-milestone-title></a>"
+        milestone_link = (
+            '<a class="linked-card-primary-link" '
+            "data-recent-milestone-title></a>"
+        )
 
         self.assertIn(milestone_icon, template)
         self.assertIn(milestone_link, template)
@@ -227,8 +230,7 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertNotIn(".recent-milestone-separator", styles)
         self.assertIn(".recent-milestone-progress", styles)
         self.assertIn(".recent-milestone-progress-value", styles)
-        self.assertIn("gap: 0.5rem;", rule(".repo-card"))
-        self.assertIn("gap: 0.5rem;", rule(".recent-milestone-item"))
+        self.assertIn("gap: 0.5rem;", rule(".linked-card"))
         self.assertIn("line-height: 1.2;", rule(".repo-title"))
         self.assertIn("line-height: 1.2;", rule(".recent-milestone-title"))
         self.assertIn("gap: 0.5rem 1rem;", rule(".recent-milestone-heading"))

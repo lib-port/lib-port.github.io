@@ -8,13 +8,13 @@
 >
   <ul class="recent-milestones-list" data-recent-milestones-list hidden>
     {%- for item_number in (1..recent_milestones.milestones) %}
-    <li class="recent-milestone-item" data-recent-milestone-item hidden>
+    <li class="recent-milestone-item linked-card" data-recent-milestone-item hidden>
       <div class="recent-milestone-heading">
         <h3 class="recent-milestone-title">
           <span class="recent-milestone-icon" aria-hidden="true">{% octicon milestone %}</span>
-          <a data-recent-milestone-title></a>
+          <a class="linked-card-primary-link" data-recent-milestone-title></a>
         </h3>
-        <span class="recent-milestone-repo">
+        <span class="recent-milestone-repo linked-card-foreground">
           <span class="recent-milestone-icon" aria-hidden="true">{% octicon repo %}</span>
           <a data-recent-milestone-repo>
             <span data-recent-milestone-repo-name></span>
