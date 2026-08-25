@@ -2504,7 +2504,7 @@
               })
             );
           };
-          schedules.push(scheduleNearViewport(section || container, () => load(false), effectiveObserverFactory));
+          schedules.push(scheduleNearViewport(container, () => load(false), effectiveObserverFactory));
           registerStorageRefresh(
             recentCommits.getStorageKey(config.owner, config.commits.limit),
             () => (hasLoaded ? load(true) : Promise.resolve())
@@ -2533,7 +2533,7 @@
               })
             );
           };
-          schedules.push(scheduleNearViewport(section || container, () => load(false), effectiveObserverFactory));
+          schedules.push(scheduleNearViewport(container, () => load(false), effectiveObserverFactory));
           registerStorageRefresh(
             recentMilestones.getStorageKey(config.owner, config.milestones.limit),
             () => (hasLoaded ? load(true) : Promise.resolve())
