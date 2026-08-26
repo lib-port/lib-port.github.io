@@ -92,6 +92,10 @@ class RecentCommitsTemplateTests(unittest.TestCase):
             'class="commit-history-detail commit-history-date-detail"',
             item_markup,
         )
+        self.assertIn(
+            'class="commit-history-detail commit-history-message-detail"',
+            item_markup,
+        )
         self.assertLess(
             item_markup.index("data-commit-history-marker"),
             item_markup.index(context_icons["repo"]),
@@ -118,6 +122,8 @@ class RecentCommitsTemplateTests(unittest.TestCase):
         )
         self.assertNotIn("commit-history-separator", item_markup)
         self.assertNotIn("·", item_markup)
+        self.assertEqual(item_markup.count("<wbr>"), 2)
+        self.assertEqual(item_markup.count("</li><!--\n        --><li"), 2)
         self.assertNotIn(".commit-history-separator", styles)
         list_rule = styles.split(".commit-history-list", 1)[1].split("}", 1)[0]
         self.assertIn("list-style: none", list_rule)
@@ -127,43 +133,81 @@ class RecentCommitsTemplateTests(unittest.TestCase):
         self.assertIn("margin: 0", row_rule)
         self.assertIn("padding: 0", row_rule)
         self.assertIn("list-style: none", row_rule)
-        self.assertIn("display: flex", row_rule)
-        self.assertIn("flex-wrap: wrap", row_rule)
-        self.assertIn("gap: 0.5rem 0.75rem", row_rule)
         self.assertNotIn("font-size: 0.875em", row_rule)
-        content_rule = styles.split(".commit-history-content {", 2)[2].split(
-            "\n}", 1
-        )[0]
-        self.assertIn("min-width: 0", content_rule)
-        self.assertIn("font-size: 1em", content_rule)
+        content_rule = (
+            ".commit-history-content {\n"
+            "  min-width: 0;\n"
+            "  font-size: 1em;\n"
+            "  display: block;\n"
+            "}"
+        )
+        self.assertIn(content_rule, styles)
+        self.assertIn(
+            ".commit-history-content > li {\n  display: inline;\n}",
+            styles,
+        )
+        self.assertIn(
+            ".commit-history-detail:not(:last-child) {\n"
+            "  margin-inline-end: 0.75rem;\n"
+            "}",
+            styles,
+        )
         self.assertIn(
             ".recent-milestone-latest-issue > li,\n"
             ".commit-history-content > li {\n"
             "  min-width: 0;",
             styles,
         )
-        self.assertIn(
-            "align-items: center",
-            styles.split(".commit-history-content > li {", 1)[1].split(
-                "\n}", 1
-            )[0],
-        )
-        self.assertIn(
-            "gap: 0.35em",
-            styles.split(".commit-history-content > li {", 1)[1].split(
-                "\n}", 1
-            )[0],
-        )
         icon_rule = styles.split(
             ".commit-history-context-icon > .octicon", 1
         )[1].split("}", 1)[0]
         self.assertIn("width: 1em", icon_rule)
         self.assertIn("height: 1em", icon_rule)
+        self.assertIn(
+            ".commit-history-context-icon {\n"
+            "  margin-inline-end: 0.35em;\n"
+            "  vertical-align: middle;\n"
+            "}",
+            styles,
+        )
         date_rule = styles.split(".commit-history-date-detail", 1)[1].split(
             "}", 1
         )[0]
         self.assertIn("opacity: 0.8", date_rule)
         self.assertIn("white-space: nowrap", date_rule)
+
+    def test_commit_details_stack_at_mobile_breakpoint(self) -> None:
+        styles = STYLES_PATH.read_text(encoding="utf-8")
+        mobile_styles = styles.rsplit(
+            "@media screen and (max-width: 32rem) {", 1
+        )[1].split("@media", 1)[0]
+        commit_rule = mobile_styles.split(
+            ".commit-history-content {", 1
+        )[1].split("}", 1)[0]
+        detail_rule = mobile_styles.split(
+            ".commit-history-content > li {", 1
+        )[1].split("}", 1)[0]
+        message_icon_rule = mobile_styles.split(
+            ".commit-history-message-detail > .commit-history-context-icon {", 1
+        )[1].split("}", 1)[0]
+        mobile_icon_rule = mobile_styles.split(
+            ".commit-history-content > li > .commit-history-context-icon {", 1
+        )[1].split("}", 1)[0]
+        word_break_rule = mobile_styles.split(
+            ".commit-history-content wbr {", 1
+        )[1].split("}", 1)[0]
+
+        self.assertIn("display: flex", commit_rule)
+        self.assertIn("flex-direction: column", commit_rule)
+        self.assertIn("flex-wrap: nowrap", commit_rule)
+        self.assertIn("gap: 0.5rem", commit_rule)
+        self.assertIn("display: inline-flex", detail_rule)
+        self.assertIn("align-items: center", detail_rule)
+        self.assertIn("gap: 0.35em", detail_rule)
+        self.assertIn("margin-inline-end: 0", mobile_icon_rule)
+        self.assertIn("display: none", word_break_rule)
+        self.assertIn("align-self: flex-start", message_icon_rule)
+        self.assertIn("margin-block-start: 0.25em", message_icon_rule)
 
     def test_styles_connect_timeline_markers_except_after_the_last_item(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")
