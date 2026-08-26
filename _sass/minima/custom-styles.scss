@@ -452,6 +452,20 @@ html[data-theme="dark"] {
 .commit-history-content {
   min-width: 0;
   font-size: 1em;
+  display: block;
+}
+
+.commit-history-content > li {
+  display: inline;
+}
+
+.commit-history-detail:not(:last-child) {
+  margin-inline-end: 0.75rem;
+}
+
+.commit-history-context-icon {
+  margin-inline-end: 0.35em;
+  vertical-align: middle;
 }
 
 .recent-milestone-repo > a,
@@ -468,6 +482,34 @@ html[data-theme="dark"] {
 
 .commit-history-date {
   white-space: nowrap;
+}
+
+@media screen and (max-width: 32rem) {
+  .commit-history-content {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .commit-history-content > li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+  }
+
+  .commit-history-content > li > .commit-history-context-icon {
+    margin-inline-end: 0;
+  }
+
+  .commit-history-content wbr {
+    display: none;
+  }
+
+  .commit-history-message-detail > .commit-history-context-icon {
+    align-self: flex-start;
+    margin-block-start: 0.25em;
+  }
 }
 
 .commit-history-status {
