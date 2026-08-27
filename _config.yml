@@ -27,6 +27,9 @@ minima:
   skin: auto
   show_excerpts: true
   hide_site_feed_link: true
+  social_links:
+    - platform: github
+      user_url: https://github.com/lib-port/lib-port.github.io
 
 title: Library + Portfolio
 
@@ -44,7 +47,7 @@ repo_grid:
     - tech-lib
     - bus-lib
     - open-banking-lakehouse
-    - lib-port.github.io
+    - who-gets-heard
     - agentless-DaC
     - backtest
     - ansible-linux-audit
