@@ -24,6 +24,18 @@ class ConfigValidationError(ValueError):
 
 
 @dataclass(frozen=True)
+class SocialLinkConfig:
+    title: str
+    icon: str
+    url: str
+
+
+@dataclass(frozen=True)
+class MinimaConfig:
+    social_links: list[SocialLinkConfig]
+
+
+@dataclass(frozen=True)
 class IntroConfig:
     enabled: bool
     text: str
@@ -58,6 +70,7 @@ class ExternalBlogConfig:
 
 @dataclass(frozen=True)
 class SiteConfig:
+    minima: MinimaConfig
     intro: IntroConfig
     repo_grid: RepoGridConfig
     recent_milestones: RecentMilestonesConfig
@@ -86,6 +99,7 @@ def load_site_config(config_path: Path = CONFIG_PATH) -> dict[str, Any]:
 def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     raw = load_site_config(config_path)
     return SiteConfig(
+        minima=validate_minima(raw),
         intro=validate_intro(raw),
         repo_grid=validate_repo_grid(raw),
         recent_milestones=validate_recent_milestones(raw),
@@ -93,6 +107,38 @@ def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
         external_blog=validate_external_blog(raw),
         raw=raw,
     )
+
+
+def validate_minima(raw_config: dict[str, Any]) -> MinimaConfig:
+    section = _get_section_mapping(raw_config, "minima")
+    raw_social_links = section.get("social_links")
+    if raw_social_links is None:
+        return MinimaConfig(social_links=[])
+    if not isinstance(raw_social_links, list):
+        raise ConfigValidationError(
+            f"{CONFIG_PATH}: minima.social_links must be a list"
+        )
+
+    social_links: list[SocialLinkConfig] = []
+    for index, raw_link in enumerate(raw_social_links):
+        link_path = f"minima.social_links[{index}]"
+        if not isinstance(raw_link, dict):
+            raise ConfigValidationError(
+                f"{CONFIG_PATH}: {link_path} must be a mapping"
+            )
+
+        title = _require_config_string(raw_link, link_path, "title")
+        icon = _require_config_string(raw_link, link_path, "icon")
+        url = _optional_string(raw_link.get("url"), link_path, "url")
+        if not url and icon != "github":
+            raise ConfigValidationError(
+                f"{CONFIG_PATH}: {link_path}.url must be non-blank unless "
+                f"{link_path}.icon is github"
+            )
+
+        social_links.append(SocialLinkConfig(title=title, icon=icon, url=url))
+
+    return MinimaConfig(social_links=social_links)
 
 
 def validate_intro(raw_config: dict[str, Any]) -> IntroConfig:
@@ -277,6 +323,15 @@ def _require_non_blank_string(section: dict[str, Any], section_name: str, key: s
     if not value:
         raise ConfigValidationError(
             f"{CONFIG_PATH}: {section_name}.switch is true, but {section_name}.{key} is missing or blank"
+        )
+    return value
+
+
+def _require_config_string(section: dict[str, Any], path: str, key: str) -> str:
+    value = _optional_string(section.get(key), path, key)
+    if not value:
+        raise ConfigValidationError(
+            f"{CONFIG_PATH}: {path}.{key} is missing or blank"
         )
     return value
 

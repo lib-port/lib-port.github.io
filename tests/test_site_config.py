@@ -68,6 +68,82 @@ class SiteConfigValidationTests(unittest.TestCase):
         self.assertEqual(config.external_blog.archive_url, "https://example.com/archive")
         self.assertEqual(config.external_blog.post_limit, 5)
 
+    def test_github_social_link_accepts_a_blank_repository_url(self) -> None:
+        config_path = self.write_config(
+            """
+            minima:
+              social_links:
+                - title: GitHub repository
+                  icon: github
+                  url:
+            """
+        )
+
+        config = validate_site_config(config_path)
+
+        self.assertEqual(len(config.minima.social_links), 1)
+        social_link = config.minima.social_links[0]
+        self.assertEqual(social_link.title, "GitHub repository")
+        self.assertEqual(social_link.icon, "github")
+        self.assertEqual(social_link.url, "")
+
+    def test_github_social_link_preserves_an_explicit_url(self) -> None:
+        explicit_url = "https://github.com/example/profile"
+        config_path = self.write_config(
+            f"""
+            minima:
+              social_links:
+                - title: GitHub profile
+                  icon: github
+                  url: {explicit_url}
+            """
+        )
+
+        config = validate_site_config(config_path)
+
+        self.assertEqual(config.minima.social_links[0].url, explicit_url)
+
+    def test_non_github_social_link_requires_an_explicit_url(self) -> None:
+        config_path = self.write_config(
+            """
+            minima:
+              social_links:
+                - title: Mastodon profile
+                  icon: mastodon
+                  url:
+            """
+        )
+
+        with self.assertRaisesRegex(
+            ConfigValidationError,
+            r"minima\.social_links\[0\]\.url must be non-blank unless .*icon is github",
+        ):
+            validate_site_config(config_path)
+
+    def test_social_link_fields_are_validated(self) -> None:
+        cases = (
+            ("title", "", "github", ""),
+            ("icon", "GitHub repository", "[]", ""),
+            ("url", "GitHub repository", "github", "[]"),
+        )
+        for field, title, icon, url in cases:
+            with self.subTest(field=field):
+                config_path = self.write_config(
+                    f"""
+                    minima:
+                      social_links:
+                        - title: {title}
+                          icon: {icon}
+                          url: {url}
+                    """
+                )
+
+                with self.assertRaisesRegex(
+                    ConfigValidationError,
+                    rf"minima\.social_links\[0\]\.{field}",
+                ):
+                    validate_site_config(config_path)
+
     def test_disabled_sections_ignore_malformed_inner_fields(self) -> None:
         config_path = self.write_config(
             """

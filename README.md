@@ -47,6 +47,12 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 ```yaml
 title: Your Name
 
+minima:
+  social_links:
+    - title: GitHub repository
+      icon: github
+      url:
+
 intro:
   switch: true
   text: Course notes, projects, and essays.
@@ -85,6 +91,7 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | --- | --- |
 | `title` | Site title used by the theme and metadata. |
 | `description` | Site description used by metadata and the footer. |
+| `minima.social_links` | Minima social-link entries. A GitHub entry with a blank `url` links to the repository hosting the site; a specified `url` is used as written. Other entries require an explicit `url`. |
 | `intro.switch` | YAML boolean controlling whether the introduction is shown. |
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
@@ -100,6 +107,8 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
 Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings. When all three GitHub sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
+
+When the GitHub social link's `url` is blank, its destination comes from `site.github.repository_url`, which `jekyll-github-metadata` resolves from `PAGES_REPO_NWO` during deployment or the Git `origin` during local development. This keeps forks portable. Setting `url` to a non-blank address uses that address instead.
 
 ### GitHub activity controller
 
