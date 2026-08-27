@@ -28,8 +28,9 @@ minima:
   show_excerpts: true
   hide_site_feed_link: true
   social_links:
-    - platform: github
-      user_url: https://github.com/lib-port/lib-port.github.io
+    - title: GitHub repository
+      icon: github
+      url:
 
 title: Library + Portfolio
 
