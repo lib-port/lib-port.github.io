@@ -12,8 +12,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "_config.yml"
-TRUTHY_SWITCH_VALUES = {True}
-FALSY_SWITCH_VALUES = {False, None}
+GITHUB_ICON_LINKS = {"profile", "repos"}
+GITHUB_ICON_STYLES = {"icon", "text"}
 MAX_EXTERNAL_BLOG_POST_LIMIT = 10
 MAX_RECENT_COMMITS = 10
 MAX_RECENT_MILESTONES = 10
@@ -24,15 +24,10 @@ class ConfigValidationError(ValueError):
 
 
 @dataclass(frozen=True)
-class SocialLinkConfig:
-    title: str
-    icon: str
-    url: str
-
-
-@dataclass(frozen=True)
-class MinimaConfig:
-    social_links: list[SocialLinkConfig]
+class GitHubIconConfig:
+    enabled: bool
+    link: str
+    style: str
 
 
 @dataclass(frozen=True)
@@ -70,7 +65,7 @@ class ExternalBlogConfig:
 
 @dataclass(frozen=True)
 class SiteConfig:
-    minima: MinimaConfig
+    github_icon: GitHubIconConfig
     intro: IntroConfig
     repo_grid: RepoGridConfig
     recent_milestones: RecentMilestonesConfig
@@ -99,7 +94,7 @@ def load_site_config(config_path: Path = CONFIG_PATH) -> dict[str, Any]:
 def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     raw = load_site_config(config_path)
     return SiteConfig(
-        minima=validate_minima(raw),
+        github_icon=validate_github_icon(raw),
         intro=validate_intro(raw),
         repo_grid=validate_repo_grid(raw),
         recent_milestones=validate_recent_milestones(raw),
@@ -109,36 +104,27 @@ def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     )
 
 
-def validate_minima(raw_config: dict[str, Any]) -> MinimaConfig:
-    section = _get_section_mapping(raw_config, "minima")
-    raw_social_links = section.get("social_links")
-    if raw_social_links is None:
-        return MinimaConfig(social_links=[])
-    if not isinstance(raw_social_links, list):
+def validate_github_icon(raw_config: dict[str, Any]) -> GitHubIconConfig:
+    section = _get_section_mapping(raw_config, "github-icon")
+    enabled = _get_switch(section, "github-icon")
+    if not enabled:
+        return GitHubIconConfig(enabled=False, link="", style="")
+
+    raw_link = section.get("link")
+    if not isinstance(raw_link, str) or raw_link not in GITHUB_ICON_LINKS:
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: minima.social_links must be a list"
+            f"{CONFIG_PATH}: github-icon.switch is true, but "
+            "github-icon.link must be exactly 'profile' or 'repos'"
         )
 
-    social_links: list[SocialLinkConfig] = []
-    for index, raw_link in enumerate(raw_social_links):
-        link_path = f"minima.social_links[{index}]"
-        if not isinstance(raw_link, dict):
-            raise ConfigValidationError(
-                f"{CONFIG_PATH}: {link_path} must be a mapping"
-            )
+    raw_style = section.get("style", "text")
+    if not isinstance(raw_style, str) or raw_style not in GITHUB_ICON_STYLES:
+        raise ConfigValidationError(
+            f"{CONFIG_PATH}: github-icon.switch is true, but "
+            "github-icon.style must be exactly 'text' or 'icon'"
+        )
 
-        title = _require_config_string(raw_link, link_path, "title")
-        icon = _require_config_string(raw_link, link_path, "icon")
-        url = _optional_string(raw_link.get("url"), link_path, "url")
-        if not url and icon != "github":
-            raise ConfigValidationError(
-                f"{CONFIG_PATH}: {link_path}.url must be non-blank unless "
-                f"{link_path}.icon is github"
-            )
-
-        social_links.append(SocialLinkConfig(title=title, icon=icon, url=url))
-
-    return MinimaConfig(social_links=social_links)
+    return GitHubIconConfig(enabled=True, link=raw_link, style=raw_style)
 
 
 def validate_intro(raw_config: dict[str, Any]) -> IntroConfig:
@@ -308,9 +294,9 @@ def _get_section_mapping(raw_config: dict[str, Any], section_name: str) -> dict[
 
 def _get_switch(section: dict[str, Any], section_name: str) -> bool:
     raw_switch = section.get("switch")
-    if raw_switch in FALSY_SWITCH_VALUES:
+    if raw_switch is None or raw_switch is False:
         return False
-    if raw_switch in TRUTHY_SWITCH_VALUES:
+    if raw_switch is True:
         return True
     raise ConfigValidationError(
         f"{CONFIG_PATH}: {section_name}.switch must be a YAML boolean"
@@ -323,15 +309,6 @@ def _require_non_blank_string(section: dict[str, Any], section_name: str, key: s
     if not value:
         raise ConfigValidationError(
             f"{CONFIG_PATH}: {section_name}.switch is true, but {section_name}.{key} is missing or blank"
-        )
-    return value
-
-
-def _require_config_string(section: dict[str, Any], path: str, key: str) -> str:
-    value = _optional_string(section.get(key), path, key)
-    if not value:
-        raise ConfigValidationError(
-            f"{CONFIG_PATH}: {path}.{key} is missing or blank"
         )
     return value
 

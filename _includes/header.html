@@ -7,15 +7,60 @@
     {%- unless page.hide_site_title %}
       <a class="site-title" rel="author" href="{{ '/' | relative_url }}">{{ site.title | escape }}</a>
     {%- endunless %}
-    {%- unless page_titles == empty %}
-      <nav class="site-nav">
-        <input type="checkbox" id="nav-trigger" />
-        <label for="nav-trigger">
-          <span class="menu-icon"></span>
-        </label>
+    {%- assign github_icon = site["github-icon"] -%}
+    {%- assign github_icon_url = "" -%}
+    {%- assign github_icon_label = "" -%}
+    {%- assign github_icon_style = github_icon.style -%}
+    {%- assign github_icon_style_is_valid = false -%}
+    {%- assign github_icon_is_visible = false -%}
+    {%- if github_icon.switch == true -%}
+      {%- if github_icon_style == nil -%}
+        {%- assign github_icon_style = "text" -%}
+      {%- endif -%}
+      {%- if github_icon_style == "text" or github_icon_style == "icon" -%}
+        {%- assign github_icon_style_is_valid = true -%}
+      {%- endif -%}
+      {%- assign github_owner_url = site.github.owner_url | default: "" | strip -%}
+      {%- assign github_owner_name = site.github.owner_name | default: "" | strip -%}
+      {%- if github_owner_name == "" -%}
+        {%- assign github_owner_name = "repository owner" -%}
+      {%- endif -%}
+      {%- unless github_owner_url == "" -%}
+        {%- case github_icon.link -%}
+          {%- when "profile" -%}
+            {%- assign github_icon_url = github_owner_url -%}
+            {%- assign github_icon_label = "View profile on GitHub for " | append: github_owner_name -%}
+          {%- when "repos" -%}
+            {%- assign github_icon_url = github_owner_url | append: "?tab=repositories" -%}
+            {%- assign github_icon_label = "View repositories on GitHub for " | append: github_owner_name -%}
+        {%- endcase -%}
+      {%- endunless -%}
+      {%- if github_icon_url != "" and github_icon_style_is_valid -%}
+        {%- assign github_icon_is_visible = true -%}
+      {%- endif -%}
+    {%- endif -%}
+    <div class="site-header-actions{% if github_icon_is_visible %} site-header-actions--with-github-icon{% endif %}">
+      {%- unless page_titles == empty %}
+        <nav class="site-nav">
+          <input type="checkbox" id="nav-trigger" />
+          <label for="nav-trigger">
+            <span class="menu-icon"></span>
+          </label>
 
-        {% include nav-items.html paths = page_paths %}
-      </nav>
-    {%- endunless %}
+          {% include nav-items.html paths = page_paths %}
+        </nav>
+      {%- endunless %}
+      {%- if github_icon_is_visible %}
+        <a
+          class="github-icon-link github-icon-link--{{ github_icon_style }}"
+          href="{{ github_icon_url | escape }}"
+          aria-label="{{ github_icon_label | escape }}"
+        >{%- if github_icon_style == "icon" -%}
+            {% octicon mark-github %}
+          {%- else -%}
+            {% octicon logo-github %}
+          {%- endif -%}</a>
+      {%- endif -%}
+    </div>
   </div>
 </header>

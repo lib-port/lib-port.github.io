@@ -27,16 +27,17 @@ minima:
   skin: auto
   show_excerpts: true
   hide_site_feed_link: true
-  social_links:
-    - title: GitHub repository
-      icon: github
-      url:
 
 title: Library + Portfolio
 
 ##################################
 # Start of landing page settings
 ##################################
+
+github-icon:
+  switch: true
+  link: repos # {profile|repos}
+  style: text # {text|icon}
 
 intro:
   switch: true
@@ -47,9 +48,9 @@ repo_grid:
   repo_list:
     - tech-lib
     - bus-lib
-    - open-banking-lakehouse
+    - lib-port.github.io
     - who-gets-heard
-    - agentless-DaC
+    - open-banking-lakehouse
     - backtest
     - ansible-linux-audit
     - pricing-function-mapper
