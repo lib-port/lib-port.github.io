@@ -222,7 +222,7 @@ During deployment, the workflow:
 
 GitHub `main` is the source of truth for the GitLab mirror. Every push to `main` starts the `Mirror main to GitLab` workflow, which also supports manual dispatch. The workflow verifies that both repositories finish on the same commit SHA and may force-update GitLab after a GitHub history rewrite.
 
-Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` access. The token owner must be allowed to push to GitLab's protected `main` branch, and Maintainers must be allowed to force-push so rewritten GitHub history can be synchronised. The cleanup workflow keeps the latest completed run for each workflow so the most recent mirror result remains available for troubleshooting.
+Mirroring uses an SSH deploy-key pair. Store the private key in the GitHub repository secret `GITLAB_MIRROR_SSH_KEY`, and enable the corresponding public key as a read-write deploy key for the GitLab project at the same owner and repository path. Add that deploy key to the protected `main` branch's **Allowed to push and merge** setting. To synchronise rewritten GitHub history, also enable **Allowed to force push** for the branch. The cleanup workflow keeps the latest completed run for each workflow so the most recent mirror result remains available for troubleshooting.
 
 ## Troubleshooting
 
@@ -239,7 +239,7 @@ Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` ac
 | Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
 | The theme no longer follows the system | Clear the site's `lib-port:theme:v1` local-storage entry to remove the explicit light or dark preference. |
 | The header GitHub icon is missing | Confirm `github-icon.switch` is `true`, its `link` and `style` values are supported, and GitHub owner metadata is available during the build. |
-| The GitLab mirror is stale | Check the latest `Mirror main to GitLab` run, confirm the token still has `write_repository` access, confirm protected `main` permits Maintainer force-pushes, and manually dispatch the workflow after correcting the problem. |
+| The GitLab mirror is stale | Check the latest `Mirror main to GitLab` run. Confirm `GITLAB_MIRROR_SSH_KEY` contains the private deploy key, its public counterpart remains enabled on the GitLab project with read-write access, and protected `main` allows that deploy key to push. If rewritten history must be mirrored, also confirm that the branch allows force pushes. Manually dispatch the workflow after correcting the problem. |
 | The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
 | Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |
 
