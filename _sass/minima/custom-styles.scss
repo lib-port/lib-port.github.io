@@ -50,6 +50,72 @@ html[data-theme="dark"] {
   @include dm-highlight;
 }
 
+.site-header > .wrapper {
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+}
+
+.site-header-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 15px;
+  margin-inline-start: auto;
+}
+
+.site-header-actions > .site-nav {
+  float: none;
+}
+
+.github-icon-link {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 3.5625rem;
+  height: 2.25rem;
+  color: var(--minima-text-color);
+  line-height: 1;
+  text-decoration: none;
+}
+
+.github-icon-link:visited {
+  color: var(--minima-text-color);
+}
+
+.github-icon-link:hover {
+  border: 1px solid var(--minima-link-base-color);
+  color: var(--minima-text-color);
+  text-decoration: none;
+}
+
+.github-icon-link:focus-visible {
+  border-radius: 0.25rem;
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.github-icon-link > .octicon {
+  height: 1rem;
+  vertical-align: 0;
+}
+
+.github-icon-link--text > .octicon {
+  width: 2.8125rem;
+}
+
+.github-icon-link--icon > .octicon {
+  width: 1rem;
+}
+
+@media screen and (max-width: 600px) {
+  .site-header-actions--with-github-icon > .site-nav {
+    right: calc(18px + 3.5625rem + 0.5rem);
+  }
+}
+
 .home-intro {
   text-align: center;
 }

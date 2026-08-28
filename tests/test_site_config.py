@@ -25,6 +25,11 @@ class SiteConfigValidationTests(unittest.TestCase):
     def test_valid_config(self) -> None:
         config_path = self.write_config(
             """
+            github-icon:
+              switch: true
+              link: repos
+              style: icon
+
             intro:
               switch: true
               text: Hello world
@@ -56,6 +61,9 @@ class SiteConfigValidationTests(unittest.TestCase):
 
         config = validate_site_config(config_path)
 
+        self.assertTrue(config.github_icon.enabled)
+        self.assertEqual(config.github_icon.link, "repos")
+        self.assertEqual(config.github_icon.style, "icon")
         self.assertTrue(config.intro.enabled)
         self.assertEqual(config.intro.text, "Hello world")
         self.assertEqual(config.repo_grid.repo_list, ["alpha", "beta"])
@@ -68,81 +76,151 @@ class SiteConfigValidationTests(unittest.TestCase):
         self.assertEqual(config.external_blog.archive_url, "https://example.com/archive")
         self.assertEqual(config.external_blog.post_limit, 5)
 
-    def test_github_social_link_accepts_a_blank_repository_url(self) -> None:
-        config_path = self.write_config(
-            """
-            minima:
-              social_links:
-                - title: GitHub repository
-                  icon: github
-                  url:
-            """
-        )
-
-        config = validate_site_config(config_path)
-
-        self.assertEqual(len(config.minima.social_links), 1)
-        social_link = config.minima.social_links[0]
-        self.assertEqual(social_link.title, "GitHub repository")
-        self.assertEqual(social_link.icon, "github")
-        self.assertEqual(social_link.url, "")
-
-    def test_github_social_link_preserves_an_explicit_url(self) -> None:
-        explicit_url = "https://github.com/example/profile"
-        config_path = self.write_config(
-            f"""
-            minima:
-              social_links:
-                - title: GitHub profile
-                  icon: github
-                  url: {explicit_url}
-            """
-        )
-
-        config = validate_site_config(config_path)
-
-        self.assertEqual(config.minima.social_links[0].url, explicit_url)
-
-    def test_non_github_social_link_requires_an_explicit_url(self) -> None:
-        config_path = self.write_config(
-            """
-            minima:
-              social_links:
-                - title: Mastodon profile
-                  icon: mastodon
-                  url:
-            """
-        )
-
-        with self.assertRaisesRegex(
-            ConfigValidationError,
-            r"minima\.social_links\[0\]\.url must be non-blank unless .*icon is github",
-        ):
-            validate_site_config(config_path)
-
-    def test_social_link_fields_are_validated(self) -> None:
-        cases = (
-            ("title", "", "github", ""),
-            ("icon", "GitHub repository", "[]", ""),
-            ("url", "GitHub repository", "github", "[]"),
-        )
-        for field, title, icon, url in cases:
-            with self.subTest(field=field):
+    def test_github_icon_accepts_profile_and_repos_destinations(self) -> None:
+        for link in ("profile", "repos"):
+            with self.subTest(link=link):
                 config_path = self.write_config(
                     f"""
-                    minima:
-                      social_links:
-                        - title: {title}
-                          icon: {icon}
-                          url: {url}
+                    github-icon:
+                      switch: true
+                      link: {link}
+                    """
+                )
+
+                config = validate_site_config(config_path)
+
+                self.assertTrue(config.github_icon.enabled)
+                self.assertEqual(config.github_icon.link, link)
+                self.assertEqual(config.github_icon.style, "text")
+
+    def test_github_icon_accepts_text_and_icon_styles(self) -> None:
+        for style in ("text", "icon"):
+            with self.subTest(style=style):
+                config_path = self.write_config(
+                    f"""
+                    github-icon:
+                      switch: true
+                      link: profile
+                      style: {style}
+                    """
+                )
+
+                config = validate_site_config(config_path)
+
+                self.assertEqual(config.github_icon.style, style)
+
+    def test_github_icon_is_disabled_for_false_or_missing_switches(self) -> None:
+        configurations = (
+            "",
+            """
+            github-icon:
+              link:
+                - ignored
+              style:
+                - ignored
+            """,
+            """
+            github-icon:
+              switch: false
+              link:
+                - ignored
+              style:
+                - ignored
+            """,
+        )
+        for raw_config in configurations:
+            with self.subTest(raw_config=raw_config):
+                config_path = self.write_config(raw_config)
+
+                config = validate_site_config(config_path)
+
+                self.assertFalse(config.github_icon.enabled)
+                self.assertEqual(config.github_icon.link, "")
+                self.assertEqual(config.github_icon.style, "")
+
+    def test_github_icon_switch_requires_a_yaml_boolean(self) -> None:
+        for raw_switch in ('"true"', '"false"', "1", "0", "[]", "{}"):
+            with self.subTest(raw_switch=raw_switch):
+                config_path = self.write_config(
+                    f"""
+                    github-icon:
+                      switch: {raw_switch}
+                      link: repos
                     """
                 )
 
                 with self.assertRaisesRegex(
                     ConfigValidationError,
-                    rf"minima\.social_links\[0\]\.{field}",
+                    r"github-icon\.switch must be a YAML boolean",
                 ):
                     validate_site_config(config_path)
+
+    def test_enabled_github_icon_requires_an_exact_destination(self) -> None:
+        invalid_links = (
+            "",
+            "link:",
+            'link: ""',
+            "link: PROFILE",
+            "link: projects",
+            "link: issues",
+            'link: " repos "',
+            "link: [repos]",
+        )
+        for link_config in invalid_links:
+            with self.subTest(link_config=link_config):
+                config_path = self.write_config(
+                    f"""
+                    github-icon:
+                      switch: true
+                      {link_config}
+                    """
+                )
+
+                with self.assertRaisesRegex(
+                    ConfigValidationError,
+                    r"github-icon\.link must be exactly 'profile' or 'repos'",
+                ):
+                    validate_site_config(config_path)
+
+    def test_enabled_github_icon_rejects_invalid_styles(self) -> None:
+        invalid_styles = (
+            "style:",
+            'style: ""',
+            "style: TEXT",
+            "style: logo",
+            'style: " text "',
+            "style: [text]",
+        )
+        for style_config in invalid_styles:
+            with self.subTest(style_config=style_config):
+                config_path = self.write_config(
+                    f"""
+                    github-icon:
+                      switch: true
+                      link: repos
+                      {style_config}
+                    """
+                )
+
+                with self.assertRaisesRegex(
+                    ConfigValidationError,
+                    r"github-icon\.style must be exactly 'text' or 'icon'",
+                ):
+                    validate_site_config(config_path)
+
+    def test_github_icon_must_be_a_mapping(self) -> None:
+        config_path = self.write_config(
+            """
+            github-icon:
+              - repos
+            """
+        )
+
+        with self.assertRaisesRegex(
+            ConfigValidationError,
+            r"github-icon must be a mapping",
+        ):
+            validate_site_config(config_path)
 
     def test_disabled_sections_ignore_malformed_inner_fields(self) -> None:
         config_path = self.write_config(

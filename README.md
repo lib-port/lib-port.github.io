@@ -20,6 +20,7 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 - Viewport-loaded milestone feed merged across configured repositories
 - GitHub-style recent-commit timeline that refreshes only pushed repositories
 - Client-side blog posts with seven-day local caching
+- Configurable owner-aware GitHub profile or repositories link in the header
 - Responsive light and dark themes with a persistent visitor-controlled switcher
 - Explicit loading and failure states for client-side GitHub activity
 - SEO metadata, a sitemap, and GitHub-flavored Markdown extensions
@@ -47,11 +48,10 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 ```yaml
 title: Your Name
 
-minima:
-  social_links:
-    - title: GitHub repository
-      icon: github
-      url:
+github-icon:
+  switch: true
+  link: repos
+  style: text
 
 intro:
   switch: true
@@ -91,7 +91,9 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | --- | --- |
 | `title` | Site title used by the theme and metadata. |
 | `description` | Site description used by metadata and the footer. |
-| `minima.social_links` | Minima social-link entries. A GitHub entry with a blank `url` links to the repository hosting the site; a specified `url` is used as written. Other entries require an explicit `url`. |
+| `github-icon.switch` | YAML boolean controlling whether the rightmost header icon is shown. The default is `false` when the switch or section is missing. |
+| `github-icon.link` | Required when enabled and must be exactly `profile` or `repos`. `profile` uses the owner profile URL; `repos` adds `?tab=repositories` to it. There is no enabled default. |
+| `github-icon.style` | Optional when enabled and must be exactly `text` or `icon`. `text` shows the GitHub wordmark and is the default; `icon` shows the GitHub mark. |
 | `intro.switch` | YAML boolean controlling whether the introduction is shown. |
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
@@ -106,9 +108,9 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `external_blog.archive_url` | Required blog archive URL used by the fallback and “View all posts” links. |
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
-Use unquoted `true` and `false` values for section switches. Disabled sections ignore their inner settings. When all three GitHub sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
+Use unquoted `true` and `false` values for switches. Disabled sections ignore their inner settings, including `github-icon.link` and `github-icon.style`. When all three GitHub activity sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
 
-When the GitHub social link's `url` is blank, its destination comes from `site.github.repository_url`, which `jekyll-github-metadata` resolves from `PAGES_REPO_NWO` during deployment or the Git `origin` during local development. This keeps forks portable. Setting `url` to a non-blank address uses that address instead.
+The GitHub logo opens in the current tab and remains the rightmost header action. Its destination comes from the account that owns the Pages repository: `jekyll-github-metadata` resolves that owner during deployment or from the Git `origin` during local development, which keeps forks portable. The icon is omitted if owner metadata is unavailable. Add future header links before it in [`_includes/header.html`](./_includes/header.html) to retain this ordering.
 
 ### GitHub activity controller
 
@@ -192,7 +194,7 @@ node --test tests/*.test.js
 
 | Area | Responsibility |
 | --- | --- |
-| Configuration | `_config.yml` defines site metadata, homepage sections, and external-feed settings; Python validation rejects invalid enabled-section settings. |
+| Configuration | `_config.yml` defines site metadata, the header GitHub icon, homepage sections, and external-feed settings; Python validation rejects invalid enabled-section settings. |
 | Page generation | Jekyll, Minima, Liquid includes, and custom Sass generate the static site. |
 | GitHub activity | `assets/js/github_activity.js` coordinates repository updates, milestones, and commits through one switch-aware configuration, request queue, failure policy, and cross-tab cache integration. |
 | Repository data | `jekyll-github-metadata` supplies repository cards during the build; the shared controller refreshes update labels and revalidates its local catalogue weekly using GitHub ETags. |
@@ -236,6 +238,7 @@ Mirroring requires a `GITLAB_TOKEN` repository secret with `write_repository` ac
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
 | Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
 | The theme no longer follows the system | Clear the site's `lib-port:theme:v1` local-storage entry to remove the explicit light or dark preference. |
+| The header GitHub icon is missing | Confirm `github-icon.switch` is `true`, its `link` and `style` values are supported, and GitHub owner metadata is available during the build. |
 | The GitLab mirror is stale | Check the latest `Mirror main to GitLab` run, confirm the token still has `write_repository` access, confirm protected `main` permits Maintainer force-pushes, and manually dispatch the workflow after correcting the problem. |
 | The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
 | Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |
