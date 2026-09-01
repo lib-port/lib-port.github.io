@@ -52,10 +52,10 @@ class RecentCommitsTemplateTests(unittest.TestCase):
             template,
         )
         self.assertIn("data-commit-history-loading", template)
-        self.assertIn("{% octicon gear %}", template)
+        self.assertIn("{% octicon gear height:16 %}", template)
         self.assertIn("loading recent commits", template)
         self.assertIn("data-commit-history-error", template)
-        self.assertIn("{% octicon alert %}", template)
+        self.assertIn("{% octicon alert height:16 %}", template)
         self.assertIn("unable to load recent commits", template)
         self.assertIn("data-commit-history-empty", template)
         self.assertIn("No recent commits found", template)
@@ -73,11 +73,11 @@ class RecentCommitsTemplateTests(unittest.TestCase):
             template,
         )
         self.assertIn("data-commit-history-marker", template)
-        self.assertIn("{% octicon git-commit %}", template)
+        self.assertIn("{% octicon git-commit height:16 %}", template)
         context_icons = {
-            "repo": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon repo %}</span>',
-            "message": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon comment %}</span>',
-            "calendar": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon calendar %}</span>',
+            "repo": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon repo height:16 %}</span>',
+            "message": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon comment height:16 %}</span>',
+            "calendar": '<span class="commit-history-context-icon" aria-hidden="true">{% octicon calendar height:16 %}</span>',
         }
         for icon_markup in context_icons.values():
             self.assertIn(icon_markup, template)

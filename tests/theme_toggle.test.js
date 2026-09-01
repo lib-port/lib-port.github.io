@@ -232,7 +232,7 @@ test("reads valid storage and removes invalid values", () => {
   assert.equal(storage.getItem(THEME_STORAGE_KEY), null);
 });
 
-test("initializes from the system and renders the available action", () => {
+test("initialises from the system and renders the available action", () => {
   const fixture = makeFixture({ systemDark: true });
   const controller = initThemeToggle({
     documentRef: fixture.documentRef,
@@ -275,7 +275,7 @@ test("system changes apply only until the visitor chooses a theme", () => {
   assert.equal(controller.getTheme(), LIGHT_THEME);
 });
 
-test("storage events synchronize preferences and removal restores the system", () => {
+test("storage events synchronise preferences and removal restores the system", () => {
   const fixture = makeFixture({ systemDark: false });
   const controller = initThemeToggle(fixture);
 

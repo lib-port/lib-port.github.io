@@ -13,22 +13,22 @@
         class="commit-history-marker"
         data-commit-history-marker
         aria-hidden="true"
-      >{% octicon git-commit %}</span>
+      >{% octicon git-commit height:16 %}</span>
       <ul class="commit-history-content" aria-label="Commit details">
-        <li class="commit-history-detail"><span class="commit-history-context-icon" aria-hidden="true">{% octicon repo %}</span><a class="commit-history-repo" data-commit-history-repo></a><wbr></li><!--
-        --><li class="commit-history-detail commit-history-message-detail"><span class="commit-history-context-icon" aria-hidden="true">{% octicon comment %}</span><a class="commit-history-message" data-commit-history-message></a><wbr></li><!--
-        --><li class="commit-history-detail commit-history-date-detail"><span class="commit-history-context-icon" aria-hidden="true">{% octicon calendar %}</span><time class="commit-history-date" data-commit-history-date></time></li>
+        <li class="commit-history-detail"><span class="commit-history-context-icon" aria-hidden="true">{% octicon repo height:16 %}</span><a class="commit-history-repo" data-commit-history-repo></a><wbr></li><!--
+        --><li class="commit-history-detail commit-history-message-detail"><span class="commit-history-context-icon" aria-hidden="true">{% octicon comment height:16 %}</span><a class="commit-history-message" data-commit-history-message></a><wbr></li><!--
+        --><li class="commit-history-detail commit-history-date-detail"><span class="commit-history-context-icon" aria-hidden="true">{% octicon calendar height:16 %}</span><time class="commit-history-date" data-commit-history-date></time></li>
       </ul>
     </li>
     {%- endfor %}
   </ul>
 
   <p class="commit-history-status" data-commit-history-loading>
-    <span class="commit-history-status-icon" aria-hidden="true">{% octicon gear %}</span>
+    <span class="commit-history-status-icon" aria-hidden="true">{% octicon gear height:16 %}</span>
     <span>loading recent commits</span>
   </p>
   <p class="commit-history-status" data-commit-history-error hidden>
-    <span class="commit-history-status-icon" aria-hidden="true">{% octicon alert %}</span>
+    <span class="commit-history-status-icon" aria-hidden="true">{% octicon alert height:16 %}</span>
     <span>unable to load recent commits</span>
   </p>
   <p class="commit-history-status" data-commit-history-empty hidden>

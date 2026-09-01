@@ -209,7 +209,7 @@ test("uses the first nonblank message line and formats committed dates in UTC", 
   assert.equal(formatUtcDate("not a date"), "");
 });
 
-test("normalizes only commits linked to the owner and uses committer time", () => {
+test("normalises only commits linked to the owner and uses committer time", () => {
   const commits = normalizeApiCommits(
     [
       makeCommit({ sha: "older", committedAt: "2026-08-22T00:00:00Z" }),

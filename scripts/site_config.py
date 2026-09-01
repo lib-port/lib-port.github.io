@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -13,7 +14,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "_config.yml"
 GITHUB_ICON_LINKS = {"profile", "repos"}
-GITHUB_ICON_STYLES = {"icon", "text"}
+GITHUB_ICON_STYLES = {"auto", "icon", "text"}
 MAX_EXTERNAL_BLOG_POST_LIMIT = 10
 MAX_RECENT_COMMITS = 10
 MAX_RECENT_MILESTONES = 10
@@ -94,84 +95,96 @@ def load_site_config(config_path: Path = CONFIG_PATH) -> dict[str, Any]:
 def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     raw = load_site_config(config_path)
     return SiteConfig(
-        github_icon=validate_github_icon(raw),
-        intro=validate_intro(raw),
-        repo_grid=validate_repo_grid(raw),
-        recent_milestones=validate_recent_milestones(raw),
-        recent_commits=validate_recent_commits(raw),
-        external_blog=validate_external_blog(raw),
+        github_icon=validate_github_icon(raw, config_path),
+        intro=validate_intro(raw, config_path),
+        repo_grid=validate_repo_grid(raw, config_path),
+        recent_milestones=validate_recent_milestones(raw, config_path),
+        recent_commits=validate_recent_commits(raw, config_path),
+        external_blog=validate_external_blog(raw, config_path),
         raw=raw,
     )
 
 
-def validate_github_icon(raw_config: dict[str, Any]) -> GitHubIconConfig:
-    section = _get_section_mapping(raw_config, "github-icon")
-    enabled = _get_switch(section, "github-icon")
+def validate_github_icon(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> GitHubIconConfig:
+    section = _get_section_mapping(raw_config, "github-icon", config_path)
+    enabled = _get_switch(section, "github-icon", config_path)
     if not enabled:
         return GitHubIconConfig(enabled=False, link="", style="")
 
     raw_link = section.get("link")
     if not isinstance(raw_link, str) or raw_link not in GITHUB_ICON_LINKS:
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: github-icon.switch is true, but "
+            f"{config_path}: github-icon.switch is true, but "
             "github-icon.link must be exactly 'profile' or 'repos'"
         )
 
     raw_style = section.get("style", "text")
     if not isinstance(raw_style, str) or raw_style not in GITHUB_ICON_STYLES:
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: github-icon.switch is true, but "
-            "github-icon.style must be exactly 'text' or 'icon'"
+            f"{config_path}: github-icon.switch is true, but "
+            "github-icon.style must be exactly 'auto', 'text', or 'icon'"
         )
 
     return GitHubIconConfig(enabled=True, link=raw_link, style=raw_style)
 
 
-def validate_intro(raw_config: dict[str, Any]) -> IntroConfig:
-    section = _get_section_mapping(raw_config, "intro")
-    enabled = _get_switch(section, "intro")
+def validate_intro(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> IntroConfig:
+    section = _get_section_mapping(raw_config, "intro", config_path)
+    enabled = _get_switch(section, "intro", config_path)
     if not enabled:
         return IntroConfig(enabled=False, text="")
 
-    text = _require_non_blank_string(section, "intro", "text")
+    text = _require_non_blank_string(section, "intro", "text", config_path)
     return IntroConfig(enabled=True, text=text)
 
 
-def validate_repo_grid(raw_config: dict[str, Any]) -> RepoGridConfig:
-    section = _get_section_mapping(raw_config, "repo_grid")
-    enabled = _get_switch(section, "repo_grid")
+def validate_repo_grid(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> RepoGridConfig:
+    section = _get_section_mapping(raw_config, "repo_grid", config_path)
+    enabled = _get_switch(section, "repo_grid", config_path)
     if not enabled:
         return RepoGridConfig(enabled=False, repo_list=[])
 
     repo_list = section.get("repo_list")
     if not isinstance(repo_list, list):
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: repo_grid.switch is true, but repo_grid.repo_list must be a non-empty list of repository names"
+            f"{config_path}: repo_grid.switch is true, but "
+            "repo_grid.repo_list must be a non-empty list of repository names"
         )
     if not repo_list:
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: repo_grid.switch is true, but repo_grid.repo_list must be a non-empty list of repository names"
+            f"{config_path}: repo_grid.switch is true, but "
+            "repo_grid.repo_list must be a non-empty list of repository names"
         )
 
     normalized: list[str] = []
     seen: set[str] = set()
+    duplicate_keys: set[str] = set()
     duplicates: list[str] = []
 
     for index, item in enumerate(repo_list):
         if not isinstance(item, str) or not item.strip():
             raise ConfigValidationError(
-                f"{CONFIG_PATH}: repo_grid.repo_list[{index}] must be a non-blank string"
+                f"{config_path}: repo_grid.repo_list[{index}] must be a non-blank string"
             )
         repo_name = item.strip()
+        repo_key = repo_name.casefold()
         normalized.append(repo_name)
-        if repo_name in seen and repo_name not in duplicates:
+        if repo_key in seen and repo_key not in duplicate_keys:
             duplicates.append(repo_name)
-        seen.add(repo_name)
+            duplicate_keys.add(repo_key)
+        seen.add(repo_key)
 
     if duplicates:
         duplicate_list = ", ".join(duplicates)
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: repo_grid.repo_list contains duplicate repository names: {duplicate_list}"
+            f"{config_path}: repo_grid.repo_list contains duplicate "
+            f"repository names: {duplicate_list}"
         )
 
     return RepoGridConfig(enabled=True, repo_list=normalized)
@@ -179,9 +192,10 @@ def validate_repo_grid(raw_config: dict[str, Any]) -> RepoGridConfig:
 
 def validate_recent_milestones(
     raw_config: dict[str, Any],
+    config_path: Path = CONFIG_PATH,
 ) -> RecentMilestonesConfig:
-    section = _get_section_mapping(raw_config, "recent_milestones")
-    enabled = _get_switch(section, "recent_milestones")
+    section = _get_section_mapping(raw_config, "recent_milestones", config_path)
+    enabled = _get_switch(section, "recent_milestones", config_path)
     if not enabled:
         return RecentMilestonesConfig(enabled=False, milestones=0, repo_list=[])
 
@@ -192,7 +206,7 @@ def validate_recent_milestones(
         or not 1 <= raw_milestones <= MAX_RECENT_MILESTONES
     ):
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: recent_milestones.switch is true, but "
+            f"{config_path}: recent_milestones.switch is true, but "
             "recent_milestones.milestones must be an integer "
             f"between 1 and {MAX_RECENT_MILESTONES}"
         )
@@ -200,31 +214,34 @@ def validate_recent_milestones(
     repo_list = section.get("repo_list")
     if not isinstance(repo_list, list) or not repo_list:
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: recent_milestones.switch is true, but "
+            f"{config_path}: recent_milestones.switch is true, but "
             "recent_milestones.repo_list must be a non-empty list of "
             "repository names"
         )
 
     normalized: list[str] = []
     seen: set[str] = set()
+    duplicate_keys: set[str] = set()
     duplicates: list[str] = []
 
     for index, item in enumerate(repo_list):
         if not isinstance(item, str) or not item.strip():
             raise ConfigValidationError(
-                f"{CONFIG_PATH}: recent_milestones.repo_list[{index}] must be "
+                f"{config_path}: recent_milestones.repo_list[{index}] must be "
                 "a non-blank string"
             )
         repo_name = item.strip()
+        repo_key = repo_name.casefold()
         normalized.append(repo_name)
-        if repo_name in seen and repo_name not in duplicates:
+        if repo_key in seen and repo_key not in duplicate_keys:
             duplicates.append(repo_name)
-        seen.add(repo_name)
+            duplicate_keys.add(repo_key)
+        seen.add(repo_key)
 
     if duplicates:
         duplicate_list = ", ".join(duplicates)
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: recent_milestones.repo_list contains duplicate "
+            f"{config_path}: recent_milestones.repo_list contains duplicate "
             f"repository names: {duplicate_list}"
         )
 
@@ -235,9 +252,11 @@ def validate_recent_milestones(
     )
 
 
-def validate_recent_commits(raw_config: dict[str, Any]) -> RecentCommitsConfig:
-    section = _get_section_mapping(raw_config, "recent_commits")
-    enabled = _get_switch(section, "recent_commits")
+def validate_recent_commits(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> RecentCommitsConfig:
+    section = _get_section_mapping(raw_config, "recent_commits", config_path)
+    enabled = _get_switch(section, "recent_commits", config_path)
     if not enabled:
         return RecentCommitsConfig(enabled=False, commits=0)
 
@@ -248,21 +267,27 @@ def validate_recent_commits(raw_config: dict[str, Any]) -> RecentCommitsConfig:
         or not 1 <= raw_commits <= MAX_RECENT_COMMITS
     ):
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: recent_commits.switch is true, but recent_commits.commits "
+            f"{config_path}: recent_commits.switch is true, but recent_commits.commits "
             f"must be an integer between 1 and {MAX_RECENT_COMMITS}"
         )
 
     return RecentCommitsConfig(enabled=True, commits=raw_commits)
 
 
-def validate_external_blog(raw_config: dict[str, Any]) -> ExternalBlogConfig:
-    section = _get_section_mapping(raw_config, "external_blog")
-    enabled = _get_switch(section, "external_blog")
+def validate_external_blog(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> ExternalBlogConfig:
+    section = _get_section_mapping(raw_config, "external_blog", config_path)
+    enabled = _get_switch(section, "external_blog", config_path)
     if not enabled:
         return ExternalBlogConfig(enabled=False, feed_url="", archive_url="", post_limit=0)
 
-    feed_url = _require_non_blank_string(section, "external_blog", "feed_url")
-    archive_url = _require_non_blank_string(section, "external_blog", "archive_url")
+    feed_url = _require_absolute_http_url(
+        section, "external_blog", "feed_url", config_path
+    )
+    archive_url = _require_absolute_http_url(
+        section, "external_blog", "archive_url", config_path
+    )
 
     raw_post_limit = section.get("post_limit")
     if (
@@ -271,7 +296,7 @@ def validate_external_blog(raw_config: dict[str, Any]) -> ExternalBlogConfig:
         or not 1 <= raw_post_limit <= MAX_EXTERNAL_BLOG_POST_LIMIT
     ):
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: external_blog.switch is true, but external_blog.post_limit "
+            f"{config_path}: external_blog.switch is true, but external_blog.post_limit "
             f"must be an integer between 1 and {MAX_EXTERNAL_BLOG_POST_LIMIT}"
         )
 
@@ -283,39 +308,69 @@ def validate_external_blog(raw_config: dict[str, Any]) -> ExternalBlogConfig:
     )
 
 
-def _get_section_mapping(raw_config: dict[str, Any], section_name: str) -> dict[str, Any]:
+def _get_section_mapping(
+    raw_config: dict[str, Any], section_name: str, config_path: Path
+) -> dict[str, Any]:
     section = raw_config.get(section_name)
     if section is None:
         return {}
     if not isinstance(section, dict):
-        raise ConfigValidationError(f"{CONFIG_PATH}: {section_name} must be a mapping")
+        raise ConfigValidationError(f"{config_path}: {section_name} must be a mapping")
     return section
 
 
-def _get_switch(section: dict[str, Any], section_name: str) -> bool:
+def _get_switch(
+    section: dict[str, Any], section_name: str, config_path: Path
+) -> bool:
     raw_switch = section.get("switch")
     if raw_switch is None or raw_switch is False:
         return False
     if raw_switch is True:
         return True
     raise ConfigValidationError(
-        f"{CONFIG_PATH}: {section_name}.switch must be a YAML boolean"
+        f"{config_path}: {section_name}.switch must be a YAML boolean"
     )
 
 
-def _require_non_blank_string(section: dict[str, Any], section_name: str, key: str) -> str:
+def _require_non_blank_string(
+    section: dict[str, Any], section_name: str, key: str, config_path: Path
+) -> str:
     raw_value = section.get(key)
-    value = _optional_string(raw_value, section_name, key)
+    value = _optional_string(raw_value, section_name, key, config_path)
     if not value:
         raise ConfigValidationError(
-            f"{CONFIG_PATH}: {section_name}.switch is true, but {section_name}.{key} is missing or blank"
+            f"{config_path}: {section_name}.switch is true, but {section_name}.{key} is missing or blank"
         )
     return value
 
 
-def _optional_string(value: Any, section_name: str, key: str) -> str:
+def _require_absolute_http_url(
+    section: dict[str, Any], section_name: str, key: str, config_path: Path
+) -> str:
+    value = _require_non_blank_string(section, section_name, key, config_path)
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        parsed = None
+
+    if (
+        parsed is None
+        or parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.netloc
+    ):
+        raise ConfigValidationError(
+            f"{config_path}: {section_name}.{key} must be an absolute HTTP(S) URL"
+        )
+    return value
+
+
+def _optional_string(
+    value: Any, section_name: str, key: str, config_path: Path
+) -> str:
     if value is None:
         return ""
     if not isinstance(value, str):
-        raise ConfigValidationError(f"{CONFIG_PATH}: {section_name}.{key} must be a string")
+        raise ConfigValidationError(
+            f"{config_path}: {section_name}.{key} must be a string"
+        )
     return value.strip()

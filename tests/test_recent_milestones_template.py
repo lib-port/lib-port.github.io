@@ -60,12 +60,12 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn("data-recent-milestone-title", template)
         self.assertIn("data-recent-milestone-repo", template)
         self.assertIn("data-recent-milestone-due-detail", template)
-        self.assertIn("{% octicon repo %}", template)
-        self.assertIn("{% octicon calendar %}", template)
-        self.assertIn("{% octicon tasklist %}", template)
-        self.assertIn("{% octicon goal %}", template)
-        self.assertIn("{% octicon issue-closed %}", template)
-        self.assertIn("{% octicon tag %}", template)
+        self.assertIn("{% octicon repo height:16 %}", template)
+        self.assertIn("{% octicon calendar height:16 %}", template)
+        self.assertIn("{% octicon tasklist height:16 %}", template)
+        self.assertIn("{% octicon goal height:16 %}", template)
+        self.assertIn("{% octicon issue-closed height:16 %}", template)
+        self.assertIn("{% octicon tag height:16 %}", template)
         self.assertIn('role="progressbar"', template)
         self.assertIn('aria-valuemin="0"', template)
         self.assertIn('aria-valuemax="100"', template)
@@ -111,22 +111,22 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertNotIn("•", metadata_markup)
         self.assertNotIn("·", metadata_markup)
 
-        repo_icon = template.index("{% octicon repo %}")
+        repo_icon = template.index("{% octicon repo height:16 %}")
         repo_link = template.index("<a data-recent-milestone-repo>")
         self.assertLess(repo_icon, repo_link)
 
-        due_icon = metadata_markup.index("{% octicon calendar %}")
+        due_icon = metadata_markup.index("{% octicon calendar height:16 %}")
         due = metadata_markup.index("<span data-recent-milestone-due></span>")
-        closed_icon = metadata_markup.index("{% octicon tasklist %}")
+        closed_icon = metadata_markup.index("{% octicon tasklist height:16 %}")
         closed_total = metadata_markup.index("data-recent-milestone-closed-total")
-        percentage_icon = metadata_markup.index("{% octicon goal %}")
+        percentage_icon = metadata_markup.index("{% octicon goal height:16 %}")
         percentage = metadata_markup.index("data-recent-milestone-percentage")
         progress = template.index("data-recent-milestone-progress\n")
-        latest_issue_icon = template.index("{% octicon issue-closed %}")
+        latest_issue_icon = template.index("{% octicon issue-closed height:16 %}")
         latest_issue_title = template.index(
             "<span data-recent-milestone-latest-closed-issue></span>"
         )
-        latest_issue_tag = template.index("{% octicon tag %}")
+        latest_issue_tag = template.index("{% octicon tag height:16 %}")
         latest_issue_labels = template.index(
             "<span data-recent-milestone-latest-closed-issue-labels></span>"
         )
@@ -158,7 +158,7 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
         milestone_icon = (
             '<span class="recent-milestone-icon" aria-hidden="true">'
-            "{% octicon milestone %}</span>"
+            "{% octicon milestone height:16 %}</span>"
         )
         milestone_link = (
             '<a class="linked-card-primary-link" '
@@ -209,7 +209,7 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn("data-recent-milestones-error", template)
         self.assertIn("unable to load recent milestones", template)
         self.assertIn("data-recent-milestones-empty", template)
-        self.assertIn("No open milestones with completed issues found", template)
+        self.assertIn("No open milestones with closed issues found", template)
 
     def test_styles_hide_client_states_and_use_responsive_milestone_layout(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")

@@ -9,6 +9,7 @@ const vm = require("node:vm");
 const scriptPath = path.join(__dirname, "..", "assets", "js", "external_blog.js");
 const {
   CACHE_TTL_MS,
+  REQUEST_TIMEOUT_MS,
   buildProxyUrl,
   enhanceContainer,
   formatPublishedAt,
@@ -119,7 +120,7 @@ test("builds an encoded RSS2JSON request URL", () => {
   );
 });
 
-test("normalizes, sorts, limits, and sanitizes feed items", () => {
+test("normalises, sorts, limits, and sanitises feed items", () => {
   const payload = {
     status: "ok",
     items: [
@@ -157,7 +158,7 @@ test("rejects unsuccessful or malformed proxy payloads", () => {
 });
 
 test("formats RSS2JSON dates in UTC", () => {
-  assert.equal(formatPublishedAt("2026-08-02 23:01:29"), "Aug 2, 2026");
+  assert.equal(formatPublishedAt("2026-08-02 23:01:29"), "2 Aug 2026");
   assert.equal(formatPublishedAt("not-a-date"), "");
 });
 
@@ -293,6 +294,55 @@ test("leaves the fallback intact when loading fails", async () => {
   assert.equal(container.children[0], fallback);
   assert.equal(container.attributes.has("aria-busy"), false);
   assert.equal(errors.length, 1);
+});
+
+test("aborts a stalled external blog request using the 15-second policy", async () => {
+  const container = makeContainer();
+  const errors = [];
+  let requestSignal;
+
+  const rendered = await enhanceContainer(container, {
+    fetchImpl: (_url, options) => {
+      requestSignal = options.signal;
+      return new Promise(() => {});
+    },
+    documentRef: new FakeDocument(),
+    storage: new FakeStorage(),
+    logger: { error: (...args) => errors.push(args) },
+    requestTimeoutMs: 10,
+  });
+
+  assert.equal(REQUEST_TIMEOUT_MS, 15_000);
+  assert.equal(rendered, false);
+  assert.equal(requestSignal.aborted, true);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][1].name, "TimeoutError");
+  assert.equal(container.attributes.has("aria-busy"), false);
+});
+
+test("handles a missing Fetch API without rejecting outside the loader", async () => {
+  const source = fs.readFileSync(scriptPath, "utf8");
+  const sandbox = {
+    Date,
+    Intl,
+    URL,
+    URLSearchParams,
+    clearTimeout,
+    module: { exports: {} },
+    setTimeout,
+  };
+  vm.runInNewContext(source, sandbox);
+  const errors = [];
+
+  const rendered = await sandbox.module.exports.enhanceContainer(makeContainer(), {
+    documentRef: new FakeDocument(),
+    storage: new FakeStorage(),
+    logger: { error: (...args) => errors.push(args) },
+  });
+
+  assert.equal(rendered, false);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0][1].message, /Fetch API unavailable/);
 });
 
 test("leaves the fallback intact when the feed has no valid posts", async () => {

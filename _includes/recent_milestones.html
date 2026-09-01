@@ -11,11 +11,11 @@
     <li class="recent-milestone-item linked-card" data-recent-milestone-item hidden>
       <div class="recent-milestone-heading">
         <h3 class="recent-milestone-title">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon milestone %}</span>
+          <span class="recent-milestone-icon" aria-hidden="true">{% octicon milestone height:16 %}</span>
           <a class="linked-card-primary-link" data-recent-milestone-title></a>
         </h3>
         <span class="recent-milestone-repo linked-card-foreground">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon repo %}</span>
+          <span class="recent-milestone-icon" aria-hidden="true">{% octicon repo height:16 %}</span>
           <a data-recent-milestone-repo>
             <span data-recent-milestone-repo-name></span>
           </a>
@@ -26,16 +26,16 @@
 
       <ul class="recent-milestone-details" aria-label="Milestone metadata">
         <li class="recent-milestone-detail" data-recent-milestone-due-detail>
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon calendar %}</span>
+          <span class="recent-milestone-icon" aria-hidden="true">{% octicon calendar height:16 %}</span>
           <span data-recent-milestone-due></span>
         </li>
         <li class="recent-milestone-detail">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon tasklist %}</span>
+          <span class="recent-milestone-icon" aria-hidden="true">{% octicon tasklist height:16 %}</span>
           <span data-recent-milestone-closed-total></span>
           <span>issues closed</span>
         </li>
         <li class="recent-milestone-detail">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon goal %}</span>
+          <span class="recent-milestone-icon" aria-hidden="true">{% octicon goal height:16 %}</span>
           <span><span class="recent-milestone-percentage" data-recent-milestone-percentage></span> complete</span>
         </li>
       </ul>
@@ -52,7 +52,7 @@
         </span>
         <ul class="recent-milestone-latest-issue" aria-label="Latest closed issue">
           <li class="recent-milestone-latest-issue-detail">
-            <span class="recent-milestone-icon" aria-hidden="true">{% octicon issue-closed %}</span>
+            <span class="recent-milestone-icon" aria-hidden="true">{% octicon issue-closed height:16 %}</span>
             <span data-recent-milestone-latest-closed-issue></span>
           </li>
           <li
@@ -60,7 +60,7 @@
             data-recent-milestone-latest-closed-issue-label-detail
             hidden
           >
-            <span class="recent-milestone-icon" aria-hidden="true">{% octicon tag %}</span>
+            <span class="recent-milestone-icon" aria-hidden="true">{% octicon tag height:16 %}</span>
             <span data-recent-milestone-latest-closed-issue-labels></span>
           </li>
         </ul>
@@ -70,15 +70,15 @@
   </ul>
 
   <p class="recent-milestones-status" data-recent-milestones-loading>
-    <span class="recent-milestones-status-icon" aria-hidden="true">{% octicon gear %}</span>
+    <span class="recent-milestones-status-icon" aria-hidden="true">{% octicon gear height:16 %}</span>
     <span>loading recent milestones</span>
   </p>
   <p class="recent-milestones-status" data-recent-milestones-error hidden>
-    <span class="recent-milestones-status-icon" aria-hidden="true">{% octicon alert %}</span>
+    <span class="recent-milestones-status-icon" aria-hidden="true">{% octicon alert height:16 %}</span>
     <span>unable to load recent milestones</span>
   </p>
   <p class="recent-milestones-status" data-recent-milestones-empty hidden>
-    No open milestones with completed issues found
+    No open milestones with closed issues found
   </p>
 
 </div>

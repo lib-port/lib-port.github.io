@@ -16,44 +16,46 @@
       {%- if repo -%}
         {%- assign branch = repo.default_branch | default: "main" -%}
         {%- assign homepage = repo.homepage | default: "" | strip -%}
+        {%- assign homepage_http_prefix = homepage | slice: 0, 7 -%}
+        {%- assign homepage_https_prefix = homepage | slice: 0, 8 -%}
         <li class="repo-card linked-card" data-repo-owner="{{ repo.owner.login | escape }}" data-repo-name="{{ repo.name | escape }}">
           <h3 class="repo-title">
-            <span class="repo-icon" aria-hidden="true">{% octicon repo %}</span>
-            <a class="repo-link linked-card-primary-link" href="{{ repo.html_url }}">{{ repo.name }}</a>
+            <span class="repo-icon" aria-hidden="true">{% octicon repo height:16 %}</span>
+            <a class="repo-link linked-card-primary-link" href="{{ repo.html_url | escape }}">{{ repo.name | escape }}</a>
           </h3>
 
           {%- if repo.description != "" -%}
-            <p class="repo-desc">{{ repo.description }}</p>
+            <p class="repo-desc">{{ repo.description | escape }}</p>
           {%- endif -%}
 
           <ul class="repo-meta linked-card-foreground" aria-label="Repository metadata">
             <li>
-              <span class="repo-icon" aria-hidden="true">{% octicon history %}</span>
-              <a href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/commits/" rel="nofollow">history</a>
+              <span class="repo-icon" aria-hidden="true">{% octicon history height:16 %}</span>
+              <a href="https://github.com/{{ repo.owner.login | escape }}/{{ repo.name | escape }}/commits/" rel="nofollow">history</a>
             </li>
 
             {%- if repo.license and repo.license.spdx_id and repo.license.spdx_id != "NOASSERTION" -%}
               <li>
-                <span class="repo-icon" aria-hidden="true">{% octicon law %}</span>
-                {{ repo.license.spdx_id }}
+                <span class="repo-icon" aria-hidden="true">{% octicon law height:16 %}</span>
+                {{ repo.license.spdx_id | escape }}
               </li>
             {%- endif -%}
 
             <li>
-              <span class="repo-icon" aria-hidden="true">{% octicon file-zip %}</span>
-              <a class="repo-download" href="https://github.com/{{ repo.owner.login }}/{{ repo.name }}/archive/refs/heads/{{ branch }}.zip" rel="nofollow">download <small>(.zip)</small></a>
+              <span class="repo-icon" aria-hidden="true">{% octicon file-zip height:16 %}</span>
+              <a class="repo-download" href="https://github.com/{{ repo.owner.login | escape }}/{{ repo.name | escape }}/archive/refs/heads/{{ branch | escape }}.zip" rel="nofollow">download <small>(.zip)</small></a>
             </li>
 
-            {%- if homepage != "" -%}
+            {%- if homepage_https_prefix == "https://" or homepage_http_prefix == "http://" -%}
               <li>
-                <span class="repo-icon" aria-hidden="true">{% octicon link %}</span>
+                <span class="repo-icon" aria-hidden="true">{% octicon link height:16 %}</span>
                 <a href="{{ homepage | escape }}" rel="nofollow">site</a>
               </li>
             {%- endif -%}
           </ul>
 
           <p class="repo-updated" aria-live="polite">
-            <span class="repo-icon" aria-hidden="true">{% octicon git-commit %}</span>
+            <span class="repo-icon" aria-hidden="true">{% octicon git-commit height:16 %}</span>
             <span class="repo-updated-text"></span>
           </p>
         </li>

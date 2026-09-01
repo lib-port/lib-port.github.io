@@ -8,6 +8,6 @@ group :jekyll_plugins do
   gem "jekyll-sitemap"
   gem "jekyll-feed"
   gem "jekyll-seo-tag"
-  gem "jekyll-octicons"
+  gem "jekyll-octicons", "~> 19.33"
   gem "jekyll-github-metadata"
 end

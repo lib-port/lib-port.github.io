@@ -57,6 +57,16 @@ function makeResponse(status = 200, payload = {}) {
   };
 }
 
+function makeDeferred() {
+  let reject;
+  let resolve;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 test("reads enabled features from the single page configuration", () => {
   assert.deepEqual(
     controller.readPageConfiguration(
@@ -432,6 +442,78 @@ test("pauses new requests after GitHub signals a rate limit", async () => {
     shared.hasRecentFailure(shared.getGlobalFailureKey(OWNER), storage, 1000),
     true
   );
+});
+
+test("retains a concurrent rate-limit failure after another request succeeds", async () => {
+  const storage = new FakeStorage();
+  const rateLimited = makeDeferred();
+  const successful = makeDeferred();
+  let calls = 0;
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => 1000,
+    fetchImpl: (url) => {
+      calls += 1;
+      return url.endsWith("rate-limited") ? rateLimited.promise : successful.promise;
+    },
+  });
+
+  const rateLimitRequest = coordinator.fetch("https://api.github.com/rate-limited");
+  const successfulRequest = coordinator.fetch("https://api.github.com/successful");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 2);
+
+  rateLimited.resolve(makeResponse(429));
+  assert.equal((await rateLimitRequest).status, 429);
+  successful.resolve(makeResponse(200));
+  assert.equal((await successfulRequest).status, 200);
+
+  assert.equal(
+    shared.hasRecentFailure(shared.getGlobalFailureKey(OWNER), storage, 1000),
+    true
+  );
+  await assert.rejects(
+    coordinator.fetch("https://api.github.com/paused"),
+    /temporarily paused/
+  );
+  assert.equal(calls, 2);
+});
+
+test("retains a concurrent network failure after another request succeeds", async () => {
+  const storage = new FakeStorage();
+  const failed = makeDeferred();
+  const successful = makeDeferred();
+  let calls = 0;
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => 1000,
+    fetchImpl: (url) => {
+      calls += 1;
+      return url.endsWith("failed") ? failed.promise : successful.promise;
+    },
+  });
+
+  const failedRequest = coordinator.fetch("https://api.github.com/failed");
+  const successfulRequest = coordinator.fetch("https://api.github.com/successful");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 2);
+
+  failed.reject(new Error("offline"));
+  await assert.rejects(failedRequest, /offline/);
+  successful.resolve(makeResponse(200));
+  assert.equal((await successfulRequest).status, 200);
+
+  assert.equal(
+    shared.hasRecentFailure(shared.getGlobalFailureKey(OWNER), storage, 1000),
+    true
+  );
+  await assert.rejects(
+    coordinator.fetch("https://api.github.com/paused"),
+    /temporarily paused/
+  );
+  assert.equal(calls, 2);
 });
 
 test("selects only repositories whose push state changed", () => {

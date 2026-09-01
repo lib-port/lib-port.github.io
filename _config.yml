@@ -13,7 +13,7 @@ plugins:
   - jekyll-seo-tag
   - jekyll-octicons
   - jekyll-github-metadata
-  
+
 markdown: kramdown
 kramdown:
   input: GFM
@@ -29,6 +29,7 @@ minima:
   hide_site_feed_link: true
 
 title: Library + Portfolio
+lang: en-GB
 
 ##################################
 # Start of landing page settings
@@ -37,7 +38,7 @@ title: Library + Portfolio
 github-icon:
   switch: true
   link: repos # {profile|repos}
-  style: text # {text|icon}
+  style: auto # {auto|text|icon}
 
 intro:
   switch: true

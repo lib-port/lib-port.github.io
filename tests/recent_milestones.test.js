@@ -147,7 +147,7 @@ function makeContainer({ limit = 2, repositories = ["tech-lib"] } = {}) {
   error.textContent = "unable to load recent milestones";
   error.setAttribute("hidden", "");
   const empty = new FakeElement();
-  empty.textContent = "No open milestones with completed issues found";
+  empty.textContent = "No open milestones with closed issues found";
   empty.setAttribute("hidden", "");
   const items = Array.from({ length: limit }, makeItem);
 
@@ -293,7 +293,7 @@ test("validates repository configuration in order", () => {
   assert.equal(normalizeRepositories(["tech-lib", 3]), null);
 });
 
-test("normalizes closed issues for open milestones and rejects malformed candidates", () => {
+test("normalises closed issues for open milestones and rejects malformed candidates", () => {
   const milestones = normalizeClosedIssueActivity(
     [
       makeApiIssue({
@@ -464,8 +464,8 @@ test("ranks by closure time rather than later issue or milestone updates", () =>
 });
 
 test("formats due dates in UTC and calculates rounded progress", () => {
-  assert.equal(formatDueDate("2027-03-31T00:00:00Z"), "March 31, 2027");
-  assert.equal(formatDueDate("2027-03-31T00:00:00+14:00"), "March 30, 2027");
+  assert.equal(formatDueDate("2027-03-31T00:00:00Z"), "31 March 2027");
+  assert.equal(formatDueDate("2027-03-31T00:00:00+14:00"), "30 March 2027");
   assert.equal(formatDueDate("invalid"), "");
   assert.equal(calculatePercentage(0, 0), 0);
   assert.equal(calculatePercentage(1, 3), 33);
@@ -520,7 +520,7 @@ test("renders the GitHub-style milestone fields and safe text values", () => {
   assert.match(title.href, /\/tech-lib\/milestone\/1$/);
   assert.equal(repoName.textContent, "tech-lib");
   assert.equal(dueDetail.hidden, false);
-  assert.equal(due.textContent, "Due by March 31, 2027");
+  assert.equal(due.textContent, "Due by 31 March 2027");
   assert.equal(total.textContent, "1/4");
   assert.equal(progress.attributes.get("aria-valuenow"), "25");
   assert.equal(progressValue.style.width, "25%");
@@ -638,7 +638,7 @@ test("resets the optional due-date detail when reusing a milestone item", () => 
     true
   );
   assert.equal(dueDetail.hidden, false);
-  assert.equal(due.textContent, "Due by March 31, 2027");
+  assert.equal(due.textContent, "Due by 31 March 2027");
 
   assert.equal(
     renderMilestones(
@@ -662,7 +662,7 @@ test("resets the optional due-date detail when reusing a milestone item", () => 
     true
   );
   assert.equal(dueDetail.hidden, false);
-  assert.equal(due.textContent, "Due by March 31, 2027");
+  assert.equal(due.textContent, "Due by 31 March 2027");
 });
 
 test("resets optional issue labels when reusing a milestone item", () => {

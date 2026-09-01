@@ -76,6 +76,19 @@ class SiteConfigValidationTests(unittest.TestCase):
         self.assertEqual(config.external_blog.archive_url, "https://example.com/archive")
         self.assertEqual(config.external_blog.post_limit, 5)
 
+    def test_validation_errors_report_the_supplied_config_path(self) -> None:
+        config_path = self.write_config(
+            """
+            intro:
+              switch: true
+            """
+        )
+
+        with self.assertRaises(ConfigValidationError) as raised:
+            validate_site_config(config_path)
+
+        self.assertIn(str(config_path), str(raised.exception))
+
     def test_github_icon_accepts_profile_and_repos_destinations(self) -> None:
         for link in ("profile", "repos"):
             with self.subTest(link=link):
@@ -93,8 +106,8 @@ class SiteConfigValidationTests(unittest.TestCase):
                 self.assertEqual(config.github_icon.link, link)
                 self.assertEqual(config.github_icon.style, "text")
 
-    def test_github_icon_accepts_text_and_icon_styles(self) -> None:
-        for style in ("text", "icon"):
+    def test_github_icon_accepts_supported_styles(self) -> None:
+        for style in ("auto", "text", "icon"):
             with self.subTest(style=style):
                 config_path = self.write_config(
                     f"""
@@ -204,7 +217,8 @@ class SiteConfigValidationTests(unittest.TestCase):
 
                 with self.assertRaisesRegex(
                     ConfigValidationError,
-                    r"github-icon\.style must be exactly 'text' or 'icon'",
+                    r"github-icon\.style must be exactly "
+                    r"'auto', 'text', or 'icon'",
                 ):
                     validate_site_config(config_path)
 
@@ -308,6 +322,22 @@ class SiteConfigValidationTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ConfigValidationError, "duplicate repository names: alpha"):
+            validate_site_config(config_path)
+
+    def test_repo_grid_duplicates_are_case_insensitive(self) -> None:
+        config_path = self.write_config(
+            """
+            repo_grid:
+              switch: true
+              repo_list:
+                - Example
+                - example
+            """
+        )
+
+        with self.assertRaisesRegex(
+            ConfigValidationError, "duplicate repository names: example"
+        ):
             validate_site_config(config_path)
 
     def test_missing_recent_milestones_is_disabled(self) -> None:
@@ -446,6 +476,22 @@ class SiteConfigValidationTests(unittest.TestCase):
         ):
             validate_site_config(duplicate_config)
 
+        case_variant_config = self.write_config(
+            """
+            recent_milestones:
+              switch: true
+              milestones: 1
+              repo_list:
+                - Tech-Lib
+                - tech-lib
+            """
+        )
+        with self.assertRaisesRegex(
+            ConfigValidationError,
+            r"duplicate repository names: tech-lib",
+        ):
+            validate_site_config(case_variant_config)
+
     def test_quoted_switch_value_is_rejected(self) -> None:
         config_path = self.write_config(
             """
@@ -523,6 +569,43 @@ class SiteConfigValidationTests(unittest.TestCase):
             r"external_blog\.switch is true, but external_blog\.archive_url is missing or blank",
         ):
             validate_site_config(config_path)
+
+    def test_external_blog_urls_must_be_absolute_http_urls(self) -> None:
+        invalid_urls = (
+            "not-a-url",
+            "/feed.xml",
+            "ftp://example.com/feed.xml",
+            "javascript:alert(1)",
+            "https:///missing-host",
+        )
+        for field in ("feed_url", "archive_url"):
+            for invalid_url in invalid_urls:
+                with self.subTest(field=field, invalid_url=invalid_url):
+                    feed_url = (
+                        invalid_url
+                        if field == "feed_url"
+                        else "https://example.com/feed.xml"
+                    )
+                    archive_url = (
+                        invalid_url
+                        if field == "archive_url"
+                        else "https://example.com/archive"
+                    )
+                    config_path = self.write_config(
+                        f"""
+                        external_blog:
+                          switch: true
+                          feed_url: {feed_url}
+                          archive_url: {archive_url}
+                          post_limit: 3
+                        """
+                    )
+
+                    with self.assertRaisesRegex(
+                        ConfigValidationError,
+                        rf"external_blog\.{field} must be an absolute HTTP\(S\) URL",
+                    ):
+                        validate_site_config(config_path)
 
     def test_external_blog_post_limit_must_be_between_one_and_ten(self) -> None:
         for post_limit in (0, 11, True, "5"):

@@ -5,6 +5,10 @@
   <meta name="color-scheme" content="light dark">
   {%- seo -%}
   {%- include theme_bootstrap.html -%}
+  {%- assign github_icon = site["github-icon"] -%}
+  {%- if github_icon.switch == true and github_icon.style == "auto" -%}
+    {%- include github_icon_bootstrap.html -%}
+  {%- endif -%}
   <link id="main-stylesheet" rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
   {% if site.external_blog and site.external_blog.switch and site.external_blog.feed_url %}
   <link rel="alternate" type="application/rss+xml" title="{{ site.title | escape }}" href="{{ site.external_blog.feed_url | escape }}" />
@@ -14,5 +18,5 @@
   {%- endif -%}
 
   {%- include custom-head.html -%}
-  
+
 </head>

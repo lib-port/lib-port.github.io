@@ -17,7 +17,7 @@
       {%- if github_icon_style == nil -%}
         {%- assign github_icon_style = "text" -%}
       {%- endif -%}
-      {%- if github_icon_style == "text" or github_icon_style == "icon" -%}
+      {%- if github_icon_style == "auto" or github_icon_style == "text" or github_icon_style == "icon" -%}
         {%- assign github_icon_style_is_valid = true -%}
       {%- endif -%}
       {%- assign github_owner_url = site.github.owner_url | default: "" | strip -%}
@@ -55,11 +55,15 @@
           class="github-icon-link github-icon-link--{{ github_icon_style }}"
           href="{{ github_icon_url | escape }}"
           aria-label="{{ github_icon_label | escape }}"
-        >{%- if github_icon_style == "icon" -%}
-            {% octicon mark-github %}
+        >{%- case github_icon_style -%}
+          {%- when "icon" -%}
+            {% octicon mark-github height:24 %}
+          {%- when "auto" -%}
+            <span class="github-icon-variant github-icon-variant--mark" data-github-icon-variant="mark" aria-hidden="true">{% octicon mark-github height:24 %}</span>
+            <span class="github-icon-variant github-icon-variant--logo" data-github-icon-variant="logo" aria-hidden="true">{% octicon logo-github height:24 %}</span>
           {%- else -%}
-            {% octicon logo-github %}
-          {%- endif -%}</a>
+            {% octicon logo-github height:24 %}
+          {%- endcase -%}</a>
       {%- endif -%}
     </div>
   </div>
