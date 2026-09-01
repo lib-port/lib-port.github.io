@@ -27,9 +27,9 @@ class ThemeToggleTemplateTests(unittest.TestCase):
         self.assertIn("data-theme-toggle", template)
         self.assertIn('aria-label="Switch to dark mode"', template)
         self.assertIn('data-theme-icon="dark" aria-hidden="true"', template)
-        self.assertIn("{% octicon moon %}", template)
+        self.assertIn("{% octicon moon height:16 %}", template)
         self.assertIn('data-theme-icon="light" aria-hidden="true" hidden', template)
-        self.assertIn("{% octicon sun %}", template)
+        self.assertIn("{% octicon sun height:16 %}", template)
         self.assertRegex(template, r"theme_toggle\.js[^>]*defer")
 
     def test_styles_cover_forced_themes_and_switcher_states(self) -> None:

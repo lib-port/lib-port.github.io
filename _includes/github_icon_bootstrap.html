@@ -1,0 +1,36 @@
+<script data-github-icon-bootstrap>
+  (() => {
+    const root = document.documentElement;
+    if (!root) return;
+
+    root.dataset.githubIconVariant = "logo";
+
+    try {
+      const clientHintPlatform = navigator.userAgentData?.platform;
+      const normalizedPlatform =
+        typeof clientHintPlatform === "string"
+          ? clientHintPlatform.trim().toLowerCase()
+          : "";
+
+      if (normalizedPlatform) {
+        if (normalizedPlatform === "linux") {
+          root.dataset.githubIconVariant = "mark";
+        }
+        return;
+      }
+
+      const legacyPlatform = `${navigator.userAgent || ""} ${
+        navigator.platform || ""
+      }`;
+      const isDesktopLinux =
+        /\bLinux\b/i.test(legacyPlatform) &&
+        !/\b(?:Android|CrOS)\b/i.test(legacyPlatform);
+
+      if (isDesktopLinux) {
+        root.dataset.githubIconVariant = "mark";
+      }
+    } catch {
+      // The logo is the safe fallback when platform details are unavailable.
+    }
+  })();
+</script>

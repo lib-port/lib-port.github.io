@@ -1,6 +1,6 @@
 # Developer Landing Page
 
-[![Deploy Jekyll with GitHub Pages](https://github.com/lib-port/lib-port.github.io/actions/workflows/jekyll-gh-pages.yml/badge.svg)](https://github.com/lib-port/lib-port.github.io/actions/workflows/jekyll-gh-pages.yml)
+[![Deploy Jekyll with GitHub Pages](https://github.com/lib-port/lib-port.github.io/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/lib-port/lib-port.github.io/actions/workflows/deploy-pages.yml)
 [![Live site](https://img.shields.io/website?url=https%3A%2F%2Flib-port.github.io%2F&up_message=online&down_message=offline&label=site)](https://lib-port.github.io/)
 [![Jekyll 4.4.1](https://img.shields.io/badge/Jekyll-4.4.1-CC0000?logo=jekyll&logoColor=white)](https://jekyllrb.com/)
 [![Ruby 3.3](https://img.shields.io/badge/Ruby-3.3-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
@@ -8,7 +8,7 @@
 [![Sass/SCSS](https://img.shields.io/badge/Sass-SCSS-CC6699?logo=sass&logoColor=white)](https://sass-lang.com/)
 [![Vanilla JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?logo=javascript&logoColor=000)](https://developer.mozilla.org/docs/Web/JavaScript)
 
-A configurable Jekyll landing page for presenting selected GitHub repositories, recent milestones and commits, and posts from a blog feed. It is designed for GitHub Pages and builds on the [Minima theme](https://github.com/jekyll/minima).
+A configurable Jekyll landing page for presenting selected GitHub repositories, recent milestones and commits, and posts from a blog feed. It is designed for GitHub Pages and follows the latest version of the [Minima theme](https://github.com/jekyll/minima).
 
 [View the live demo](https://lib-port.github.io/)
 
@@ -47,11 +47,12 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 
 ```yaml
 title: Your Name
+lang: en-GB
 
 github-icon:
   switch: true
   link: repos
-  style: text
+  style: auto
 
 intro:
   switch: true
@@ -90,27 +91,28 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | Setting | Requirement |
 | --- | --- |
 | `title` | Site title used by the theme and metadata. |
+| `lang` | Site language used by page metadata. Use `en-GB` for the provided UK-English interface. |
 | `description` | Site description used by metadata and the footer. |
 | `github-icon.switch` | YAML boolean controlling whether the rightmost header icon is shown. The default is `false` when the switch or section is missing. |
 | `github-icon.link` | Required when enabled and must be exactly `profile` or `repos`. `profile` uses the owner profile URL; `repos` adds `?tab=repositories` to it. There is no enabled default. |
-| `github-icon.style` | Optional when enabled and must be exactly `text` or `icon`. `text` shows the GitHub wordmark and is the default; `icon` shows the GitHub mark. |
+| `github-icon.style` | Optional when enabled and must be exactly `auto`, `text`, or `icon`. `auto` shows the GitHub mark without JavaScript and on detected desktop Linux systems, otherwise it shows the GitHub wordmark. `text` always shows the wordmark and is the default; `icon` always shows the mark. |
 | `intro.switch` | YAML boolean controlling whether the introduction is shown. |
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
-| `repo_grid.repo_list` | Required, non-empty list of unique repository names when enabled. Repositories must belong to the account hosting the site. |
+| `repo_grid.repo_list` | Required, non-empty list of case-insensitively unique repository names when enabled. Repositories must belong to the account hosting the site. |
 | `recent_milestones.switch` | YAML boolean controlling whether recent GitHub milestones are loaded. |
 | `recent_milestones.milestones` | Required integer from 1 through 10 controlling how many globally recent milestones are shown when enabled. |
-| `recent_milestones.repo_list` | Required, non-empty list of unique public repository names to poll under the account hosting the site when enabled. |
+| `recent_milestones.repo_list` | Required, non-empty list of case-insensitively unique public repository names to poll under the account hosting the site when enabled. |
 | `recent_commits.switch` | YAML boolean controlling whether recent GitHub commits are loaded. |
 | `recent_commits.commits` | Required integer from 1 through 10 when enabled. |
 | `external_blog.switch` | YAML boolean controlling whether external posts are shown. |
-| `external_blog.feed_url` | Required blog RSS URL when external posts are enabled. |
-| `external_blog.archive_url` | Required blog archive URL used by the fallback and “View all posts” links. |
+| `external_blog.feed_url` | Required absolute HTTP(S) blog RSS URL when external posts are enabled. |
+| `external_blog.archive_url` | Required absolute HTTP(S) blog archive URL used by the fallback and “View all posts” links. |
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
 Use unquoted `true` and `false` values for switches. Disabled sections ignore their inner settings, including `github-icon.link` and `github-icon.style`. When all three GitHub activity sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
 
-The GitHub logo opens in the current tab and remains the rightmost header action. Its destination comes from the account that owns the Pages repository: `jekyll-github-metadata` resolves that owner during deployment or from the Git `origin` during local development, which keeps forks portable. The icon is omitted if owner metadata is unavailable. Add future header links before it in [`_includes/header.html`](./_includes/header.html) to retain this ordering.
+The GitHub link opens in the current tab and remains the rightmost header action. In `auto` mode, the mark is the progressive fallback when JavaScript is unavailable; an early platform check retains it for desktop Linux and selects the wordmark elsewhere. Its destination comes from the account that owns the Pages repository: `jekyll-github-metadata` resolves that owner during deployment or from the Git `origin` during local development, which keeps forks portable. The link is omitted if owner metadata is unavailable. Add future header links before it in [`_includes/header.html`](./_includes/header.html) to retain this ordering.
 
 ### GitHub activity controller
 
@@ -130,7 +132,7 @@ If revalidation fails, the stale timestamps remain available and another request
 
 When `recent_milestones.switch` is enabled and the section approaches the viewport, the activity controller requests closed, milestone-bearing issues from each repository in `recent_milestones.repo_list`. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
 
-The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title and labels of its latest closed issue. The label group is omitted when that issue has no labels. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with completed issues found`.
+The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title and labels of its latest closed issue. The label group is omitted when that issue has no labels. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with closed issues found`.
 
 Results use the same cache policy as the other GitHub sections. Compacted closed-issue page summaries remain fresh in `localStorage` for seven days, with duplicate appearances of a milestone reduced to its newest closed issue within each page. After that, every cached API page is conditionally revalidated with its ETag; stale data is retained indefinitely, malformed or future-dated entries are removed, and failures prevent another attempt for six hours. Successful and cached repository data is combined silently if only part of a refresh fails. The section is hidden unless JavaScript initialises. The v4 cache format adds latest-issue labels and replaces incompatible v3 milestone entries.
 
@@ -150,7 +152,7 @@ During revalidation, the section displays a gear Octicon with `loading recent co
 
 The page initially displays a normal “View Posts” archive link. When JavaScript is available, [`assets/js/external_blog.js`](./assets/js/external_blog.js) requests the configured feed through the keyless [RSS2JSON API](https://rss2json.com/docs) and replaces the fallback with recent posts.
 
-Successful responses are cached in the visitor's `localStorage` for seven days, keyed by feed URL. During that period the page renders the cached posts without another proxy request. Invalid, unavailable, or expired cached data falls back to a new request; if that request fails, the archive link remains available.
+Successful responses are cached in the visitor's `localStorage` for seven days, keyed by feed URL. During that period the page renders the cached posts without another proxy request. Invalid, unavailable, or expired cached data falls back to a new request. Requests that do not finish reading their response within 15 seconds are aborted; if any request fails, the archive link remains available.
 
 ### Theme preference
 
@@ -163,9 +165,9 @@ The theme is selected before the main stylesheet loads to avoid a mismatched-col
 ### Prerequisites
 
 - Ruby 3.3 and Bundler
-- Python 3 and `pip`
+- Python 3.11 and `pip`
 - Node.js 20 for client-side tests
-- Network access to download the remote Minima theme
+- Network access to download the latest remote Minima theme
 
 ### Install dependencies
 
@@ -202,10 +204,10 @@ node --test tests/*.test.js
 | Recent commits | Build metadata supplies eligible repository names; the controller loads author-linked commits near the viewport and, on weekly refresh, polls only repositories whose push timestamp changed. |
 | External posts | Browser JavaScript loads the configured blog feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
 | Theme preference | Minima supplies the light and dark palettes; `assets/js/theme_toggle.js` applies and persists the visitor's explicit override. |
-| Deployment | `.github/workflows/jekyll-gh-pages.yml` validates, builds, uploads, and deploys the site. |
+| Deployment | `.github/workflows/deploy-pages.yml` validates, builds, uploads, and deploys the site. |
 | Repository mirror | `.github/workflows/gitlab-main-mirror.yml` keeps GitLab `main` aligned with GitHub `main`. |
 
-Client-side features use progressive enhancement: repository cards remain available without GitHub API updates, the recent-milestone and recent-commit sections stay hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system colour preference without the switcher.
+Client-side features use progressive enhancement: the automatic GitHub header style falls back to the mark, repository cards remain available without GitHub API updates, the recent-milestone and recent-commit sections stay hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system colour preference without the switcher.
 
 ## Deployment
 
@@ -248,6 +250,8 @@ Mirroring uses an SSH deploy-key pair. Store the private key in the GitHub repos
 Custom homepage markup lives in `_includes`, while component styling lives in [`_sass/minima/custom-styles.scss`](./_sass/minima/custom-styles.scss). Refer to the [Minima documentation](https://github.com/jekyll/minima) for broader theme customisation.
 
 Minima's built-in feed configuration can conflict with this project's external-feed settings. The `jekyll-feed` dependency remains because Minima expects it, but the homepage intentionally links to the configured external feed instead of presenting the generated site feed.
+
+The `remote_theme` setting intentionally omits a version or commit reference so each build uses the latest Minima revision.
 
 ## Licence
 

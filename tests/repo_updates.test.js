@@ -108,7 +108,7 @@ test("formats repository updates by the visitor's local calendar", () => {
     ["2026-07-21T23:00:00Z", "updated last week"],
     ["2026-07-20T23:00:00Z", "updated 2 weeks ago"],
     ["2026-07-07T23:00:00Z", "updated 3 weeks ago"],
-    ["2026-07-06T23:00:00Z", "updated on Jul 7"],
+    ["2026-07-06T23:00:00Z", "updated on 7 Jul"],
   ];
 
   for (const [timestamp, expected] of cases) {
@@ -119,7 +119,7 @@ test("formats repository updates by the visitor's local calendar", () => {
 test("uses an absolute date for a future calendar day", () => {
   const now = new Date("2026-08-04T12:00:00+10:00");
 
-  assert.equal(formatPushedAt("2026-08-04T15:00:00Z", now), "updated on Aug 5");
+  assert.equal(formatPushedAt("2026-08-04T15:00:00Z", now), "updated on 5 Aug");
 });
 
 test("counts calendar days across a daylight-saving transition", () => {
@@ -134,10 +134,10 @@ test("counts calendar days across a daylight-saving transition", () => {
 test("chooses the displayed year from local dates", () => {
   const now = new Date("2026-02-05T12:00:00+11:00");
 
-  assert.equal(formatPushedAt("2025-12-31T13:30:00Z", now), "updated on Jan 1");
+  assert.equal(formatPushedAt("2025-12-31T13:30:00Z", now), "updated on 1 Jan");
   assert.equal(
     formatPushedAt("2025-12-30T13:30:00Z", now),
-    "updated on Dec 31, 2025"
+    "updated on 31 Dec 2025"
   );
 });
 

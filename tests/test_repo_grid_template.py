@@ -6,6 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = REPO_ROOT / "_includes" / "repo_grid.html"
+INTRO_TEMPLATE_PATH = REPO_ROOT / "_includes" / "intro.html"
 MILESTONE_TEMPLATE_PATH = REPO_ROOT / "_includes" / "recent_milestones.html"
 STYLES_PATH = REPO_ROOT / "_sass" / "minima" / "custom-styles.scss"
 
@@ -14,11 +15,11 @@ class RepoGridTemplateTests(unittest.TestCase):
     def test_repo_title_has_decorative_repo_icon_before_link(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
         repo_icon = (
-            '<span class="repo-icon" aria-hidden="true">{% octicon repo %}</span>'
+            '<span class="repo-icon" aria-hidden="true">{% octicon repo height:16 %}</span>'
         )
         repo_link = (
             '<a class="repo-link linked-card-primary-link" '
-            'href="{{ repo.html_url }}">{{ repo.name }}</a>'
+            'href="{{ repo.html_url | escape }}">{{ repo.name | escape }}</a>'
         )
 
         self.assertIn(repo_icon, template)
@@ -115,15 +116,29 @@ class RepoGridTemplateTests(unittest.TestCase):
         self.assertIn(
             'assign homepage = repo.homepage | default: "" | strip', template
         )
-        self.assertIn('if homepage != ""', template)
-        self.assertIn('{% octicon link %}', template)
+        self.assertIn('homepage_https_prefix == "https://"', template)
+        self.assertIn('homepage_http_prefix == "http://"', template)
+        self.assertIn('{% octicon link height:16 %}', template)
         self.assertIn(
             '<a href="{{ homepage | escape }}" rel="nofollow">site</a>', template
         )
         self.assertLess(
-            template.index('{% octicon file-zip %}'),
-            template.index('{% octicon link %}'),
+            template.index('{% octicon file-zip height:16 %}'),
+            template.index('{% octicon link height:16 %}'),
         )
+
+    def test_plain_text_configuration_and_repository_metadata_are_escaped(self) -> None:
+        intro_template = INTRO_TEMPLATE_PATH.read_text(encoding="utf-8")
+        repo_template = TEMPLATE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("{{ intro_text | escape }}", intro_template)
+        for expression in (
+            "{{ repo.name | escape }}",
+            "{{ repo.description | escape }}",
+            "{{ repo.license.spdx_id | escape }}",
+        ):
+            with self.subTest(expression=expression):
+                self.assertIn(expression, repo_template)
 
 
 if __name__ == "__main__":

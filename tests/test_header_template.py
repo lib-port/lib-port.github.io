@@ -9,6 +9,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HEADER_PATH = REPO_ROOT / "_includes" / "header.html"
+HEAD_PATH = REPO_ROOT / "_includes" / "head.html"
 STYLES_PATH = REPO_ROOT / "_sass" / "minima" / "custom-styles.scss"
 LIQUID_RENDERER = """
 require "json"
@@ -77,6 +78,11 @@ class HeaderTemplateTests(unittest.TestCase):
         self.assertIn('aria-label="View profile on GitHub for example"', rendered)
         self.assertIn("github-icon-link--text", rendered)
         self.assertIn('class="octicon octicon-logo-github"', rendered)
+        self.assertRegex(
+            rendered,
+            r'<svg[^>]*height="24"[^>]*octicon-logo-github[^>]*'
+            r'viewBox="0 0 74 24"',
+        )
         self.assertNotIn('class="octicon octicon-mark-github"', rendered)
         self.assertNotIn("target=", rendered)
 
@@ -100,7 +106,33 @@ class HeaderTemplateTests(unittest.TestCase):
 
         self.assertIn("github-icon-link--icon", rendered)
         self.assertIn('class="octicon octicon-mark-github"', rendered)
+        self.assertRegex(
+            rendered,
+            r'<svg[^>]*height="24"[^>]*octicon-mark-github[^>]*'
+            r'viewBox="0 0 24 24"',
+        )
         self.assertNotIn('class="octicon octicon-logo-github"', rendered)
+
+    def test_auto_style_renders_both_progressive_variants(self) -> None:
+        rendered = self.render_header(
+            owner_url="https://github.com/example",
+            owner_name="example",
+            github_icon={
+                "switch": True,
+                "link": "profile",
+                "style": "auto",
+            },
+        )
+
+        self.assertIn("github-icon-link--auto", rendered)
+        self.assertIn('data-github-icon-variant="mark"', rendered)
+        self.assertIn('data-github-icon-variant="logo"', rendered)
+        self.assertIn('class="octicon octicon-mark-github"', rendered)
+        self.assertIn('class="octicon octicon-logo-github"', rendered)
+        self.assertLess(
+            rendered.index('data-github-icon-variant="mark"'),
+            rendered.index('data-github-icon-variant="logo"'),
+        )
 
     def test_false_or_missing_switch_omits_icon(self) -> None:
         configurations = (
@@ -173,6 +205,16 @@ class HeaderTemplateTests(unittest.TestCase):
 
         self.assertIn('site["github-icon"]', template)
 
+    def test_auto_icon_bootstrap_precedes_the_stylesheet(self) -> None:
+        head = HEAD_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('github_icon.style == "auto"', head)
+        self.assertIn("include github_icon_bootstrap.html", head)
+        self.assertLess(
+            head.index("include github_icon_bootstrap.html"),
+            head.index('id="main-stylesheet"'),
+        )
+
     def test_styles_keep_header_actions_right_aligned_and_responsive(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")
 
@@ -191,10 +233,11 @@ class HeaderTemplateTests(unittest.TestCase):
         )
         self.assertRegex(
             styles,
-            r"\.github-icon-link\s*\{[^}]*width:\s*3\.5625rem",
+            r"\.github-icon-link\s*\{[^}]*width:\s*5\.375rem",
         )
         link_rule = rule(".github-icon-link")
         self.assertIn("box-sizing: border-box;", link_rule)
+        self.assertIn("height: 2.25rem;", link_rule)
         self.assertNotIn("border:", link_rule)
 
         hover_rule = rule(".github-icon-link:hover")
@@ -206,17 +249,43 @@ class HeaderTemplateTests(unittest.TestCase):
         self.assertIn("text-decoration: none;", hover_rule)
         self.assertRegex(
             styles,
-            r"\.github-icon-link--text > \.octicon\s*\{[^}]*width:\s*2\.8125rem",
+            r"\.github-icon-link > \.octicon\s*\{[^}]*height:\s*1\.5rem",
         )
         self.assertRegex(
             styles,
-            r"\.github-icon-link--icon > \.octicon\s*\{[^}]*width:\s*1rem",
+            r"\.github-icon-link--text > \.octicon\s*\{[^}]*width:\s*4\.625rem",
         )
+        self.assertRegex(
+            styles,
+            r"\.github-icon-link--icon > \.octicon\s*\{[^}]*width:\s*1\.5rem",
+        )
+        variant_rule = rule(".github-icon-variant")
+        self.assertIn("display: inline-flex;", variant_rule)
+        self.assertIn("height: 1.5rem;", variant_rule)
+
+        variant_icon_rule = rule(".github-icon-variant > .octicon")
+        self.assertIn("height: 1.5rem;", variant_icon_rule)
+
+        mark_rule = rule(".github-icon-variant--mark")
+        self.assertNotIn("display: none;", mark_rule)
+        self.assertRegex(
+            styles,
+            r"\.github-icon-variant--mark\s*\{[^}]*width:\s*1\.5rem",
+        )
+        self.assertRegex(
+            styles,
+            r"\.github-icon-variant--logo\s*\{[^}]*display:\s*none"
+            r"[^}]*width:\s*4\.625rem",
+        )
+        self.assertIn('html[data-github-icon-variant="logo"]', styles)
+        self.assertIn(".github-icon-link--auto", styles)
         self.assertIn(".github-icon-link:focus-visible", styles)
         self.assertNotIn(".github-projects-link", styles)
         self.assertRegex(
             styles,
-            r"@media screen and \(max-width: 600px\)\s*\{\s*\.site-header-actions--with-github-icon > \.site-nav\s*\{[^}]*right:",
+            r"@media screen and \(max-width: 600px\)\s*\{\s*"
+            r"\.site-header-actions--with-github-icon > \.site-nav\s*"
+            r"\{[^}]*right:\s*calc\(18px \+ 5\.375rem \+ 0\.5rem\)",
         )
 
 

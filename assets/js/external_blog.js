@@ -4,7 +4,8 @@
   const CACHE_KEY_PREFIX = "external-blog:v1:";
   const MAX_POSTS = 10;
   const EXCERPT_MAX_LENGTH = 280;
-  const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  const REQUEST_TIMEOUT_MS = 15_000;
+  const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -27,12 +28,13 @@
   async function enhanceContainer(
     container,
     {
-      fetchImpl = fetch,
+      fetchImpl = getDefaultFetch(),
       documentRef = document,
       storage = getDefaultStorage(),
       now = Date.now(),
       logger = console,
       htmlToText = parseHtmlToText,
+      requestTimeoutMs = REQUEST_TIMEOUT_MS,
     } = {}
   ) {
     const feedUrl = normalizeHttpUrl(container?.dataset?.feedUrl);
@@ -53,15 +55,12 @@
     container.setAttribute("aria-busy", "true");
 
     try {
-      const response = await fetchImpl(buildProxyUrl(feedUrl), {
-        headers: { Accept: "application/json" },
-      });
-
-      if (!response.ok) {
-        throw new Error(`RSS2JSON returned ${response.status}`);
-      }
-
-      const posts = normalizeFeedItems(await response.json(), MAX_POSTS, htmlToText);
+      const payload = await fetchFeed(
+        buildProxyUrl(feedUrl),
+        fetchImpl,
+        requestTimeoutMs
+      );
+      const posts = normalizeFeedItems(payload, MAX_POSTS, htmlToText);
       if (posts.length === 0) {
         throw new Error("RSS2JSON returned no valid posts");
       }
@@ -80,6 +79,66 @@
   function buildProxyUrl(feedUrl) {
     const params = new URLSearchParams({ rss_url: feedUrl });
     return `${RSS2JSON_ENDPOINT}?${params.toString()}`;
+  }
+
+  function getDefaultFetch() {
+    try {
+      return typeof fetch === "function" ? fetch.bind(globalThis) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function createTimeoutError(timeoutMs) {
+    const error = new Error(`External blog request timed out after ${timeoutMs} ms`);
+    error.name = "TimeoutError";
+    return error;
+  }
+
+  async function fetchFeed(url, fetchImpl, requestTimeoutMs = REQUEST_TIMEOUT_MS) {
+    if (typeof fetchImpl !== "function") {
+      throw new Error("Fetch API unavailable");
+    }
+
+    const timeoutMs =
+      typeof requestTimeoutMs === "number" &&
+      Number.isFinite(requestTimeoutMs) &&
+      requestTimeoutMs > 0
+        ? requestTimeoutMs
+        : REQUEST_TIMEOUT_MS;
+    const controller =
+      typeof AbortController === "function" ? new AbortController() : null;
+    const requestOptions = {
+      headers: { Accept: "application/json" },
+    };
+    if (controller) requestOptions.signal = controller.signal;
+
+    let timeoutId = null;
+    const operation = Promise.resolve().then(async () => {
+      const response = await fetchImpl(url, requestOptions);
+      if (!response?.ok) {
+        throw new Error(
+          `RSS2JSON returned ${response?.status ?? "an invalid response"}`
+        );
+      }
+      if (typeof response.json !== "function") {
+        throw new Error("RSS2JSON returned a response without a JSON body");
+      }
+      return response.json();
+    });
+    const timeout = new Promise((_resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        const error = createTimeoutError(timeoutMs);
+        reject(error);
+        controller?.abort(error);
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([operation, timeout]);
+    } finally {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    }
   }
 
   function parsePostLimit(rawLimit) {
@@ -283,8 +342,10 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       CACHE_TTL_MS,
+      REQUEST_TIMEOUT_MS,
       buildProxyUrl,
       enhanceContainer,
+      fetchFeed,
       formatPublishedAt,
       getCacheKey,
       normalizeFeedItems,
