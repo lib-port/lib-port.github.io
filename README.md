@@ -1,8 +1,7 @@
 # Developer Landing Page
 
-[![Deploy Jekyll with GitHub Pages](https://github.com/lib-port/lib-port.github.io/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/lib-port/lib-port.github.io/actions/workflows/deploy-pages.yml)
-[![Live site](https://img.shields.io/website?url=https%3A%2F%2Flib-port.github.io%2F&up_message=online&down_message=offline&label=site)](https://lib-port.github.io/)
 [![Jekyll 4.4.1](https://img.shields.io/badge/Jekyll-4.4.1-CC0000?logo=jekyll&logoColor=white)](https://jekyllrb.com/)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-hosting-222222)](https://pages.github.com/)
 [![Ruby 3.3](https://img.shields.io/badge/Ruby-3.3-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
 [![Liquid templates](https://img.shields.io/badge/Templates-Liquid-7AB55C)](https://shopify.github.io/liquid/)
 [![Sass/SCSS](https://img.shields.io/badge/Sass-SCSS-CC6699?logo=sass&logoColor=white)](https://sass-lang.com/)
