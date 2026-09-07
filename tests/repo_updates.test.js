@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const { loadWithLocale } = require("./helpers/load_with_locale");
 
 const scriptPath = path.join(__dirname, "..", "assets", "js", "github_activity.js");
 const githubActivity = require(scriptPath);
@@ -96,30 +97,42 @@ function makeResponse({ status = 200, etag = '"etag-2"', repos = [] } = {}) {
 
 const silentLogger = { error() {} };
 
-test("formats repository updates by the visitor's local calendar", () => {
+test("formats repository updates by the visitor's locale and local calendar", () => {
   const now = new Date("2026-08-04T00:15:00+02:00");
 
-  const cases = [
-    ["2026-08-03T22:05:00Z", "updated today"],
-    ["2026-08-02T23:00:00Z", "updated yesterday"],
-    ["2026-08-01T23:00:00Z", "updated 2 days ago"],
-    ["2026-07-28T23:00:00Z", "updated 6 days ago"],
-    ["2026-07-27T23:00:00Z", "updated last week"],
-    ["2026-07-21T23:00:00Z", "updated last week"],
-    ["2026-07-20T23:00:00Z", "updated 2 weeks ago"],
-    ["2026-07-07T23:00:00Z", "updated 3 weeks ago"],
-    ["2026-07-06T23:00:00Z", "updated on 7 Jul"],
-  ];
+  for (const [locale, absoluteLabel] of [
+    ["en-US", "updated on Jul 7"],
+    ["fr-FR", "updated on 7 juil."],
+  ]) {
+    const { formatPushedAt } = loadWithLocale(scriptPath, locale).repositoryUpdates;
+    const cases = [
+      ["2026-08-03T22:05:00Z", "updated today"],
+      ["2026-08-02T23:00:00Z", "updated yesterday"],
+      ["2026-08-01T23:00:00Z", "updated 2 days ago"],
+      ["2026-07-28T23:00:00Z", "updated 6 days ago"],
+      ["2026-07-27T23:00:00Z", "updated last week"],
+      ["2026-07-21T23:00:00Z", "updated last week"],
+      ["2026-07-20T23:00:00Z", "updated 2 weeks ago"],
+      ["2026-07-07T23:00:00Z", "updated 3 weeks ago"],
+      ["2026-07-06T23:00:00Z", absoluteLabel],
+    ];
 
-  for (const [timestamp, expected] of cases) {
-    assert.equal(formatPushedAt(timestamp, now), expected, timestamp);
+    for (const [timestamp, expected] of cases) {
+      assert.equal(formatPushedAt(timestamp, now), expected, `${locale}: ${timestamp}`);
+    }
   }
 });
 
 test("uses an absolute date for a future calendar day", () => {
   const now = new Date("2026-08-04T12:00:00+02:00");
 
-  assert.equal(formatPushedAt("2026-08-04T23:00:00Z", now), "updated on 5 Aug");
+  for (const [locale, expected] of [
+    ["en-US", "updated on Aug 5"],
+    ["fr-FR", "updated on 5 août"],
+  ]) {
+    const { formatPushedAt } = loadWithLocale(scriptPath, locale).repositoryUpdates;
+    assert.equal(formatPushedAt("2026-08-04T23:00:00Z", now), expected, locale);
+  }
 });
 
 test("counts calendar days across a daylight-saving transition", () => {
@@ -134,11 +147,14 @@ test("counts calendar days across a daylight-saving transition", () => {
 test("chooses the displayed year from local dates", () => {
   const now = new Date("2026-02-05T12:00:00+01:00");
 
-  assert.equal(formatPushedAt("2025-12-31T23:30:00Z", now), "updated on 1 Jan");
-  assert.equal(
-    formatPushedAt("2025-12-30T23:30:00Z", now),
-    "updated on 31 Dec 2025"
-  );
+  for (const [locale, currentYear, previousYear] of [
+    ["en-US", "updated on Jan 1", "updated on Dec 31, 2025"],
+    ["fr-FR", "updated on 1 janv.", "updated on 31 déc. 2025"],
+  ]) {
+    const { formatPushedAt } = loadWithLocale(scriptPath, locale).repositoryUpdates;
+    assert.equal(formatPushedAt("2025-12-31T23:30:00Z", now), currentYear, locale);
+    assert.equal(formatPushedAt("2025-12-30T23:30:00Z", now), previousYear, locale);
+  }
 });
 
 test("returns no label for invalid dates", () => {

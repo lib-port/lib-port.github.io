@@ -1,9 +1,12 @@
 "use strict";
 
+process.env.TZ = "Europe/Paris";
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { loadWithLocale } = require("./helpers/load_with_locale");
 
 const scriptPath = path.join(
   __dirname,
@@ -38,6 +41,7 @@ const { createRequestCoordinator } = githubActivity.shared;
 
 const OWNER = "lib-port";
 const NOW = Date.parse("2026-08-24T12:00:00Z");
+const DUE_DATE_LABEL = `Due by ${formatDueDate("2027-03-31T00:00:00Z")}`;
 
 class FakeStorage {
   constructor() {
@@ -463,10 +467,17 @@ test("ranks by closure time rather than later issue or milestone updates", () =>
   );
 });
 
-test("formats due dates in UTC and calculates rounded progress", () => {
-  assert.equal(formatDueDate("2027-03-31T00:00:00Z"), "31 March 2027");
-  assert.equal(formatDueDate("2027-03-31T00:00:00+14:00"), "30 March 2027");
-  assert.equal(formatDueDate("invalid"), "");
+test("formats due dates by browser locale in UTC and calculates progress", () => {
+  for (const [locale, expected, previousDay] of [
+    ["en-US", "March 31, 2027", "March 30, 2027"],
+    ["fr-FR", "31 mars 2027", "30 mars 2027"],
+  ]) {
+    const { formatDueDate } = loadWithLocale(scriptPath, locale).recentMilestones;
+    assert.equal(formatDueDate("2027-03-31T00:00:00Z"), expected, locale);
+    assert.equal(formatDueDate("2027-03-31T23:00:00Z"), expected, locale);
+    assert.equal(formatDueDate("2027-03-31T00:00:00+14:00"), previousDay, locale);
+    assert.equal(formatDueDate("invalid"), "", locale);
+  }
   assert.equal(calculatePercentage(0, 0), 0);
   assert.equal(calculatePercentage(1, 3), 33);
   assert.equal(calculatePercentage(2, 3), 67);
@@ -520,7 +531,7 @@ test("renders the GitHub-style milestone fields and safe text values", () => {
   assert.match(title.href, /\/tech-lib\/milestone\/1$/);
   assert.equal(repoName.textContent, "tech-lib");
   assert.equal(dueDetail.hidden, false);
-  assert.equal(due.textContent, "Due by 31 March 2027");
+  assert.equal(due.textContent, DUE_DATE_LABEL);
   assert.equal(total.textContent, "1/4");
   assert.equal(progress.attributes.get("aria-valuenow"), "25");
   assert.equal(progressValue.style.width, "25%");
@@ -638,7 +649,7 @@ test("resets the optional due-date detail when reusing a milestone item", () => 
     true
   );
   assert.equal(dueDetail.hidden, false);
-  assert.equal(due.textContent, "Due by 31 March 2027");
+  assert.equal(due.textContent, DUE_DATE_LABEL);
 
   assert.equal(
     renderMilestones(
@@ -662,7 +673,7 @@ test("resets the optional due-date detail when reusing a milestone item", () => 
     true
   );
   assert.equal(dueDetail.hidden, false);
-  assert.equal(due.textContent, "Due by 31 March 2027");
+  assert.equal(due.textContent, DUE_DATE_LABEL);
 });
 
 test("resets optional issue labels when reusing a milestone item", () => {

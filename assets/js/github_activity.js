@@ -7,7 +7,7 @@
   const MAX_PAGES = 100;
   const API_BASE_URL = "https://api.github.com";
   const API_VERSION = "2026-03-10";
-  const DUE_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  const DUE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
     month: "long",
     day: "numeric",
     year: "numeric",
@@ -1375,12 +1375,12 @@
     const DAY_MS = 24 * 60 * 60 * 1000;
     const REPO_QUERY = "per_page=100&sort=pushed&direction=desc&type=public";
     const DATE_FORMATTERS = {
-      withYear: new Intl.DateTimeFormat("en-GB", {
+      withYear: new Intl.DateTimeFormat(undefined, {
         month: "short",
         day: "numeric",
         year: "numeric",
       }),
-      withoutYear: new Intl.DateTimeFormat("en-GB", {
+      withoutYear: new Intl.DateTimeFormat(undefined, {
         month: "short",
         day: "numeric",
       }),

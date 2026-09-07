@@ -1,10 +1,13 @@
 "use strict";
 
+process.env.TZ = "Europe/Paris";
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const { loadWithLocale } = require("./helpers/load_with_locale");
 
 const scriptPath = path.join(__dirname, "..", "assets", "js", "external_blog.js");
 const {
@@ -12,7 +15,6 @@ const {
   REQUEST_TIMEOUT_MS,
   buildProxyUrl,
   enhanceContainer,
-  formatPublishedAt,
   getCacheKey,
   normalizeFeedItems,
   readCache,
@@ -157,9 +159,16 @@ test("rejects unsuccessful or malformed proxy payloads", () => {
   assert.deepEqual(normalizeFeedItems({ status: "ok", items: null }), []);
 });
 
-test("formats RSS2JSON dates in UTC", () => {
-  assert.equal(formatPublishedAt("2026-08-02 23:01:29"), "2 Aug 2026");
-  assert.equal(formatPublishedAt("not-a-date"), "");
+test("formats RSS2JSON dates in UTC using the browser locale", () => {
+  for (const [locale, expected] of [
+    ["en-US", "Aug 2, 2026"],
+    ["fr-FR", "2 août 2026"],
+  ]) {
+    const { formatPublishedAt } = loadWithLocale(scriptPath, locale);
+    assert.equal(formatPublishedAt("2026-08-02 23:01:29"), expected, locale);
+    assert.equal(formatPublishedAt("2026-08-03T01:01:29+02:00"), expected, locale);
+    assert.equal(formatPublishedAt("not-a-date"), "", locale);
+  }
 });
 
 test("truncates excerpts to 280 characters at a word boundary", () => {

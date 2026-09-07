@@ -29,7 +29,6 @@ minima:
   hide_site_feed_link: true
 
 title: Library + Portfolio
-lang: en-GB
 
 ##################################
 # Start of landing page settings
@@ -48,9 +47,9 @@ repo_grid:
   switch: true
   repo_list:
     - tech-lib
-    - bus-lib
     - lib-port.github.io
     - who-gets-heard
+    - agentless-DaC
     - open-banking-lakehouse
     - backtest
     - ansible-linux-audit

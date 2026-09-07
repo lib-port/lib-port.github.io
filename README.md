@@ -46,7 +46,6 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 
 ```yaml
 title: Your Name
-lang: en-GB
 
 github-icon:
   switch: true
@@ -90,7 +89,6 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | Setting | Requirement |
 | --- | --- |
 | `title` | Site title used by the theme and metadata. |
-| `lang` | Site language used by page metadata. Use `en-GB` for the provided UK-English interface. |
 | `description` | Site description used by metadata and the footer. |
 | `github-icon.switch` | YAML boolean controlling whether the rightmost header icon is shown. The default is `false` when the switch or section is missing. |
 | `github-icon.link` | Required when enabled and must be exactly `profile` or `repos`. `profile` uses the owner profile URL; `repos` adds `?tab=repositories` to it. There is no enabled default. |
@@ -110,6 +108,8 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
 Use unquoted `true` and `false` values for switches. Disabled sections ignore their inner settings, including `github-icon.link` and `github-icon.style`. When all three GitHub activity sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
+
+Blog publication dates, milestone due dates, and absolute repository update dates follow the visitor’s browser locale. Blog and milestone dates use UTC; repository update dates use the visitor’s local time zone.
 
 The GitHub link opens in the current tab and remains the rightmost header action. In `auto` mode, the mark is the progressive fallback when JavaScript is unavailable; an early platform check retains it for desktop Linux and selects the wordmark elsewhere. Its destination comes from the account that owns the Pages repository: `jekyll-github-metadata` resolves that owner during deployment or from the Git `origin` during local development, which keeps forks portable. The link is omitted if owner metadata is unavailable. Add future header links before it in [`_includes/header.html`](./_includes/header.html) to retain this ordering.
 

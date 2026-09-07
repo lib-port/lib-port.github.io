@@ -5,7 +5,7 @@
   const MAX_POSTS = 10;
   const EXCERPT_MAX_LENGTH = 280;
   const REQUEST_TIMEOUT_MS = 15_000;
-  const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
