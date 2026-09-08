@@ -1,3 +1,7 @@
+:root {
+  --linked-card-radius: 0.75rem;
+}
+
 html[data-theme="light"] {
   color-scheme: light;
   --minima-brand-color: #{$lm-brand-color};
@@ -78,6 +82,7 @@ html[data-theme="dark"] {
   min-height: 44px;
   padding: 0.5rem;
   border: 1px solid transparent;
+  border-radius: var(--linked-card-radius);
   color: var(--minima-text-color);
   line-height: 1;
   text-decoration: none;
@@ -94,7 +99,6 @@ html[data-theme="dark"] {
 }
 
 .github-icon-link:focus-visible {
-  border-radius: 0.25rem;
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
@@ -229,7 +233,6 @@ html[data-github-icon-variant="logo"]
 
 .linked-card {
   --linked-card-accent: var(--minima-link-base-color);
-  --linked-card-radius: 0.75rem;
   --linked-card-background: color-mix(
     in srgb,
     var(--minima-background-color) 96%,
