@@ -220,7 +220,7 @@ class HeaderTemplateTests(unittest.TestCase):
 
         def rule(selector: str) -> str:
             start = styles.index(f"{selector} {{")
-            end = styles.index("\n}", start)
+            end = styles.index("}", start)
             return styles[start:end]
 
         self.assertRegex(
@@ -231,19 +231,20 @@ class HeaderTemplateTests(unittest.TestCase):
             styles,
             r"\.site-header-actions\s*\{[^}]*margin-inline-start:\s*auto",
         )
-        self.assertRegex(
-            styles,
-            r"\.github-icon-link\s*\{[^}]*width:\s*5\.375rem",
-        )
         link_rule = rule(".github-icon-link")
         self.assertIn("box-sizing: border-box;", link_rule)
-        self.assertIn("height: 2.25rem;", link_rule)
-        self.assertNotIn("border:", link_rule)
+        self.assertIn("padding: 0;", link_rule)
+        self.assertIn("border: 1px solid transparent;", link_rule)
+        self.assertNotRegex(link_rule, r"(?:^|[;{])\s*(?:width|height)\s*:")
 
         hover_rule = rule(".github-icon-link:hover")
         self.assertIn(
-            "border: 1px solid var(--minima-link-base-color);",
+            "border-color: var(--minima-link-base-color);",
             hover_rule,
+        )
+        self.assertNotRegex(
+            hover_rule,
+            r"(?:^|[;{])\s*(?:border|border-width|padding|width|height)\s*:",
         )
         self.assertIn("color: var(--minima-text-color);", hover_rule)
         self.assertIn("text-decoration: none;", hover_rule)
@@ -284,8 +285,17 @@ class HeaderTemplateTests(unittest.TestCase):
         self.assertRegex(
             styles,
             r"@media screen and \(max-width: 600px\)\s*\{\s*"
-            r"\.site-header-actions--with-github-icon > \.site-nav\s*"
-            r"\{[^}]*right:\s*calc\(18px \+ 5\.375rem \+ 0\.5rem\)",
+            r"\.site-header-actions--with-github-icon\s*"
+            r"\{[^}]*position:\s*relative",
+        )
+        mobile_nav_rule = rule(".site-header-actions--with-github-icon > .site-nav")
+        self.assertIn("top: calc(50% - 19px);", mobile_nav_rule)
+        self.assertIn("right: calc(100% + 0.5rem);", mobile_nav_rule)
+        self.assertIn("box-sizing: border-box;", mobile_nav_rule)
+        self.assertIn("width: max-content;", mobile_nav_rule)
+        self.assertIn(
+            "max-width: calc(100vw - 100% - 0.5rem - 36px);",
+            mobile_nav_rule,
         )
 
 
