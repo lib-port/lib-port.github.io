@@ -233,7 +233,9 @@ class HeaderTemplateTests(unittest.TestCase):
         )
         link_rule = rule(".github-icon-link")
         self.assertIn("box-sizing: border-box;", link_rule)
-        self.assertIn("padding: 0;", link_rule)
+        self.assertIn("padding: 0.5rem;", link_rule)
+        self.assertIn("min-width: 44px;", link_rule)
+        self.assertIn("min-height: 44px;", link_rule)
         self.assertIn("border: 1px solid transparent;", link_rule)
         self.assertNotRegex(link_rule, r"(?:^|[;{])\s*(?:width|height)\s*:")
 
