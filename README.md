@@ -5,7 +5,7 @@
 [![Ruby 3.3](https://img.shields.io/badge/Ruby-3.3-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
 [![Liquid templates](https://img.shields.io/badge/Templates-Liquid-7AB55C)](https://shopify.github.io/liquid/)
 [![Sass/SCSS](https://img.shields.io/badge/Sass-SCSS-CC6699?logo=sass&logoColor=white)](https://sass-lang.com/)
-[![Vanilla JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?logo=javascript&logoColor=000)](https://developer.mozilla.org/docs/Web/JavaScript)
+[![Vanilla JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?logo=javascript&logoColor=white)](https://developer.mozilla.org/docs/Web/JavaScript)
 
 A configurable Jekyll landing page for presenting selected GitHub repositories, recent milestones and commits, and posts from a blog feed. It is designed for GitHub Pages and follows the latest version of the [Minima theme](https://github.com/jekyll/minima).
 
@@ -137,13 +137,15 @@ Results use the same cache policy as the other GitHub sections. Compacted closed
 
 ### Recent GitHub commits
 
-When `recent_commits.switch` is enabled and the section approaches the viewport, the activity controller loads commits from the default branches of public repositories owned by the account hosting the site. Forks and archived repositories are excluded at build time and rechecked against the current repository catalogue before polling. The section is hidden unless JavaScript initialises.
+When `recent_commits.switch` is enabled and the section approaches the viewport, the activity controller loads commits from the default branches of public repositories owned by the account hosting the site. Forks and archived repositories are excluded at build time and rechecked against the current repository catalogue before polling. Repositories confirmed missing from a complete, revalidated catalogue are also excluded. A partial or unavailable catalogue does not establish that a repository is missing. The section is hidden unless JavaScript initialises.
 
-The browser requests at most the configured number of author-filtered commits from each eligible repository, combines the responses, sorts them by committed time, and displays the newest entries. If GitHub temporarily returns no results for the username filter, the loader falls back to repository history and retains only commits linked to the owner account.
+The browser requests at most the configured number of author-filtered commits from each eligible repository, combines the responses, sorts them by committed time, and displays the newest entries. If GitHub returns no qualifying results for a repository's username filter, the loader falls back to that repository's history and retains only commits linked to the owner account. Each repository uses fallback independently, so an unavailable repository cannot prevent healthy repositories from displaying their commits.
 
 Commits are rendered as a semantic unordered list in the form `repository · commit message · date`. Decorative repository, comment, and calendar Octicons identify each detail, while GitHub commit Octicons replace the native bullets and a vertical connector turns the list into a GitHub-style commit timeline. A successful request with no qualifying commits displays `No recent commits found`.
 
-The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. Once the cache expires, the loader first revalidates the shared repository catalogue, compares each repository's `pushed_at` value with the value stored alongside its commit result, and requests commits only for repositories that changed. If none changed, no commit endpoints are called. Changed repositories still use ETags, while unchanged cached entries are merged into the displayed timeline.
+The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. The cache records exclusions and each repository's request mode and ETag. Once the cache expires, the loader revalidates the shared repository catalogue, reconsiders exclusions, compares each repository's `pushed_at` value with the value stored alongside its commit result, and requests commits for new, changed or previously unverified repositories. Unchanged cached entries are merged into the displayed timeline. ETags are reused only for the same repository and request mode.
+
+The v2 commit cache migrates older results as fallback data and revalidates them once. Older commit-specific failure records are retired so the corrected loader can retry immediately; shared rate-limit protection remains in effect.
 
 During revalidation, the section displays a gear Octicon with `loading recent commits`. If the refresh fails, the prior cached list or successful empty state is restored and another request is not attempted for six hours. When no displayable cached result is available, an alert Octicon with `unable to load recent commits` replaces the loading state; no GitHub profile fallback link is shown. Cached commits have no age-based expiration, while malformed and future-dated entries are removed.
 

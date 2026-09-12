@@ -1499,6 +1499,7 @@
         fetchedAt: cached.fetchedAt,
         isFresh: now - cached.fetchedAt < shared.CACHE_TTL_MS,
         legacy: true,
+        complete: false,
         repositories,
       };
     }
@@ -1516,14 +1517,16 @@
         fetchedAt: cached.fetchedAt,
         isFresh: now - cached.fetchedAt < shared.CACHE_TTL_MS,
         legacy: false,
+        complete: cached.complete === true,
         repositories,
       };
     }
 
-    function writeCache(storageKey, { etag, repositories }, storage, now) {
+    function writeCache(storageKey, { etag, repositories, complete = false }, storage, now) {
       return shared.writeStoredJson(storage, storageKey, {
         etag,
         fetchedAt: now,
+        complete,
         repositories,
       });
     }
@@ -1578,7 +1581,8 @@
         if (!response.ok) {
           throw new Error(`GitHub API returned ${response.status}`);
         }
-        const repositories = normalizeRepositoryCatalogue(await response.json());
+        const payload = await response.json();
+        const repositories = normalizeRepositoryCatalogue(payload);
         if (!repositories) {
           throw new Error("GitHub API returned malformed repository data");
         }
@@ -1587,6 +1591,9 @@
           fetchedAt: now,
           isFresh: true,
           legacy: false,
+          complete:
+            !/;\s*rel="next"/.test(shared.getHeader(response, "link")) &&
+            Object.keys(repositories).length === payload.length,
           repositories,
           successful: true,
           validated: true,
@@ -1696,22 +1703,22 @@
 
       const storageKey = getStorageKey(config.owner, config.limit);
       const failureKey = getFailureKey(config.owner, config.limit);
+      for (const key of getLegacyFailureKeys(config.owner, config.limit)) {
+        shared.removeStorageItem(storage, key);
+      }
       let cached = readCache(storageKey, config.repositories, storage, now);
       if (!cached) {
         cached = migrateLegacyCache(config, storageKey, storage, now);
       }
-      const cachedCommits = cached
+      let cachedCommits = cached
         ? mergeCommits(cached.repositories, config.limit)
         : [];
-      const hasCachedResult = Boolean(cached?.complete || cachedCommits.length > 0);
+      let hasCachedResult = Boolean(cached?.complete || cachedCommits.length > 0);
 
       if (cached?.isFresh) {
         return renderCommits(container, cachedCommits, config.limit);
       }
-      if (
-        hasRecentFailure(failureKey, storage, now) ||
-        hasRecentFailure(getLegacyFailureKey(config.owner, config.limit), storage, now)
-      ) {
+      if (hasRecentFailure(failureKey, storage, now)) {
         if (hasCachedResult) return renderCommits(container, cachedCommits, config.limit);
         renderStatus(container, "error");
         return false;
@@ -1742,64 +1749,46 @@
 
         const repositories = filterEligibleRepositories(
           config.repositories,
-          catalogue?.validated ? catalogue.repositories : null
+          catalogue
         );
         const activeConfig = { ...config, repositories };
-        let mode = cached?.mode || AUTHOR_MODE;
         const cachedRepositories = selectCachedRepositories(
-          cached?.mode === mode ? cached.repositories : {},
+          cached?.repositories,
           repositories
         );
+        cachedCommits = mergeCommits(cachedRepositories, config.limit);
+        hasCachedResult = Boolean(cached && (
+          repositories.every(({ name }) => cachedRepositories[name]) ||
+          cachedCommits.length > 0
+        ));
         const repositoriesToFetch = selectRepositoriesToFetch(
           repositories,
           cachedRepositories,
           catalogue
         );
 
-        let result = await loadRepositories(
+        const result = await loadRepositories(
           activeConfig,
-          mode,
           cachedRepositories,
           fetchImpl,
           repositoriesToFetch,
           catalogue?.repositories || {}
         );
 
-        if (
-          mode === AUTHOR_MODE &&
-          result.allSuccessful &&
-          mergeCommits(result.repositories, config.limit).length === 0
-        ) {
-          mode = LINKED_AUTHOR_MODE;
-          result = await loadRepositories(
-            activeConfig,
-            mode,
-            {},
-            fetchImpl,
-            repositories,
-            catalogue?.repositories || {}
-          );
-        }
-
         const commits = mergeCommits(result.repositories, config.limit);
-        const shouldPreserveCachedResult =
-          !result.allSuccessful && commits.length === 0 && hasCachedResult;
-
-        if (!shouldPreserveCachedResult) {
-          const cache = {
-            fetchedAt: result.allSuccessful ? now : cached?.fetchedAt || 0,
-            items: commits,
-            mode,
-            repoNames: repositories.map(({ name }) => name),
-            repositories: result.repositories,
-          };
-          writeCache(storageKey, cache, storage);
-          shared.removeStorageItem(storage, getLegacyStorageKey(config.owner, config.limit));
-        }
+        const activeNames = new Set(repositories.map(({ name }) => name));
+        writeCache(storageKey, {
+          fetchedAt: result.allSuccessful ? now : 0,
+          items: commits,
+          repoNames: config.repositories.map(({ name }) => name),
+          excludedRepoNames: config.repositories
+            .filter(({ name }) => !activeNames.has(name))
+            .map(({ name }) => name),
+          repositories: result.repositories,
+        }, storage);
 
         if (result.allSuccessful) {
           shared.removeStorageItem(storage, failureKey);
-          shared.removeStorageItem(storage, getLegacyFailureKey(config.owner, config.limit));
         } else {
           writeFailure(failureKey, storage, now);
           for (const error of result.errors) {
@@ -1807,10 +1796,9 @@
           }
         }
 
-        if (result.allSuccessful || commits.length > 0) {
+        if (result.allSuccessful || commits.length > 0 || hasCachedResult) {
           return renderCommits(container, commits, config.limit);
         }
-        if (hasCachedResult) return renderCommits(container, cachedCommits, config.limit);
         renderStatus(container, "error");
         return false;
       } catch (error) {
@@ -1856,10 +1844,12 @@
     }
 
     function filterEligibleRepositories(repositories, catalogue) {
-      if (!catalogue) return repositories;
+      if (!catalogue?.validated || !catalogue.repositories) return repositories;
       return repositories.filter((repository) => {
-        const current = catalogue[repository.name];
-        return !current || (!current.archived && !current.fork);
+        const current = catalogue.repositories[repository.name];
+        return current
+          ? !current.archived && !current.fork
+          : catalogue.complete !== true;
       });
     }
 
@@ -1882,6 +1872,7 @@
           !cached ||
           !current ||
           !cached.pushedAt ||
+          (cached.mode === AUTHOR_MODE && cached.commits?.length === 0) ||
           cached.pushedAt !== current.pushedAt
         );
       });
@@ -1889,7 +1880,6 @@
 
     async function loadRepositories(
       config,
-      mode,
       cachedRepositories,
       fetchImpl,
       repositoriesToFetch = config.repositories,
@@ -1903,7 +1893,6 @@
               repository,
               config.owner,
               config.limit,
-              mode,
               cachedEntry,
               fetchImpl
             );
@@ -1936,11 +1925,10 @@
       repository,
       owner,
       limit,
-      mode,
       cachedEntry,
       fetchImpl
     ) {
-      if (mode === LINKED_AUTHOR_MODE) {
+      if (cachedEntry?.mode === LINKED_AUTHOR_MODE) {
         return fetchLinkedAuthorCommits(
           repository,
           owner,
@@ -1953,18 +1941,26 @@
         buildCommitListUrl(repository.name, owner, limit, AUTHOR_MODE),
         { headers: shared.buildHeaders(cachedEntry?.etag) }
       );
-      if (response.status === 304 && cachedEntry) return cachedEntry;
-      if (!response.ok) {
-        throw new Error(`GitHub API returned ${response.status} for ${repository.name}`);
+      let entry;
+      if (response.status === 304 && cachedEntry) {
+        entry = cachedEntry;
+      } else {
+        if (!response.ok) {
+          throw new Error(`GitHub API returned ${response.status} for ${repository.name}`);
+        }
+        const payload = await response.json();
+        if (!Array.isArray(payload)) {
+          throw new Error(`GitHub API returned malformed commit data for ${repository.name}`);
+        }
+        entry = {
+          mode: AUTHOR_MODE,
+          etag: shared.getHeader(response, "etag"),
+          commits: normalizeApiCommits(payload, repository, owner, limit),
+        };
       }
-      const payload = await response.json();
-      if (!Array.isArray(payload)) {
-        throw new Error(`GitHub API returned malformed commit data for ${repository.name}`);
-      }
-      return {
-        etag: shared.getHeader(response, "etag"),
-        commits: normalizeApiCommits(payload, repository, owner, limit),
-      };
+      if (entry.commits.length > 0) return entry;
+      // An author-filtered ETag cannot validate the unfiltered history.
+      return fetchLinkedAuthorCommits(repository, owner, limit, null, fetchImpl);
     }
 
     async function fetchLinkedAuthorCommits(
@@ -2007,7 +2003,7 @@
         page += 1;
       }
       commits.sort(compareCommits);
-      return { etag, commits: commits.slice(0, limit) };
+      return { mode: LINKED_AUTHOR_MODE, etag, commits: commits.slice(0, limit) };
     }
 
     function normalizeApiCommits(payload, repository, owner, limit) {
@@ -2158,19 +2154,25 @@
     }
 
     function getStorageKey(owner, limit) {
-      return `github-activity:v1:${owner.toLowerCase()}:commits:limit:${limit}`;
+      return `github-activity:v2:${owner.toLowerCase()}:commits:limit:${limit}`;
     }
 
     function getFailureKey(owner, limit) {
-      return `github-activity:v1:failure:${owner.toLowerCase()}:commits:limit:${limit}`;
+      return `github-activity:v2:failure:${owner.toLowerCase()}:commits:limit:${limit}`;
     }
 
-    function getLegacyStorageKey(owner, limit) {
-      return `commit-history:v1:${owner.toLowerCase()}:limit:${limit}`;
+    function getLegacyStorageKeys(owner, limit) {
+      return [
+        `github-activity:v1:${owner.toLowerCase()}:commits:limit:${limit}`,
+        `commit-history:v1:${owner.toLowerCase()}:limit:${limit}`,
+      ];
     }
 
-    function getLegacyFailureKey(owner, limit) {
-      return `commit-history:v1:failure:${owner.toLowerCase()}:limit:${limit}`;
+    function getLegacyFailureKeys(owner, limit) {
+      return [
+        `github-activity:v1:failure:${owner.toLowerCase()}:commits:limit:${limit}`,
+        `commit-history:v1:failure:${owner.toLowerCase()}:limit:${limit}`,
+      ];
     }
 
     function readCache(storageKey, repositories, storage, now) {
@@ -2178,11 +2180,25 @@
       if (!cached) return null;
       if (
         !shared.isValidStoredTime(cached.fetchedAt, now) ||
-        ![AUTHOR_MODE, LINKED_AUTHOR_MODE].includes(cached.mode) ||
+        (cached.mode !== undefined && ![AUTHOR_MODE, LINKED_AUTHOR_MODE].includes(cached.mode)) ||
         !Array.isArray(cached.repoNames) ||
         !cached.repositories ||
         typeof cached.repositories !== "object" ||
         Array.isArray(cached.repositories)
+      ) {
+        shared.removeStorageItem(storage, storageKey);
+        return null;
+      }
+      const excludedRepoNames = cached.excludedRepoNames ?? [];
+      if (
+        cached.repoNames.some((name) => typeof name !== "string" || !name) ||
+        new Set(cached.repoNames).size !== cached.repoNames.length ||
+        !Array.isArray(excludedRepoNames) ||
+        new Set(excludedRepoNames).size !== excludedRepoNames.length ||
+        excludedRepoNames.some((name) =>
+          !cached.repoNames.includes(name) ||
+          Object.prototype.hasOwnProperty.call(cached.repositories, name)
+        )
       ) {
         shared.removeStorageItem(storage, storageKey);
         return null;
@@ -2192,38 +2208,39 @@
       for (const [name, entry] of Object.entries(cached.repositories)) {
         const repository = currentByName.get(name);
         if (!repository) continue;
-        const normalized = normalizeCachedEntry(entry, repository);
+        const normalized = normalizeCachedEntry(entry, repository, cached.mode);
         if (!normalized) {
           shared.removeStorageItem(storage, storageKey);
           return null;
         }
         normalizedRepositories[name] = normalized;
       }
-      if (cached.repoNames.some((name) => typeof name !== "string")) {
-        shared.removeStorageItem(storage, storageKey);
-        return null;
-      }
       const currentNames = repositories.map(({ name }) => name).sort();
       const cachedNames = cached.repoNames.slice().sort();
       const sameRepositorySet =
         currentNames.length === cachedNames.length &&
         currentNames.every((name, index) => name === cachedNames[index]);
-      const complete = currentNames.every((name) => normalizedRepositories[name]);
+      const complete = currentNames.every((name) =>
+        normalizedRepositories[name] || excludedRepoNames.includes(name)
+      );
       return {
         complete,
         fetchedAt: cached.fetchedAt,
         isFresh:
           sameRepositorySet &&
           complete &&
+          cached.fetchedAt > 0 &&
           now - cached.fetchedAt < shared.CACHE_TTL_MS,
-        mode: cached.mode,
         repoNames: cached.repoNames.slice(),
+        excludedRepoNames: excludedRepoNames.filter((name) => currentByName.has(name)),
         repositories: normalizedRepositories,
       };
     }
 
-    function normalizeCachedEntry(entry, repository) {
+    function normalizeCachedEntry(entry, repository, legacyMode) {
       if (!entry || typeof entry !== "object" || !Array.isArray(entry.commits)) return null;
+      const mode = entry.mode ?? legacyMode;
+      if (![AUTHOR_MODE, LINKED_AUTHOR_MODE].includes(mode)) return null;
       const commits = [];
       for (const value of entry.commits.slice(0, MAX_RECENT_COMMITS)) {
         const sha = typeof value?.sha === "string" ? value.sha.trim() : "";
@@ -2246,6 +2263,7 @@
       const pushedAt = entry.pushedAt ? shared.normalizeDate(entry.pushedAt) : "";
       if (entry.pushedAt && !pushedAt) return null;
       return {
+        mode,
         etag: typeof entry.etag === "string" ? entry.etag : "",
         commits,
         pushedAt,
@@ -2253,20 +2271,29 @@
     }
 
     function migrateLegacyCache(config, storageKey, storage, now) {
-      const legacyKey = getLegacyStorageKey(config.owner, config.limit);
-      const cached = readCache(legacyKey, config.repositories, storage, now);
-      if (!cached) return null;
-      const replacement = {
-        fetchedAt: cached.fetchedAt,
-        items: mergeCommits(cached.repositories, config.limit),
-        mode: cached.mode,
-        repoNames: cached.repoNames,
-        repositories: cached.repositories,
-      };
-      if (writeCache(storageKey, replacement, storage)) {
-        shared.removeStorageItem(storage, legacyKey);
+      const legacyKeys = getLegacyStorageKeys(config.owner, config.limit);
+      for (const key of legacyKeys) {
+        const cached = readCache(key, config.repositories, storage, now);
+        if (!cached) continue;
+        // Preserve displayable data, but verify every migrated request once.
+        const repositories = Object.fromEntries(
+          Object.entries(cached.repositories).map(([name, entry]) => [
+            name, { ...entry, etag: "", pushedAt: "" },
+          ])
+        );
+        const replacement = {
+          fetchedAt: 0,
+          items: mergeCommits(repositories, config.limit),
+          repoNames: cached.repoNames,
+          excludedRepoNames: [],
+          repositories,
+        };
+        if (writeCache(storageKey, replacement, storage)) {
+          for (const legacyKey of legacyKeys) shared.removeStorageItem(storage, legacyKey);
+        }
+        return { ...cached, ...replacement, isFresh: false };
       }
-      return cached;
+      return null;
     }
 
     function writeCache(storageKey, cache, storage) {

@@ -18,6 +18,7 @@ const {
   getFailureKey,
   getStorageKey,
   loadOwnerUpdates,
+  loadRepositoryCatalogue,
   readCache,
   writeCache,
 } = githubActivity.repositoryUpdates;
@@ -75,12 +76,13 @@ function makeCatalogue(pushedAt = PUSHED_AT) {
   };
 }
 
-function makeResponse({ status = 200, etag = '"etag-2"', repos = [] } = {}) {
+function makeResponse({ status = 200, etag = '"etag-2"', repos = [], link = "" } = {}) {
   return {
     status,
     ok: status >= 200 && status < 300,
     headers: {
       get(name) {
+        if (name.toLowerCase() === "link") return link;
         return name.toLowerCase() === "etag" ? etag : null;
       },
     },
@@ -300,6 +302,7 @@ test("replaces stale cache data and ETag after a successful response", async () 
   assert.deepEqual(JSON.parse(storage.getItem(storageKey)), {
     etag: '"etag-2"',
     fetchedAt: NOW,
+    complete: true,
     repositories: makeCatalogue(replacementTimestamp),
   });
   assert.equal(textNode.textContent, formatPushedAt(replacementTimestamp));
@@ -344,6 +347,56 @@ test("retains stale data and backs off for six hours after a failed validation",
   assert.equal(hasRecentFailure(failureKey, storage, NOW + FAILURE_TTL_MS - 1), true);
   assert.equal(hasRecentFailure(failureKey, storage, NOW + FAILURE_TTL_MS), false);
   assert.equal(storage.getItem(failureKey), null);
+});
+
+test("preserves catalogue completeness through caching and 304 responses", async () => {
+  for (const link of ["", '<https://api.github.com/example?page=2>; rel="next"']) {
+    const storage = new FakeStorage();
+    const options = { storage, now: NOW, logger: silentLogger };
+    const first = await loadRepositoryCatalogue(OWNER, {
+      ...options,
+      fetchImpl: async () => makeResponse({
+        repos: [{ name: REPO_NAME, pushed_at: PUSHED_AT }], link,
+      }),
+    });
+    assert.equal(first.complete, link === "");
+    assert.equal(first.validated, true);
+    const fresh = await loadRepositoryCatalogue(OWNER, {
+      ...options,
+      fetchImpl: async () => { throw new Error("fresh cache should avoid a request"); },
+    });
+    assert.equal(fresh.complete, first.complete);
+    assert.equal(fresh.validated, false);
+    const revalidated = await loadRepositoryCatalogue(OWNER, {
+      ...options, now: NOW + CACHE_TTL_MS,
+      fetchImpl: async () => makeResponse({ status: 304 }),
+    });
+    assert.equal(revalidated.complete, first.complete);
+    assert.equal(revalidated.validated, true);
+  }
+});
+
+test("does not infer completeness from old or partially malformed catalogues", async () => {
+  const storage = new FakeStorage();
+  storage.setItem(getStorageKey(OWNER), JSON.stringify({
+    fetchedAt: NOW - CACHE_TTL_MS,
+    etag: '"old"',
+    repositories: makeCatalogue(),
+  }));
+  const old = await loadRepositoryCatalogue(OWNER, {
+    fetchImpl: async () => makeResponse({ status: 304 }),
+    storage, now: NOW, logger: silentLogger,
+  });
+  assert.equal(old.complete, false);
+  assert.equal(old.validated, true);
+  const malformed = await loadRepositoryCatalogue(OWNER, {
+    fetchImpl: async () => makeResponse({
+      repos: [{ name: REPO_NAME, pushed_at: PUSHED_AT }, { name: "missing-date" }],
+    }),
+    storage: null, now: NOW, logger: silentLogger,
+  });
+  assert.equal(malformed.complete, false);
+  assert.deepEqual(Object.keys(malformed.repositories), [REPO_NAME]);
 });
 
 test("deletes malformed and future-dated failure records", () => {
