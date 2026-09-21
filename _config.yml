@@ -47,13 +47,13 @@ repo_grid:
   switch: true
   repo_list:
     - tech-lib
-    - lib-port.github.io
     - who-gets-heard
-    - agentless-DaC
+    - full-stack-pm
     - open-banking-lakehouse
     - backtest
-    - ansible-linux-audit
     - pricing-function-mapper
+    - agentless-DaC
+    - ansible-linux-audit
 
 recent_milestones:
   switch: true
