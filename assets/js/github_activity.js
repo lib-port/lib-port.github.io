@@ -1369,6 +1369,529 @@
     };
   })();
 
+  const completedMilestones = (() => {
+    const LIMIT = 2;
+    const PER_PAGE = 100;
+    const MAX_PAGES = 100;
+    const API_BASE_URL = "https://api.github.com";
+
+    async function loadCompletedMilestones(
+      container,
+      {
+        config,
+        fetchImpl = shared.getFetch(),
+        storage = shared.getStorage(),
+        now = Date.now(),
+        logger = console,
+      } = {}
+    ) {
+      const owner =
+        typeof config?.owner === "string" ? config.owner.trim() : "";
+      const repositories = recentMilestones.normalizeRepositories(
+        config?.repositories
+      );
+      if (!owner || !repositories) {
+        renderCompletedMilestones(container, [], owner);
+        logger.error(
+          "Failed to load recently completed GitHub milestones: invalid configuration"
+        );
+        return false;
+      }
+
+      const storageKey = getStorageKey(owner);
+      const failureKey = getFailureKey(owner, repositories);
+      const cached = readCache(storageKey, repositories, storage, now);
+      const cachedMilestones = cached
+        ? mergeCompletedMilestones(cached.repositories, repositories, LIMIT)
+        : [];
+      const hasCachedResult = Boolean(
+        cached?.complete || cachedMilestones.length > 0
+      );
+
+      if (cached?.isFresh) {
+        return renderCompletedMilestones(
+          container,
+          cachedMilestones,
+          owner
+        );
+      }
+
+      if (hasRecentFailure(failureKey, storage, now)) {
+        if (hasCachedResult) {
+          return renderCompletedMilestones(
+            container,
+            cachedMilestones,
+            owner
+          );
+        }
+        renderCompletedMilestones(container, [], owner);
+        return false;
+      }
+
+      if (typeof fetchImpl !== "function") {
+        if (hasCachedResult) {
+          return renderCompletedMilestones(
+            container,
+            cachedMilestones,
+            owner
+          );
+        }
+        renderCompletedMilestones(container, [], owner);
+        return false;
+      }
+
+      try {
+        const result = await loadRepositories(
+          { owner, repositories },
+          cached?.repositories || {},
+          fetchImpl
+        );
+        const milestones = mergeCompletedMilestones(
+          result.repositories,
+          repositories,
+          LIMIT
+        );
+
+        writeCache(
+          storageKey,
+          {
+            fetchedAt: result.allSuccessful ? now : cached?.fetchedAt || 0,
+            repoNames: repositories,
+            repositories: result.repositories,
+          },
+          storage
+        );
+
+        if (result.allSuccessful) {
+          shared.removeStorageItem(storage, failureKey);
+        } else {
+          writeFailure(failureKey, storage, now);
+          for (const error of result.errors) {
+            logger.error(
+              "Failed to load recently completed GitHub milestones",
+              error
+            );
+          }
+        }
+
+        if (milestones.length > 0 || result.allSuccessful || cached?.complete) {
+          return renderCompletedMilestones(
+            container,
+            milestones,
+            owner
+          );
+        }
+
+        renderCompletedMilestones(container, [], owner);
+        return false;
+      } catch (error) {
+        writeFailure(failureKey, storage, now);
+        logger.error(
+          "Failed to load recently completed GitHub milestones",
+          error
+        );
+        if (hasCachedResult) {
+          return renderCompletedMilestones(
+            container,
+            cachedMilestones,
+            owner
+          );
+        }
+        renderCompletedMilestones(container, [], owner);
+        return false;
+      }
+    }
+
+    async function loadRepositories(config, cachedRepositories, fetchImpl) {
+      const repositories = {};
+      const errors = [];
+
+      for (const repository of config.repositories) {
+        if (cachedRepositories[repository]) {
+          repositories[repository] = cachedRepositories[repository];
+        }
+      }
+
+      for (const repository of config.repositories) {
+        try {
+          repositories[repository] = await fetchRepositoryCompletedMilestones(
+            config.owner,
+            repository,
+            cachedRepositories[repository],
+            fetchImpl
+          );
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+
+      return {
+        allSuccessful: errors.length === 0,
+        errors,
+        repositories,
+      };
+    }
+
+    async function fetchRepositoryCompletedMilestones(
+      owner,
+      repository,
+      cachedEntry,
+      fetchImpl
+    ) {
+      const cachedPages = new Map(
+        (cachedEntry?.pages || []).map((page) => [page.page, page])
+      );
+      const pages = [];
+
+      for (let pageNumber = 1; pageNumber <= MAX_PAGES; pageNumber += 1) {
+        const cachedPage = cachedPages.get(pageNumber);
+        const response = await fetchImpl(
+          buildCompletedMilestonesUrl(owner, repository, pageNumber),
+          { headers: shared.buildHeaders(cachedPage?.etag) }
+        );
+
+        let etag;
+        let hasNext;
+        let itemCount;
+        let milestones;
+
+        if (response.status === 304 && cachedPage) {
+          etag = cachedPage.etag;
+          itemCount = cachedPage.itemCount;
+          milestones = cachedPage.milestones;
+          const linkHeader = shared.getHeader(response, "link");
+          hasNext = linkHeader ? hasNextPage(linkHeader) : cachedPage.hasNext;
+        } else {
+          if (!response.ok) {
+            throw new Error(
+              `GitHub API returned ${response.status} for ${repository} milestones page ${pageNumber}`
+            );
+          }
+
+          const payload = await response.json();
+          if (!Array.isArray(payload)) {
+            throw new Error(
+              `GitHub API returned malformed milestone data for ${repository}`
+            );
+          }
+
+          etag = shared.getHeader(response, "etag");
+          itemCount = payload.length;
+          milestones = normalizeCompletedMilestones(payload, repository);
+          hasNext = hasNextPage(shared.getHeader(response, "link"));
+        }
+
+        pages.push({
+          page: pageNumber,
+          etag,
+          hasNext,
+          itemCount,
+          milestones,
+        });
+
+        if (!hasNext) return { pages };
+      }
+
+      throw new Error(`GitHub milestone pagination exceeded ${MAX_PAGES} pages`);
+    }
+
+    function buildCompletedMilestonesUrl(owner, repository, page = 1) {
+      const pathOwner = encodeURIComponent(owner);
+      const pathRepository = encodeURIComponent(repository);
+      const query = new URLSearchParams({
+        state: "closed",
+        per_page: String(PER_PAGE),
+        page: String(page),
+      });
+      return `${API_BASE_URL}/repos/${pathOwner}/${pathRepository}/milestones?${query}`;
+    }
+
+    function normalizeCompletedMilestones(payload, repository) {
+      const milestones = [];
+
+      for (const value of payload) {
+        const number = value?.number;
+        const title =
+          typeof value?.title === "string" ? value.title.trim() : "";
+        const closedAt = shared.normalizeDate(value?.closed_at);
+
+        if (
+          value?.state !== "closed" ||
+          !Number.isInteger(number) ||
+          number < 1 ||
+          !title ||
+          !closedAt
+        ) {
+          continue;
+        }
+
+        milestones.push({ repository, number, title, closedAt });
+      }
+
+      return compactCompletedMilestones(milestones);
+    }
+
+    function compactCompletedMilestones(milestones) {
+      const milestonesByNumber = new Map();
+      for (const candidate of milestones) {
+        const current = milestonesByNumber.get(candidate.number);
+        if (
+          !current ||
+          Date.parse(candidate.closedAt) > Date.parse(current.closedAt)
+        ) {
+          milestonesByNumber.set(candidate.number, candidate);
+        }
+      }
+      return Array.from(milestonesByNumber.values());
+    }
+
+    function mergeCompletedMilestones(repositories, repoNames, limit = LIMIT) {
+      const repoOrder = new Map(repoNames.map((name, index) => [name, index]));
+      const milestonesByKey = new Map();
+
+      for (const repository of repoNames) {
+        const entry = repositories?.[repository];
+        if (!entry?.pages) continue;
+
+        for (const page of entry.pages) {
+          for (const milestone of page.milestones) {
+            const key = `${repository}:${milestone.number}`;
+            const current = milestonesByKey.get(key);
+            if (
+              !current ||
+              Date.parse(milestone.closedAt) > Date.parse(current.closedAt)
+            ) {
+              milestonesByKey.set(key, milestone);
+            }
+          }
+        }
+      }
+
+      return Array.from(milestonesByKey.values())
+        .sort((left, right) => {
+          const closedDifference =
+            Date.parse(right.closedAt) - Date.parse(left.closedAt);
+          if (closedDifference !== 0) return closedDifference;
+
+          const repositoryDifference =
+            repoOrder.get(left.repository) - repoOrder.get(right.repository);
+          if (repositoryDifference !== 0) return repositoryDifference;
+          return right.number - left.number;
+        })
+        .slice(0, limit);
+    }
+
+    function renderCompletedMilestones(container, milestones, owner) {
+      const list = container?.querySelector?.(
+        "[data-recent-completed-milestones]"
+      );
+      const items = Array.from(
+        container?.querySelectorAll?.(
+          "[data-recent-completed-milestone]"
+        ) || []
+      );
+      const visibleMilestones = milestones.slice(0, LIMIT);
+
+      if (!list || items.length < visibleMilestones.length) return false;
+
+      for (const item of items) item.setAttribute("hidden", "");
+      if (visibleMilestones.length === 0) {
+        list.setAttribute("hidden", "");
+        return true;
+      }
+
+      const bindings = visibleMilestones.map((milestone, index) => ({
+        item: items[index],
+        link: items[index].querySelector?.(
+          "[data-recent-completed-milestone-link]"
+        ),
+        milestone,
+      }));
+      if (bindings.some(({ link }) => !link)) {
+        list.setAttribute("hidden", "");
+        return false;
+      }
+
+      for (const { item, link, milestone } of bindings) {
+        link.textContent = milestone.title;
+        link.href = buildClosedMilestoneUrl(
+          owner,
+          milestone.repository,
+          milestone.number
+        );
+        link.setAttribute(
+          "aria-label",
+          `View closed issues for milestone ${milestone.title} in ${milestone.repository}`
+        );
+        item.removeAttribute("hidden");
+      }
+      list.removeAttribute("hidden");
+      return true;
+    }
+
+    function buildClosedMilestoneUrl(owner, repository, milestoneNumber) {
+      const repositoryUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`;
+      return `${repositoryUrl}/milestone/${milestoneNumber}?closed=1`;
+    }
+
+    function hasNextPage(linkHeader) {
+      return typeof linkHeader === "string" && /;\s*rel="next"/.test(linkHeader);
+    }
+
+    function getStorageKey(owner) {
+      return `recent-completed-milestones:v1:${owner.toLowerCase()}:limit:${LIMIT}`;
+    }
+
+    function getFailureKey(owner, repositories) {
+      const repoKey = repositories
+        .map((repository) => repository.toLowerCase())
+        .slice()
+        .sort()
+        .join(",");
+      return `recent-completed-milestones:v1:failure:${owner.toLowerCase()}:limit:${LIMIT}:${repoKey}`;
+    }
+
+    function readCache(storageKey, repositories, storage, now) {
+      const cached = shared.readStoredObject(storage, storageKey);
+      if (
+        !cached ||
+        !shared.isValidStoredTime(cached.fetchedAt, now) ||
+        !Array.isArray(cached.repoNames) ||
+        !cached.repositories ||
+        typeof cached.repositories !== "object" ||
+        Array.isArray(cached.repositories) ||
+        cached.repoNames.some((name) => typeof name !== "string" || !name) ||
+        new Set(cached.repoNames).size !== cached.repoNames.length
+      ) {
+        if (cached) shared.removeStorageItem(storage, storageKey);
+        return null;
+      }
+
+      const currentNames = new Set(repositories);
+      const normalizedRepositories = {};
+      for (const [repository, entry] of Object.entries(cached.repositories)) {
+        if (!currentNames.has(repository)) continue;
+        const normalized = normalizeCachedEntry(entry, repository);
+        if (!normalized) {
+          shared.removeStorageItem(storage, storageKey);
+          return null;
+        }
+        normalizedRepositories[repository] = normalized;
+      }
+
+      const currentRepoNames = repositories.slice().sort();
+      const cachedRepoNames = cached.repoNames.slice().sort();
+      const sameRepositorySet =
+        currentRepoNames.length === cachedRepoNames.length &&
+        currentRepoNames.every(
+          (name, index) => name === cachedRepoNames[index]
+        );
+      const complete = repositories.every(
+        (repository) => normalizedRepositories[repository]
+      );
+
+      return {
+        complete,
+        fetchedAt: cached.fetchedAt,
+        isFresh:
+          sameRepositorySet &&
+          complete &&
+          now - cached.fetchedAt < shared.CACHE_TTL_MS,
+        repositories: normalizedRepositories,
+      };
+    }
+
+    function normalizeCachedEntry(entry, repository) {
+      if (!entry || typeof entry !== "object" || !Array.isArray(entry.pages)) {
+        return null;
+      }
+
+      const pages = [];
+      const pageNumbers = new Set();
+      for (const page of entry.pages) {
+        if (
+          !page ||
+          typeof page !== "object" ||
+          !Number.isInteger(page.page) ||
+          page.page < 1 ||
+          page.page > MAX_PAGES ||
+          pageNumbers.has(page.page) ||
+          typeof page.etag !== "string" ||
+          typeof page.hasNext !== "boolean" ||
+          !Number.isInteger(page.itemCount) ||
+          page.itemCount < 0 ||
+          page.itemCount > PER_PAGE ||
+          !Array.isArray(page.milestones)
+        ) {
+          return null;
+        }
+
+        const milestones = [];
+        for (const value of page.milestones) {
+          const normalized = normalizeCachedMilestone(value, repository);
+          if (!normalized) return null;
+          milestones.push(normalized);
+        }
+        pageNumbers.add(page.page);
+        pages.push({
+          page: page.page,
+          etag: page.etag,
+          hasNext: page.hasNext,
+          itemCount: page.itemCount,
+          milestones: compactCompletedMilestones(milestones),
+        });
+      }
+
+      if (pages.length === 0) return null;
+      pages.sort((left, right) => left.page - right.page);
+      if (pages[pages.length - 1].hasNext) return null;
+      return { pages };
+    }
+
+    function normalizeCachedMilestone(value, repository) {
+      const number = value?.number;
+      const title = typeof value?.title === "string" ? value.title.trim() : "";
+      const closedAt = shared.normalizeDate(value?.closedAt);
+      if (
+        value?.repository !== repository ||
+        !Number.isInteger(number) ||
+        number < 1 ||
+        !title ||
+        !closedAt
+      ) {
+        return null;
+      }
+      return { repository, number, title, closedAt };
+    }
+
+    function writeCache(storageKey, cache, storage) {
+      return shared.writeStoredJson(storage, storageKey, cache);
+    }
+
+    function hasRecentFailure(failureKey, storage, now) {
+      return shared.hasRecentFailure(failureKey, storage, now);
+    }
+
+    function writeFailure(failureKey, storage, now) {
+      shared.writeFailure(failureKey, storage, now);
+    }
+
+    return {
+      LIMIT,
+      buildClosedMilestoneUrl,
+      buildCompletedMilestonesUrl,
+      fetchRepositoryCompletedMilestones,
+      getFailureKey,
+      getStorageKey,
+      loadCompletedMilestones,
+      mergeCompletedMilestones,
+      normalizeCompletedMilestones,
+      readCache,
+      renderCompletedMilestones,
+      writeCache,
+    };
+  })();
+
   const repositoryUpdates = (() => {
     const FALLBACK_LOADING_TEXT = "Checking for updates...";
     const FALLBACK_UNAVAILABLE_TEXT = "Last updated unavailable";
@@ -2546,22 +3069,50 @@
           const section = container.closest?.('[data-home-section="recent_milestones"]');
           section?.removeAttribute("hidden");
           let hasLoaded = false;
+          const loadOpenMilestones = (cacheOnly = false) =>
+            recentMilestones.loadRecentMilestones(container, {
+              config: config.milestones,
+              fetchImpl: cacheOnly ? null : coordinator.fetch,
+              logger,
+              now: now(),
+              storage,
+            });
+          const loadCompletedMilestones = (cacheOnly = false) =>
+            completedMilestones.loadCompletedMilestones(container, {
+              config: config.milestones,
+              fetchImpl: cacheOnly ? null : coordinator.fetch,
+              logger,
+              now: now(),
+              storage,
+            });
           const load = (cacheOnly = false) => {
             hasLoaded = true;
-            return runLocked("milestones", () =>
-              recentMilestones.loadRecentMilestones(container, {
-                config: config.milestones,
-                fetchImpl: cacheOnly ? null : coordinator.fetch,
-                logger,
-                now: now(),
-                storage,
-              })
-            );
+            return runLocked("milestones", async () => {
+              const [openResult] = await Promise.all([
+                loadOpenMilestones(cacheOnly),
+                loadCompletedMilestones(cacheOnly),
+              ]);
+              return openResult;
+            });
           };
-          schedules.push(scheduleNearViewport(container, () => load(false), effectiveObserverFactory));
+          const refresh = (loader) =>
+            hasLoaded
+              ? runLocked("milestones", () => loader(true))
+              : Promise.resolve();
+          schedules.push(
+            scheduleNearViewport(
+              container,
+              () => load(false),
+              effectiveObserverFactory
+            )
+          );
           registerStorageRefresh(
             recentMilestones.getStorageKey(config.owner, config.milestones.limit),
-            () => (hasLoaded ? load(true) : Promise.resolve())
+            () => refresh(loadOpenMilestones)
+          );
+          registerStorageRefresh(
+            completedMilestones.getStorageKey(config.owner),
+            () => refresh(loadCompletedMilestones)
           );
         }
       }
@@ -2599,6 +3150,7 @@
   })();
 
   const exports = {
+    completedMilestones,
     controller,
     recentCommits,
     recentMilestones,

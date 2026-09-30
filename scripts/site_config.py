@@ -94,11 +94,24 @@ def load_site_config(config_path: Path = CONFIG_PATH) -> dict[str, Any]:
 
 def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     raw = load_site_config(config_path)
+    recent_milestones = validate_recent_milestones(raw, config_path)
+    repo_grid = validate_repo_grid(
+        raw,
+        config_path,
+        require_repo_list=recent_milestones.enabled,
+    )
+    if recent_milestones.enabled:
+        recent_milestones = RecentMilestonesConfig(
+            enabled=True,
+            milestones=recent_milestones.milestones,
+            repo_list=repo_grid.repo_list,
+        )
+
     return SiteConfig(
         github_icon=validate_github_icon(raw, config_path),
         intro=validate_intro(raw, config_path),
-        repo_grid=validate_repo_grid(raw, config_path),
-        recent_milestones=validate_recent_milestones(raw, config_path),
+        repo_grid=repo_grid,
+        recent_milestones=recent_milestones,
         recent_commits=validate_recent_commits(raw, config_path),
         external_blog=validate_external_blog(raw, config_path),
         raw=raw,
@@ -143,22 +156,25 @@ def validate_intro(
 
 
 def validate_repo_grid(
-    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+    raw_config: dict[str, Any],
+    config_path: Path = CONFIG_PATH,
+    *,
+    require_repo_list: bool = False,
 ) -> RepoGridConfig:
     section = _get_section_mapping(raw_config, "repo_grid", config_path)
     enabled = _get_switch(section, "repo_grid", config_path)
-    if not enabled:
+    if not enabled and not require_repo_list:
         return RepoGridConfig(enabled=False, repo_list=[])
 
     repo_list = section.get("repo_list")
-    if not isinstance(repo_list, list):
-        raise ConfigValidationError(
-            f"{config_path}: repo_grid.switch is true, but "
-            "repo_grid.repo_list must be a non-empty list of repository names"
+    if not isinstance(repo_list, list) or not repo_list:
+        required_by = (
+            "repo_grid.switch is true"
+            if enabled
+            else "recent_milestones.switch is true"
         )
-    if not repo_list:
         raise ConfigValidationError(
-            f"{config_path}: repo_grid.switch is true, but "
+            f"{config_path}: {required_by}, but "
             "repo_grid.repo_list must be a non-empty list of repository names"
         )
 
@@ -187,7 +203,7 @@ def validate_repo_grid(
             f"repository names: {duplicate_list}"
         )
 
-    return RepoGridConfig(enabled=True, repo_list=normalized)
+    return RepoGridConfig(enabled=enabled, repo_list=normalized)
 
 
 def validate_recent_milestones(
@@ -211,44 +227,10 @@ def validate_recent_milestones(
             f"between 1 and {MAX_RECENT_MILESTONES}"
         )
 
-    repo_list = section.get("repo_list")
-    if not isinstance(repo_list, list) or not repo_list:
-        raise ConfigValidationError(
-            f"{config_path}: recent_milestones.switch is true, but "
-            "recent_milestones.repo_list must be a non-empty list of "
-            "repository names"
-        )
-
-    normalized: list[str] = []
-    seen: set[str] = set()
-    duplicate_keys: set[str] = set()
-    duplicates: list[str] = []
-
-    for index, item in enumerate(repo_list):
-        if not isinstance(item, str) or not item.strip():
-            raise ConfigValidationError(
-                f"{config_path}: recent_milestones.repo_list[{index}] must be "
-                "a non-blank string"
-            )
-        repo_name = item.strip()
-        repo_key = repo_name.casefold()
-        normalized.append(repo_name)
-        if repo_key in seen and repo_key not in duplicate_keys:
-            duplicates.append(repo_name)
-            duplicate_keys.add(repo_key)
-        seen.add(repo_key)
-
-    if duplicates:
-        duplicate_list = ", ".join(duplicates)
-        raise ConfigValidationError(
-            f"{config_path}: recent_milestones.repo_list contains duplicate "
-            f"repository names: {duplicate_list}"
-        )
-
     return RecentMilestonesConfig(
         enabled=True,
         milestones=raw_milestones,
-        repo_list=normalized,
+        repo_list=[],
     )
 
 

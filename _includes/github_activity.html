@@ -2,6 +2,7 @@
 {%- assign github_repositories = site.github.public_repositories | default: empty -%}
 {%- assign recent_commits = site.recent_commits -%}
 {%- assign recent_milestones = site.recent_milestones -%}
+{%- assign repo_grid = site.repo_grid -%}
 <script type="application/json" data-github-activity-config>
 {
   "owner": {{ github_owner | jsonify }},
@@ -21,7 +22,7 @@
   "commitLimit": {% if recent_commits and recent_commits.switch %}{{ recent_commits.commits | jsonify }}{% else %}null{% endif %},
   "milestones": {% if recent_milestones and recent_milestones.switch %}{
     "limit": {{ recent_milestones.milestones | jsonify }},
-    "repositories": {{ recent_milestones.repo_list | jsonify }}
+    "repositories": {{ repo_grid.repo_list | jsonify }}
   }{% else %}null{% endif %}
 }
 </script>

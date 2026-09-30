@@ -83,9 +83,13 @@ html[data-theme="dark"] {
   padding: 0.5rem;
   border: 1px solid transparent;
   border-radius: var(--linked-card-radius);
+  background: var(--minima-background-color);
   color: var(--minima-text-color);
   line-height: 1;
   text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .github-icon-link:visited {
@@ -94,7 +98,12 @@ html[data-theme="dark"] {
 
 .github-icon-link:hover {
   border-color: var(--minima-link-base-color);
-  color: var(--minima-text-color);
+  background: color-mix(
+    in srgb,
+    var(--minima-background-color) 92%,
+    var(--minima-link-base-color)
+  );
+  color: var(--minima-link-base-color);
   text-decoration: none;
 }
 
@@ -396,6 +405,44 @@ html[data-github-icon-variant="logo"]
   vertical-align: 0;
 }
 
+.recent-tasks-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.75rem;
+}
+
+.recent-completed-milestones {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  font-size: 0.875em;
+  line-height: 1.5;
+  list-style: none;
+}
+
+.recent-completed-milestone {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.recent-completed-milestone-icon {
+  align-self: center;
+}
+
+.recent-completed-milestone:nth-child(1) {
+  opacity: 0.75;
+}
+
+.recent-completed-milestone:nth-child(2) {
+  opacity: 0.5;
+}
+
 .recent-milestones-list {
   list-style: none;
   margin: 0;
@@ -405,6 +452,8 @@ html[data-github-icon-variant="logo"]
 }
 
 .recent-milestone-item[hidden],
+.recent-completed-milestone[hidden],
+.recent-completed-milestones[hidden],
 .recent-milestones-list[hidden],
 .recent-milestones-status[hidden],
 .recent-milestone-description[hidden],
@@ -581,6 +630,7 @@ html[data-github-icon-variant="logo"]
   vertical-align: middle;
 }
 
+.recent-completed-milestone-link,
 .recent-milestone-repo > a,
 .commit-history-repo,
 .commit-history-message {

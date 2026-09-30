@@ -43,9 +43,6 @@ class SiteConfigValidationTests(unittest.TestCase):
             recent_milestones:
               switch: true
               milestones: 3
-              repo_list:
-                - alpha
-                - gamma
 
             recent_commits:
               switch: true
@@ -69,7 +66,7 @@ class SiteConfigValidationTests(unittest.TestCase):
         self.assertEqual(config.repo_grid.repo_list, ["alpha", "beta"])
         self.assertTrue(config.recent_milestones.enabled)
         self.assertEqual(config.recent_milestones.milestones, 3)
-        self.assertEqual(config.recent_milestones.repo_list, ["alpha", "gamma"])
+        self.assertEqual(config.recent_milestones.repo_list, ["alpha", "beta"])
         self.assertTrue(config.recent_commits.enabled)
         self.assertEqual(config.recent_commits.commits, 10)
         self.assertEqual(config.external_blog.feed_url, "https://example.com/feed")
@@ -365,8 +362,6 @@ class SiteConfigValidationTests(unittest.TestCase):
             """
             recent_milestones:
               milestones: 3
-              repo_list:
-                - tech-lib
             """
         )
 
@@ -398,8 +393,6 @@ class SiteConfigValidationTests(unittest.TestCase):
                     recent_milestones:
                       switch: true
                       milestones: {milestones!r}
-                      repo_list:
-                        - tech-lib
                     """
                 )
 
@@ -414,60 +407,76 @@ class SiteConfigValidationTests(unittest.TestCase):
             with self.subTest(milestones=milestones):
                 config_path = self.write_config(
                     f"""
+                    repo_grid:
+                      switch: false
+                      repo_list:
+                        - tech-lib
+
                     recent_milestones:
                       switch: true
                       milestones: {milestones}
-                      repo_list:
-                        - tech-lib
                     """
                 )
 
                 config = validate_site_config(config_path)
                 self.assertEqual(config.recent_milestones.milestones, milestones)
+                self.assertFalse(config.repo_grid.enabled)
+                self.assertEqual(config.repo_grid.repo_list, ["tech-lib"])
+                self.assertEqual(config.recent_milestones.repo_list, ["tech-lib"])
 
-    def test_recent_milestones_requires_a_nonempty_repo_list(self) -> None:
+    def test_recent_milestones_requires_a_nonempty_repo_grid_repo_list(self) -> None:
         for repo_list in ("", "repo_list: []", "repo_list: tech-lib"):
             with self.subTest(repo_list=repo_list):
                 config_path = self.write_config(
                     f"""
+                    repo_grid:
+                      switch: false
+                      {repo_list}
+
                     recent_milestones:
                       switch: true
                       milestones: 1
-                      {repo_list}
                     """
                 )
 
                 with self.assertRaisesRegex(
                     ConfigValidationError,
-                    r"recent_milestones\.repo_list must be a non-empty list",
+                    r"recent_milestones\.switch is true, but "
+                    r"repo_grid\.repo_list must be a non-empty list",
                 ):
                     validate_site_config(config_path)
 
-    def test_recent_milestones_rejects_blank_and_duplicate_repositories(self) -> None:
+    def test_recent_milestones_validates_the_repo_grid_repository_list(self) -> None:
         blank_config = self.write_config(
             """
-            recent_milestones:
-              switch: true
-              milestones: 1
+            repo_grid:
+              switch: false
               repo_list:
                 - tech-lib
                 - "  "
+
+            recent_milestones:
+              switch: true
+              milestones: 1
             """
         )
         with self.assertRaisesRegex(
             ConfigValidationError,
-            r"recent_milestones\.repo_list\[1\] must be a non-blank string",
+            r"repo_grid\.repo_list\[1\] must be a non-blank string",
         ):
             validate_site_config(blank_config)
 
         duplicate_config = self.write_config(
             """
-            recent_milestones:
-              switch: true
-              milestones: 1
+            repo_grid:
+              switch: false
               repo_list:
                 - tech-lib
                 - tech-lib
+
+            recent_milestones:
+              switch: true
+              milestones: 1
             """
         )
         with self.assertRaisesRegex(
@@ -478,12 +487,15 @@ class SiteConfigValidationTests(unittest.TestCase):
 
         case_variant_config = self.write_config(
             """
-            recent_milestones:
-              switch: true
-              milestones: 1
+            repo_grid:
+              switch: false
               repo_list:
                 - Tech-Lib
                 - tech-lib
+
+            recent_milestones:
+              switch: true
+              milestones: 1
             """
         )
         with self.assertRaisesRegex(
@@ -516,8 +528,6 @@ class SiteConfigValidationTests(unittest.TestCase):
             recent_milestones:
               switch: "true"
               milestones: 1
-              repo_list:
-                - tech-lib
             """
         )
 

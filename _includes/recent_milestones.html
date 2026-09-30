@@ -1,11 +1,34 @@
 {%- assign recent_milestones = site.recent_milestones -%}
 {%- if recent_milestones and recent_milestones.switch -%}
-<h2>Recent Tasks <span class="section-heading-meta">(GitHub issues)</span></h2>
 <div
   class="recent-milestones"
   data-recent-milestones
   aria-live="polite"
 >
+  <div class="recent-tasks-heading">
+    <h2>Recent Tasks <span class="section-heading-meta">(GitHub issues)</span></h2>
+    <ul
+      class="recent-completed-milestones"
+      data-recent-completed-milestones
+      aria-label="Recently completed milestones"
+      hidden
+    >
+      {%- for item_number in (1..2) %}
+      <li
+        class="recent-completed-milestone"
+        data-recent-completed-milestone
+        hidden
+      ><span
+          class="recent-completed-milestone-icon commit-history-context-icon"
+          aria-hidden="true"
+        >{% octicon milestone height:16 %}</span><a
+          class="recent-completed-milestone-link commit-history-repo"
+          data-recent-completed-milestone-link
+        ></a></li>
+      {%- endfor %}
+    </ul>
+  </div>
+
   <ul class="recent-milestones-list" data-recent-milestones-list hidden>
     {%- for item_number in (1..recent_milestones.milestones) %}
     <li class="recent-milestone-item linked-card" data-recent-milestone-item hidden>

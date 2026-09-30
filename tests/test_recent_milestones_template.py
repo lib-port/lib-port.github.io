@@ -40,8 +40,9 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn("site.github.owner_name", activity_template)
         self.assertIn("recent_milestones.milestones", template)
         self.assertIn(
-            "recent_milestones.repo_list | jsonify", activity_template
+            "repo_grid.repo_list | jsonify", activity_template
         )
+        self.assertNotIn("recent_milestones.repo_list", activity_template)
         self.assertIn("data-recent-milestones", template)
         self.assertNotIn("data-milestone-limit", template)
         self.assertNotIn("<script", template)
@@ -153,6 +154,66 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         )
         self.assertNotIn("recent-milestone-separator", latest_issue_markup)
         self.assertNotIn("·", latest_issue_markup)
+
+    def test_template_places_two_completed_milestones_after_the_heading(self) -> None:
+        template = TEMPLATE_PATH.read_text(encoding="utf-8")
+        heading = (
+            '<h2>Recent Tasks <span class="section-heading-meta">'
+            "(GitHub issues)</span></h2>"
+        )
+        completed_markup = template.split(
+            '<ul\n      class="recent-completed-milestones"', 1
+        )[1].split("</ul>", 1)[0]
+
+        self.assertIn('class="recent-tasks-heading"', template)
+        self.assertLess(template.index(heading), template.index(completed_markup))
+        self.assertIn("{%- for item_number in (1..2) %}", completed_markup)
+        self.assertEqual(
+            completed_markup.count('class="recent-completed-milestone"'),
+            1,
+        )
+        self.assertIn('aria-label="Recently completed milestones"', template)
+        self.assertIn("data-recent-completed-milestone-link", completed_markup)
+        self.assertIn("commit-history-context-icon", completed_markup)
+        self.assertIn("commit-history-repo", completed_markup)
+        self.assertLess(
+            completed_markup.index("{% octicon milestone height:16 %}"),
+            completed_markup.index("data-recent-completed-milestone-link"),
+        )
+
+        styles = STYLES_PATH.read_text(encoding="utf-8")
+        heading_rule = styles.split(".recent-tasks-heading {", 1)[1].split(
+            "\n}", 1
+        )[0]
+        completed_rule = styles.split(
+            ".recent-completed-milestones {", 1
+        )[1].split("\n}", 1)[0]
+        completed_item_rule = styles.split(
+            ".recent-completed-milestone {", 1
+        )[1].split("\n}", 1)[0]
+        completed_icon_rule = styles.split(
+            ".recent-completed-milestone-icon {", 1
+        )[1].split("\n}", 1)[0]
+        self.assertIn("display: flex;", heading_rule)
+        self.assertIn("flex-wrap: wrap;", heading_rule)
+        self.assertIn("align-items: baseline;", heading_rule)
+        self.assertIn("display: flex;", completed_rule)
+        self.assertIn("flex-wrap: wrap;", completed_rule)
+        self.assertIn("align-items: baseline;", completed_rule)
+        self.assertIn("font-size: 0.875em;", completed_rule)
+        self.assertIn("align-items: baseline;", completed_item_rule)
+        self.assertNotIn("align-items: center;", completed_item_rule)
+        self.assertIn("align-self: center;", completed_icon_rule)
+        self.assertIn(
+            ".recent-completed-milestone:nth-child(1) {\n  opacity: 0.75;",
+            styles,
+        )
+        self.assertIn(
+            ".recent-completed-milestone:nth-child(2) {\n  opacity: 0.5;",
+            styles,
+        )
+        self.assertIn(".recent-completed-milestones[hidden]", styles)
+        self.assertIn(".recent-completed-milestone-link,", styles)
 
     def test_milestone_title_has_decorative_milestone_icon_before_link(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")

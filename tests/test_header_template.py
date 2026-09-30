@@ -237,6 +237,12 @@ class HeaderTemplateTests(unittest.TestCase):
         self.assertIn("min-width: 44px;", link_rule)
         self.assertIn("min-height: 44px;", link_rule)
         self.assertIn("border: 1px solid transparent;", link_rule)
+        self.assertIn(
+            "background: var(--minima-background-color);",
+            link_rule,
+        )
+        self.assertIn("background-color 120ms ease", link_rule)
+        self.assertIn("color 120ms ease", link_rule)
         self.assertNotRegex(link_rule, r"(?:^|[;{])\s*(?:width|height)\s*:")
 
         hover_rule = rule(".github-icon-link:hover")
@@ -248,7 +254,13 @@ class HeaderTemplateTests(unittest.TestCase):
             hover_rule,
             r"(?:^|[;{])\s*(?:border|border-width|padding|width|height)\s*:",
         )
-        self.assertIn("color: var(--minima-text-color);", hover_rule)
+        self.assertIn("background: color-mix(", hover_rule)
+        self.assertIn(
+            "var(--minima-background-color) 92%",
+            hover_rule,
+        )
+        self.assertIn("var(--minima-link-base-color)", hover_rule)
+        self.assertIn("color: var(--minima-link-base-color);", hover_rule)
         self.assertIn("text-decoration: none;", hover_rule)
         self.assertRegex(
             styles,

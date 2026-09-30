@@ -1,5 +1,6 @@
 exclude:
   - README.md
+  - preview.sh
   - requirements.txt
   - scripts/
   - tests/
@@ -58,8 +59,6 @@ repo_grid:
 recent_milestones:
   switch: true
   milestones: 1
-  repo_list:
-    - tech-lib
 
 recent_commits:
   switch: true

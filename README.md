@@ -16,7 +16,7 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 - Configurable introduction, repository grid, recent-milestone, recent-commit, and blog-post sections
 - Server-rendered repository metadata with client-side update labels
 - One switch-aware GitHub activity controller with shared requests and caching
-- Viewport-loaded milestone feed merged across configured repositories
+- Viewport-loaded open and recently completed milestones merged across configured repositories
 - GitHub-style recent-commit timeline that refreshes only pushed repositories
 - Client-side blog posts with seven-day local caching
 - Configurable owner-aware GitHub profile or repositories link in the header
@@ -65,9 +65,6 @@ repo_grid:
 recent_milestones:
   switch: true
   milestones: 3
-  repo_list:
-    - first-repository
-    - second-repository
 
 recent_commits:
   switch: true
@@ -96,10 +93,9 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `intro.switch` | YAML boolean controlling whether the introduction is shown. |
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
-| `repo_grid.repo_list` | Required, non-empty list of case-insensitively unique repository names when enabled. Repositories must belong to the account hosting the site. |
+| `repo_grid.repo_list` | Required, non-empty list of case-insensitively unique repository names when either the repository grid or recent milestones are enabled. Repositories must belong to the account hosting the site. The list supplies both repository cards and milestone activity. |
 | `recent_milestones.switch` | YAML boolean controlling whether recent GitHub milestones are loaded. |
-| `recent_milestones.milestones` | Required integer from 1 through 10 controlling how many globally recent milestones are shown when enabled. |
-| `recent_milestones.repo_list` | Required, non-empty list of case-insensitively unique public repository names to poll under the account hosting the site when enabled. |
+| `recent_milestones.milestones` | Required integer from 1 through 10 controlling how many detailed open milestones are shown when enabled. |
 | `recent_commits.switch` | YAML boolean controlling whether recent GitHub commits are loaded. |
 | `recent_commits.commits` | Required integer from 1 through 10 when enabled. |
 | `external_blog.switch` | YAML boolean controlling whether external posts are shown. |
@@ -108,6 +104,8 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
 Use unquoted `true` and `false` values for switches. Disabled sections ignore their inner settings, including `github-icon.link` and `github-icon.style`. When all three GitHub activity sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
+
+`repo_grid.repo_list` remains the milestone repository source when `repo_grid.switch` is `false`, so repository cards can be hidden without disabling milestone activity.
 
 Blog publication dates, milestone due dates, and absolute repository update dates follow the visitor’s browser locale. Blog and milestone dates use UTC; repository update dates use the visitor’s local time zone.
 
@@ -129,11 +127,13 @@ If revalidation fails, the stale timestamps remain available and another request
 
 ### Recent GitHub milestones
 
-When `recent_milestones.switch` is enabled and the section approaches the viewport, the activity controller requests closed, milestone-bearing issues from each repository in `recent_milestones.repo_list`. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
+When `recent_milestones.switch` is enabled and the section approaches the viewport, the activity controller loads milestone activity from every repository in `repo_grid.repo_list`. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
 
-The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title and labels of its latest closed issue. The label group is omitted when that issue has no labels. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with closed issues found`.
+The two milestones most recently closed on GitHub are displayed after the `Recent Tasks (GitHub issues)` heading. They are ranked globally by `milestone.closed_at`; the newest is shown at 75% opacity and the second at 50%. Each entry uses the milestone Octicon and the same link treatment as repository names in Recent Activity, and opens the milestone page filtered to closed issues. A milestone counts as completed when GitHub reports its state as closed, even if it still contains open issues. If fewer than two completed milestones exist, only the available entries are shown.
 
-Results use the same cache policy as the other GitHub sections. Compacted closed-issue page summaries remain fresh in `localStorage` for seven days, with duplicate appearances of a milestone reduced to its newest closed issue within each page. After that, every cached API page is conditionally revalidated with its ETag; stale data is retained indefinitely, malformed or future-dated entries are removed, and failures prevent another attempt for six hours. Successful and cached repository data is combined silently if only part of a refresh fails. The section is hidden unless JavaScript initialises. The v4 cache format adds latest-issue labels and replaces incompatible v3 milestone entries.
+For the detailed cards, the controller requests closed, milestone-bearing issues. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title and labels of its latest closed issue. The label group is omitted when that issue has no labels. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with closed issues found`.
+
+Results use the same cache policy as the other GitHub sections. Compacted closed-issue page summaries for the detailed cards and closed-milestone pages for the heading remain fresh in `localStorage` for seven days. After that, every cached API page is conditionally revalidated with its ETag; stale data is retained indefinitely, malformed or future-dated entries are removed, and failures prevent another attempt for six hours. Successful and cached repository data is combined silently if only part of a refresh fails. The section is hidden unless JavaScript initialises. Detailed cards use the v4 cache format, while completed heading entries use an independent v1 cache.
 
 ### Recent GitHub commits
 
@@ -177,6 +177,23 @@ bundle install
 python3 -m pip install -r requirements.txt
 ```
 
+### Preview locally
+
+Set `JEKYLL_GITHUB_TOKEN` in the environment or authenticate the GitHub CLI with
+`gh auth login --hostname github.com`, then run:
+
+```bash
+./preview.sh
+```
+
+The script validates the site configuration, starts Jekyll with LiveReload, and
+opens <http://127.0.0.1:4000> in the default browser. Press Ctrl+C to stop it.
+Jekyll serve options pass through to the preview, for example
+`./preview.sh --port 4001`. The script uses installed dependencies without
+installing or updating them; it prefers `JEKYLL_GITHUB_TOKEN` and otherwise
+reads the active `github.com` credential from the GitHub CLI without printing
+the token.
+
 ### Validate and build
 
 ```bash
@@ -201,7 +218,7 @@ node --test tests/*.test.js
 | Page generation | Jekyll, Minima, Liquid includes, and custom Sass generate the static site. |
 | GitHub activity | `assets/js/github_activity.js` coordinates repository updates, milestones, and commits through one switch-aware configuration, request queue, failure policy, and cross-tab cache integration. |
 | Repository data | `jekyll-github-metadata` supplies repository cards during the build; the shared controller refreshes update labels and revalidates its local catalogue weekly using GitHub ETags. |
-| Recent milestones | The controller polls closed milestone-bearing issues in configured public repositories near the viewport, globally ranks open milestones by their latest closed issue, renders progress and latest-issue metadata, and conditionally revalidates its weekly paginated cache. |
+| Recent milestones | The controller polls configured public repositories near the viewport, ranks open milestones by their latest closed issue, and displays the two most recently closed milestones beside the section heading. Both paginated result sets are conditionally revalidated each week. |
 | Recent commits | Build metadata supplies eligible repository names; the controller loads author-linked commits near the viewport and, on weekly refresh, polls only repositories whose push timestamp changed. |
 | External posts | Browser JavaScript loads the configured blog feed through RSS2JSON, renders it safely, and caches it locally for seven days. |
 | Theme preference | Minima supplies the light and dark palettes; `assets/js/theme_toggle.js` applies and persists the visitor's explicit override. |
@@ -232,7 +249,7 @@ Mirroring uses an SSH deploy-key pair. Store the private key in the GitHub repos
 | Symptom | Resolution |
 | --- | --- |
 | Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
-| Recent milestones are stale | The browser cache lasts seven days. Clear the site's `recent-milestones:v4:` local-storage entry to force an immediate refresh. |
+| Recent milestones are stale | The browser cache lasts seven days. Clear the site's `recent-milestones:v4:` and `recent-completed-milestones:v1:` local-storage entries to force an immediate refresh. |
 | “unable to load recent milestones” appears | Confirm every configured repository is public and belongs to the site owner, the browser can reach `api.github.com`, and the visitor has not exhausted GitHub's unauthenticated API limit. |
 | The recent-milestone section is missing | Confirm `recent_milestones.switch` is `true` and JavaScript is enabled; the section intentionally remains hidden when JavaScript does not initialise. |
 | Recent commits are stale | The browser cache lasts seven days. After that, the loading state appears during revalidation and the cached result is restored only if the refresh fails. Clear the site's `localStorage` to force a new request. |
