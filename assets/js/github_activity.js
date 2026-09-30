@@ -80,6 +80,14 @@
       );
     }
 
+    if (
+      hasCachedResult &&
+      !renderMilestones(container, cachedMilestones, config.limit, config.owner)
+    ) {
+      logger.error("Failed to load recent GitHub milestones: invalid page markup");
+      return false;
+    }
+
     if (hasRecentFailure(failureKey, storage, now)) {
       if (hasCachedResult) {
         return renderMilestones(
@@ -108,7 +116,7 @@
       return false;
     }
 
-    if (!renderStatus(container, "loading")) {
+    if (!hasCachedResult && !renderStatus(container, "loading")) {
       logger.error("Failed to load recent GitHub milestones: invalid page markup");
       return false;
     }
@@ -223,17 +231,22 @@
       }
     }
 
-    for (const repository of config.repositories) {
-      try {
-        repositories[repository] = await fetchRepositoryClosedIssueActivity(
+    const results = await Promise.allSettled(
+      config.repositories.map((repository) =>
+        fetchRepositoryClosedIssueActivity(
           config.owner,
           repository,
           config.limit,
           cachedRepositories[repository],
           fetchImpl
-        );
-      } catch (error) {
-        errors.push(error);
+        )
+      )
+    );
+    for (const [index, result] of results.entries()) {
+      if (result.status === "fulfilled") {
+        repositories[config.repositories[index]] = result.value;
+      } else {
+        errors.push(result.reason);
       }
     }
 
@@ -1416,6 +1429,16 @@
         );
       }
 
+      if (
+        hasCachedResult &&
+        !renderCompletedMilestones(container, cachedMilestones, owner)
+      ) {
+        logger.error(
+          "Failed to load recently completed GitHub milestones: invalid page markup"
+        );
+        return false;
+      }
+
       if (hasRecentFailure(failureKey, storage, now)) {
         if (hasCachedResult) {
           return renderCompletedMilestones(
@@ -1512,16 +1535,21 @@
         }
       }
 
-      for (const repository of config.repositories) {
-        try {
-          repositories[repository] = await fetchRepositoryCompletedMilestones(
+      const results = await Promise.allSettled(
+        config.repositories.map((repository) =>
+          fetchRepositoryCompletedMilestones(
             config.owner,
             repository,
             cachedRepositories[repository],
             fetchImpl
-          );
-        } catch (error) {
-          errors.push(error);
+          )
+        )
+      );
+      for (const [index, result] of results.entries()) {
+        if (result.status === "fulfilled") {
+          repositories[config.repositories[index]] = result.value;
+        } else {
+          errors.push(result.reason);
         }
       }
 
@@ -3069,50 +3097,90 @@
           const section = container.closest?.('[data-home-section="recent_milestones"]');
           section?.removeAttribute("hidden");
           let hasLoaded = false;
-          const loadOpenMilestones = (cacheOnly = false) =>
+          const renderCachedOpenMilestones = () => {
+            const cached = recentMilestones.readCache(
+              recentMilestones.getStorageKey(config.owner, config.milestones.limit),
+              config.milestones.repositories,
+              storage,
+              now()
+            );
+            if (!cached) return false;
+            const milestones = recentMilestones.mergeMilestones(
+              cached.repositories,
+              config.milestones.repositories,
+              config.milestones.limit
+            );
+            if (!cached.complete && milestones.length === 0) return false;
+            return recentMilestones.renderMilestones(
+              container,
+              milestones,
+              config.milestones.limit,
+              config.owner
+            );
+          };
+          const renderCachedCompletedMilestones = () => {
+            const cached = completedMilestones.readCache(
+              completedMilestones.getStorageKey(config.owner),
+              config.milestones.repositories,
+              storage,
+              now()
+            );
+            if (!cached) return false;
+            const milestones = completedMilestones.mergeCompletedMilestones(
+              cached.repositories,
+              config.milestones.repositories
+            );
+            if (!cached.complete && milestones.length === 0) return false;
+            return completedMilestones.renderCompletedMilestones(
+              container,
+              milestones,
+              config.owner
+            );
+          };
+          const loadOpenMilestones = () =>
             recentMilestones.loadRecentMilestones(container, {
               config: config.milestones,
-              fetchImpl: cacheOnly ? null : coordinator.fetch,
+              fetchImpl: coordinator.fetch,
               logger,
               now: now(),
               storage,
             });
-          const loadCompletedMilestones = (cacheOnly = false) =>
+          const loadCompletedMilestones = () =>
             completedMilestones.loadCompletedMilestones(container, {
               config: config.milestones,
-              fetchImpl: cacheOnly ? null : coordinator.fetch,
+              fetchImpl: coordinator.fetch,
               logger,
               now: now(),
               storage,
             });
-          const load = (cacheOnly = false) => {
+          const load = () => {
             hasLoaded = true;
+            // Cached content must not wait for another tab's network refresh.
+            renderCachedOpenMilestones();
+            renderCachedCompletedMilestones();
             return runLocked("milestones", async () => {
               const [openResult] = await Promise.all([
-                loadOpenMilestones(cacheOnly),
-                loadCompletedMilestones(cacheOnly),
+                loadOpenMilestones(),
+                loadCompletedMilestones(),
               ]);
               return openResult;
             });
           };
-          const refresh = (loader) =>
-            hasLoaded
-              ? runLocked("milestones", () => loader(true))
-              : Promise.resolve();
+          const refresh = (renderer) => hasLoaded && renderer();
           schedules.push(
             scheduleNearViewport(
               container,
-              () => load(false),
+              load,
               effectiveObserverFactory
             )
           );
           registerStorageRefresh(
             recentMilestones.getStorageKey(config.owner, config.milestones.limit),
-            () => refresh(loadOpenMilestones)
+            () => refresh(renderCachedOpenMilestones)
           );
           registerStorageRefresh(
             completedMilestones.getStorageKey(config.owner),
-            () => refresh(loadCompletedMilestones)
+            () => refresh(renderCachedCompletedMilestones)
           );
         }
       }

@@ -451,6 +451,107 @@ test("uses a fresh completed-milestone cache without fetching", async () => {
   assert.equal(view.list.hasAttribute("hidden"), false);
 });
 
+test("loads completed repositories concurrently and ranks after all settle", async () => {
+  const view = makeContainer();
+  const requests = [];
+  let resolveAlpha;
+  const alphaResponse = new Promise(resolve => { resolveAlpha = resolve; });
+  const pending = loadCompletedMilestones(view.container, {
+    config: { owner: OWNER, repositories: ["alpha", "beta"] },
+    fetchImpl: async url => {
+      requests.push(url);
+      return url.includes("/alpha/") ? alphaResponse : makeResponse({ payload: [makeApiMilestone({ title: "Beta" })] });
+    },
+    storage: new FakeStorage(), now: NOW, logger: silentLogger,
+  });
+  assert.equal(requests.length, 2);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(view.list.hasAttribute("hidden"), true);
+  resolveAlpha(makeResponse({ payload: [makeApiMilestone({ title: "Alpha" })] }));
+  assert.equal(await pending, true);
+  assert.deepEqual(view.items.map(item => item.querySelector("[data-recent-completed-milestone-link]").textContent), ["Alpha", "Beta"]);
+});
+
+for (const scenario of [
+  { name: "replaces stale completed milestones", cached: true, payload: [makeApiMilestone({ title: "Refreshed" })] },
+  { name: "hides completed milestones after a refresh returns empty", cached: true, payload: [] },
+  { name: "keeps a complete empty completed cache hidden during refresh", cached: false, payload: [makeApiMilestone({ title: "Refreshed" })] },
+  { name: "revalidates visible completed milestones with a 304", cached: true, status: 304 },
+]) {
+  test(scenario.name, async () => {
+    const storage = new FakeStorage();
+    const storageKey = getStorageKey(OWNER);
+    const view = makeContainer();
+    writeCache(storageKey, {
+      fetchedAt: NOW - CACHE_TTL_MS,
+      repoNames: ["tech-lib"],
+      repositories: { "tech-lib": makeEntry("tech-lib", scenario.cached ? null : []) },
+    }, storage);
+    let resolveFetch;
+    let requestHeaders;
+    const response = new Promise(resolve => { resolveFetch = resolve; });
+    const pending = loadCompletedMilestones(view.container, {
+      config: { owner: OWNER, repositories: ["tech-lib"] },
+      fetchImpl: (_url, options) => { requestHeaders = options.headers; return response; },
+      storage, now: NOW, logger: silentLogger,
+    });
+    assert.equal(view.list.hasAttribute("hidden"), !scenario.cached);
+    assert.equal(requestHeaders["If-None-Match"], '"etag-1"');
+    assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW - CACHE_TTL_MS);
+    resolveFetch(makeResponse({ status: scenario.status, payload: scenario.payload }));
+    assert.equal(await pending, true);
+    assert.equal(view.list.hasAttribute("hidden"), scenario.payload?.length === 0);
+    assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW);
+    if (scenario.payload?.length) assert.equal(view.items[0].querySelector("[data-recent-completed-milestone-link]").textContent, "Refreshed");
+  });
+}
+
+test("keeps stale completed milestones visible after a refresh fails", async () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER);
+  const config = { owner: OWNER, repositories: ["tech-lib"] };
+  const view = makeContainer();
+  writeCache(storageKey, { fetchedAt: NOW - CACHE_TTL_MS, repoNames: config.repositories, repositories: { "tech-lib": makeEntry() } }, storage);
+  let rejectFetch;
+  const response = new Promise((_resolve, reject) => { rejectFetch = reject; });
+  const pending = loadCompletedMilestones(view.container, { config, fetchImpl: () => response, storage, now: NOW, logger: silentLogger });
+  assert.equal(view.list.hasAttribute("hidden"), false);
+  rejectFetch(new Error("Offline"));
+  assert.equal(await pending, true);
+  assert.equal(view.list.hasAttribute("hidden"), false);
+  assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW - CACHE_TTL_MS);
+  assert.notEqual(storage.getItem(getFailureKey(OWNER, config.repositories)), null);
+});
+
+test("retains failed completed-milestone caches alongside refreshed repositories", async () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER);
+  const config = { owner: OWNER, repositories: ["alpha", "beta"] };
+  const view = makeContainer();
+  writeCache(storageKey, {
+    fetchedAt: NOW - CACHE_TTL_MS,
+    repoNames: config.repositories,
+    repositories: {
+      alpha: makeEntry("alpha", [makeMilestone("alpha", { title: "Cached Alpha" })]),
+      beta: makeEntry("beta", []),
+    },
+  }, storage);
+  assert.equal(await loadCompletedMilestones(view.container, {
+    config,
+    fetchImpl: async url => url.includes("/alpha/")
+      ? makeResponse({ status: 500 })
+      : makeResponse({ payload: [makeApiMilestone({ title: "Refreshed Beta", closedAt: "2026-09-30T08:00:00Z" })] }),
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  }), true);
+  assert.deepEqual(
+    view.items.map(item => item.querySelector("[data-recent-completed-milestone-link]").textContent),
+    ["Refreshed Beta", "Cached Alpha"]
+  );
+  assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW - CACHE_TTL_MS);
+});
+
 test("keeps successful repository data when another repository fails", async () => {
   const storage = new FakeStorage();
   const config = { owner: OWNER, repositories: ["alpha", "beta"] };

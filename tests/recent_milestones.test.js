@@ -237,7 +237,7 @@ function makeEntry(repository = "tech-lib", milestones = null, etag = '"etag"') 
         etag,
         hasNext: false,
         itemCount: values.length,
-        oldestUpdatedAt: "2026-08-24T08:37:31.000Z",
+        oldestUpdatedAt: values.length > 0 ? "2026-08-24T08:37:31.000Z" : "",
         milestones: values,
       },
     ],
@@ -267,6 +267,68 @@ function makeResponse({
 }
 
 const silentLogger = { error() {} };
+
+function addCompletedElements(view) {
+  const list = new FakeElement();
+  list.hidden = true;
+  const items = Array.from({ length: 2 }, () => {
+    const item = new FakeElement();
+    item.hidden = true;
+    item.selectors.set("[data-recent-completed-milestone-link]", new FakeElement());
+    return item;
+  });
+  view.container.selectors.set("[data-recent-completed-milestones]", list);
+  view.container.selectors.set("[data-recent-completed-milestone]", items);
+  return { list, items };
+}
+
+function makeCompletedEntry(repository = "tech-lib", title = "Cached completed") {
+  return {
+    pages: [{
+      page: 1,
+      etag: '"completed-etag"',
+      hasNext: false,
+      itemCount: 1,
+      milestones: [{ repository, number: 1, title, closedAt: "2026-08-24T08:00:00.000Z" }],
+    }],
+  };
+}
+
+function makeMilestoneController(view, options) {
+  const listeners = new Map();
+  const instance = githubActivity.controller.createController({
+    documentImpl: {
+      querySelector(selector) {
+        assert.equal(selector, "[data-github-activity-config]");
+        return { textContent: JSON.stringify({
+          owner: OWNER,
+          repositoryUpdates: false,
+          repositories: [],
+          commitLimit: null,
+          milestones: {
+            limit: Number(view.container.dataset.milestoneLimit),
+            repositories: JSON.parse(view.container.querySelector("[data-recent-milestones-repositories]").textContent),
+          },
+        }) };
+      },
+      querySelectorAll(selector) {
+        assert.equal(selector, "[data-recent-milestones]");
+        return [view.container];
+      },
+    },
+    windowImpl: {
+      addEventListener: (type, callback) => listeners.set(type, callback),
+      removeEventListener: type => listeners.delete(type),
+    },
+    now: () => NOW,
+    logger: silentLogger,
+    ...options,
+  });
+  return {
+    instance,
+    storageEvent: (key, newValue) => listeners.get("storage")({ key, newValue }),
+  };
+}
 
 test("builds encoded closed milestone-issue requests and versioned headers", () => {
   assert.equal(
@@ -1123,9 +1185,9 @@ test("shows loading while the initial request is pending", async () => {
   assert.equal(container.attributes.has("aria-busy"), false);
 });
 
-test("loads configured repositories serially", async () => {
+test("loads repositories concurrently and waits for the final ranking", async () => {
   const storage = new FakeStorage();
-  const { container } = makeContainer({
+  const { container, items, list, loading } = makeContainer({
     limit: 1,
     repositories: ["alpha", "beta"],
   });
@@ -1152,14 +1214,16 @@ test("loads configured repositories serially", async () => {
     logger: silentLogger,
   });
 
-  assert.deepEqual(requests, ["alpha"]);
-  resolveAlpha(makeResponse({ payload: [makeApiIssue({ title: "Alpha" })] }));
   await betaStarted;
   assert.deepEqual(requests, ["alpha", "beta"]);
+  assert.equal(list.hidden, true);
+  assert.equal(loading.hidden, false);
+  resolveAlpha(makeResponse({ payload: [makeApiIssue({ title: "Alpha" })] }));
   assert.equal(await pending, true);
+  assert.equal(items[0].querySelector("[data-recent-milestone-title]").textContent, "Alpha");
 });
 
-test("continues serially after a failure and renders best-effort results", async () => {
+test("renders best-effort results when a concurrent repository request fails", async () => {
   const storage = new FakeStorage();
   const { container, items } = makeContainer({
     limit: 1,
@@ -1193,6 +1257,65 @@ test("continues serially after a failure and renders best-effort results", async
   );
 });
 
+for (const scenario of [
+  { name: "replaces stale cards", cached: true, payload: [makeApiIssue({ title: "Refreshed" })], finalState: "list" },
+  { name: "replaces stale cards with an empty result", cached: true, payload: [], finalState: "empty" },
+  { name: "keeps a complete empty cache visible during refresh", cached: false, payload: [makeApiIssue({ title: "Refreshed" })], finalState: "list" },
+  { name: "revalidates visible stale cards with a 304", cached: true, status: 304, finalState: "list" },
+]) {
+  test(scenario.name, async () => {
+    const storage = new FakeStorage();
+    const storageKey = getStorageKey(OWNER, 1);
+    const view = makeContainer({ limit: 1 });
+    writeCache(storageKey, {
+      fetchedAt: NOW - CACHE_TTL_MS,
+      repoNames: ["tech-lib"],
+      repositories: { "tech-lib": makeEntry("tech-lib", scenario.cached ? null : []) },
+    }, storage);
+    let resolveFetch;
+    let requestHeaders;
+    const response = new Promise((resolve) => { resolveFetch = resolve; });
+    const pending = loadRecentMilestones(view.container, {
+      fetchImpl: (_url, options) => { requestHeaders = options.headers; return response; },
+      storage, now: NOW, logger: silentLogger,
+    });
+
+    const states = { list: view.list, loading: view.loading, error: view.error, empty: view.empty };
+    assertOnlyVisible(states, scenario.cached ? "list" : "empty");
+    assert.equal(view.container.hasAttribute("aria-busy"), true);
+    assert.equal(requestHeaders["If-None-Match"], '"etag"');
+    assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW - CACHE_TTL_MS);
+    resolveFetch(makeResponse({ status: scenario.status, payload: scenario.payload }));
+    assert.equal(await pending, true);
+    assertOnlyVisible(states, scenario.finalState);
+    assert.equal(view.container.hasAttribute("aria-busy"), false);
+    assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW);
+    if (scenario.payload?.length) {
+      assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Refreshed");
+    }
+  });
+}
+
+test("retains a failed repository's stale card alongside refreshed results", async () => {
+  const storage = new FakeStorage();
+  const storageKey = getStorageKey(OWNER, 2);
+  const view = makeContainer({ limit: 2, repositories: ["alpha", "beta"] });
+  writeCache(storageKey, {
+    fetchedAt: NOW - CACHE_TTL_MS,
+    repoNames: ["alpha", "beta"],
+    repositories: { alpha: makeEntry("alpha", [makeNormalizedMilestone("alpha", { title: "Cached Alpha" })]), beta: makeEntry("beta", []) },
+  }, storage);
+
+  assert.equal(await loadRecentMilestones(view.container, {
+    fetchImpl: async (url) => url.includes("/alpha/")
+      ? makeResponse({ status: 500 })
+      : makeResponse({ payload: [makeApiIssue({ title: "Refreshed Beta", closedAt: "2026-08-24T09:00:00Z", updatedAt: "2026-08-24T09:30:00Z" })] }),
+    storage, now: NOW, logger: silentLogger,
+  }), true);
+  assert.deepEqual(view.items.map(item => item.querySelector("[data-recent-milestone-title]").textContent), ["Refreshed Beta", "Cached Alpha"]);
+  assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW - CACHE_TTL_MS);
+});
+
 test("restores stale data after failure and backs off for six hours", async () => {
   const storage = new FakeStorage();
   const storageKey = getStorageKey(OWNER, 1);
@@ -1220,15 +1343,15 @@ test("restores stale data after failure and backs off for six hours", async () =
     },
   });
   const fetchImpl = coordinator.fetch;
-  assert.equal(
-    await loadRecentMilestones(first.container, {
-      fetchImpl,
-      storage,
-      now: NOW,
-      logger: silentLogger,
-    }),
-    true
-  );
+  const pending = loadRecentMilestones(first.container, {
+    fetchImpl,
+    storage,
+    now: NOW,
+    logger: silentLogger,
+  });
+  assert.equal(first.list.hidden, false);
+  assert.equal(first.loading.hidden, true);
+  assert.equal(await pending, true);
   assert.equal(isVisible(first.items[0]), true);
 
   const second = makeContainer({ limit: 1 });
@@ -1332,4 +1455,131 @@ test("shows an error for invalid runtime configuration", async () => {
 test("the unified controller selects recent-milestone containers", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
   assert.match(source, /querySelectorAll\("\[data-recent-milestones\]"\)/);
+});
+
+test("both milestone loaders share four request slots and retain final rankings", async () => {
+  const repositories = Array.from({ length: 8 }, (_value, index) => `repository-${index}`);
+  const storage = new FakeStorage();
+  const view = makeContainer({ limit: 1, repositories });
+  const completed = addCompletedElements(view);
+  const responses = [];
+  let active = 0;
+  let peak = 0;
+  const coordinator = createRequestCoordinator({
+    owner: OWNER,
+    storage,
+    now: () => NOW,
+    fetchImpl: url => {
+      active += 1;
+      peak = Math.max(peak, active);
+      return new Promise(resolve => {
+        responses.push({ url, finish() {
+          active -= 1;
+          const payload = url.includes("/issues?")
+            ? [makeApiIssue({ title: new URL(url).pathname.split("/")[3] })]
+            : [{ number: 1, title: new URL(url).pathname.split("/")[3], state: "closed", closed_at: "2026-08-24T08:00:00Z" }];
+          resolve(makeResponse({ payload }));
+        } });
+      });
+    },
+  });
+  const options = { config: { owner: OWNER, repositories, limit: 1 }, fetchImpl: coordinator.fetch, storage, now: NOW, logger: silentLogger };
+  const pending = Promise.all([
+    loadRecentMilestones(view.container, options),
+    githubActivity.completedMilestones.loadCompletedMilestones(view.container, options),
+  ]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(responses.length, 4);
+  assert.equal(coordinator.queuedCount, 12);
+  assert.equal(view.list.hidden, true);
+  assert.equal(completed.list.hidden, true);
+
+  for (let batch = 0; batch < 4; batch += 1) {
+    const current = responses.slice(batch * 4, batch * 4 + 4);
+    assert.equal(current.length, 4);
+    assert.ok(current.every(({ url }) => url.includes(batch < 2 ? "/issues?" : "/milestones?")));
+    for (const response of current.reverse()) response.finish();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(active, batch < 3 ? 4 : 0);
+    assert.equal(view.list.hidden, batch < 1);
+    assert.equal(completed.list.hidden, batch < 3);
+  }
+  assert.deepEqual(await pending, [true, true]);
+  assert.equal(peak, 4);
+  assert.equal(responses.length, 16);
+  assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, repositories[0]);
+  assert.deepEqual(completed.items.map(item => item.querySelector("[data-recent-completed-milestone-link]").textContent), repositories.slice(0, 2));
+});
+
+test("displays caches before a browser lock and handles storage events without refreshes", async (t) => {
+  const storage = new FakeStorage();
+  const view = makeContainer({ limit: 1 });
+  const completed = addCompletedElements(view);
+  const completedModule = githubActivity.completedMilestones;
+  const cardKey = getStorageKey(OWNER, 1);
+  const completedKey = completedModule.getStorageKey(OWNER);
+  const writeResults = (timestamp, title) => {
+    writeCache(cardKey, {
+      fetchedAt: timestamp,
+      repoNames: ["tech-lib"],
+      repositories: { "tech-lib": makeEntry("tech-lib", [makeNormalizedMilestone("tech-lib", { title })]) },
+    }, storage);
+    completedModule.writeCache(completedKey, {
+      fetchedAt: timestamp,
+      repoNames: ["tech-lib"],
+      repositories: { "tech-lib": makeCompletedEntry("tech-lib", title) },
+    }, storage);
+  };
+  writeResults(NOW - CACHE_TTL_MS, "Cached");
+  let releaseLock;
+  let lockedTask;
+  let lockRequests = 0;
+  let fetches = 0;
+  let activate;
+  const lock = new Promise(resolve => { releaseLock = resolve; });
+  const { instance, storageEvent } = makeMilestoneController(view, {
+    storage,
+    fetchImpl: async () => { fetches += 1; return makeResponse(); },
+    locks: { request(name, task) {
+      assert.equal(name, "github-activity:lib-port:milestones");
+      lockRequests += 1;
+      lockedTask = lock.then(task);
+      return lockedTask;
+    } },
+    observerFactory: callback => {
+      activate = () => callback([{ isIntersecting: true }]);
+      return { observe() {}, disconnect() {} };
+    },
+  });
+  t.after(() => instance.destroy());
+  instance.start();
+  storageEvent(cardKey, storage.getItem(cardKey));
+  assert.equal(view.list.hidden, true);
+  assert.equal(completed.list.hidden, true);
+  assert.equal(lockRequests, 0);
+  activate();
+  assert.equal(view.list.hidden, false);
+  assert.equal(completed.list.hidden, false);
+  assert.equal(lockRequests, 1);
+  assert.equal(fetches, 0);
+
+  writeResults(NOW - CACHE_TTL_MS, "Other tab");
+  const snapshots = [storage.getItem(cardKey), storage.getItem(completedKey)];
+  storageEvent(cardKey, snapshots[0]);
+  storageEvent(completedKey, snapshots[1]);
+  assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Other tab");
+  assert.equal(completed.items[0].querySelector("[data-recent-completed-milestone-link]").textContent, "Other tab");
+  assert.equal(lockRequests, 1);
+  assert.equal(fetches, 0);
+  assert.deepEqual([storage.getItem(cardKey), storage.getItem(completedKey)], snapshots);
+  assert.equal(storage.getItem(getFailureKey(OWNER, ["tech-lib"], 1)), null);
+  assert.equal(storage.getItem(completedModule.getFailureKey(OWNER, ["tech-lib"])), null);
+  assert.equal(storage.getItem(githubActivity.shared.getGlobalFailureKey(OWNER)), null);
+
+  writeResults(NOW, "Fresh from other tab");
+  releaseLock();
+  assert.equal(await lockedTask, true);
+  assert.equal(fetches, 0);
+  assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Fresh from other tab");
+  assert.equal(completed.items[0].querySelector("[data-recent-completed-milestone-link]").textContent, "Fresh from other tab");
 });
