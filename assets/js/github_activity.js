@@ -4,7 +4,7 @@
   const FAILURE_TTL_MS = 6 * 60 * 60 * 1000;
   const MAX_MILESTONES = 10;
   const PER_PAGE = 100;
-  const MAX_PAGES = 100;
+  const MAX_PAGES = 2;
   const API_BASE_URL = "https://api.github.com";
   const API_VERSION = "2026-03-10";
   const DUE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -34,6 +34,7 @@
       storage = getStorage(),
       now = Date.now(),
       logger = console,
+      refreshTimeoutMs = shared.SECTION_TIMEOUT_MS,
     } = {}
   ) {
     const config = providedConfig || readConfiguration(container);
@@ -64,6 +65,7 @@
       storage,
       now
     );
+    removeStorageItem(storage, failureKey.replace(":v5:", ":v4:"));
     const cachedMilestones = cached
       ? mergeMilestones(cached.repositories, config.repositories, config.limit)
       : [];
@@ -122,12 +124,13 @@
     }
 
     container.setAttribute("aria-busy", "true");
+    const refresh = shared.createRefresh(fetchImpl, { timeoutMs: refreshTimeoutMs });
 
     try {
       const result = await loadRepositories(
         config,
         cached?.repositories || {},
-        fetchImpl
+        refresh.fetch
       );
       const milestones = mergeMilestones(
         result.repositories,
@@ -148,7 +151,7 @@
       if (result.allSuccessful) {
         removeStorageItem(storage, failureKey);
       } else {
-        writeFailure(failureKey, storage, now);
+        shared.recordFailures(failureKey, storage, now, result.errors);
         for (const error of result.errors) {
           logger.error("Failed to load recent GitHub milestones", error);
         }
@@ -166,8 +169,8 @@
       renderStatus(container, "error");
       return false;
     } catch (error) {
-      writeFailure(failureKey, storage, now);
-      logger.error("Failed to load recent GitHub milestones", error);
+      shared.recordFailures(failureKey, storage, now, [error]);
+      if (!shared.isDeferred(error)) logger.error("Failed to load recent GitHub milestones", error);
       if (hasCachedResult) {
         return renderMilestones(
           container,
@@ -179,6 +182,7 @@
       renderStatus(container, "error");
       return false;
     } finally {
+      refresh.close();
       container.removeAttribute("aria-busy");
     }
   }
@@ -222,132 +226,61 @@
   }
 
   async function loadRepositories(config, cachedRepositories, fetchImpl) {
-    const repositories = {};
-    const errors = [];
-
-    for (const repository of config.repositories) {
-      if (cachedRepositories[repository]) {
-        repositories[repository] = cachedRepositories[repository];
-      }
-    }
-
-    const results = await Promise.allSettled(
-      config.repositories.map((repository) =>
-        fetchRepositoryClosedIssueActivity(
-          config.owner,
-          repository,
-          config.limit,
-          cachedRepositories[repository],
-          fetchImpl
-        )
-      )
+    return shared.collectPagedRepositories(
+      config.repositories, cachedRepositories,
+      (repository, page, cachedPage) => fetchClosedIssuePage(
+        config.owner, repository, page, cachedPage, fetchImpl
+      ),
+      (pages) => isIssueSearchComplete(pages, config.limit),
+      (entry, name) => mergeMilestones({ [name]: entry }, [name], MAX_MILESTONES)
     );
-    for (const [index, result] of results.entries()) {
-      if (result.status === "fulfilled") {
-        repositories[config.repositories[index]] = result.value;
-      } else {
-        errors.push(result.reason);
-      }
-    }
-
-    return {
-      allSuccessful: errors.length === 0,
-      errors,
-      repositories,
-    };
   }
 
-  async function fetchRepositoryClosedIssueActivity(
-    owner,
-    repository,
-    limit,
-    cachedEntry,
-    fetchImpl
-  ) {
-    const cachedPages = new Map(
-      (cachedEntry?.pages || []).map((page) => [page.page, page])
+  function isIssueSearchComplete(pages, limit) {
+    const latest = pages[pages.length - 1];
+    const candidates = compactMilestones(pages.flatMap((page) => page.milestones));
+    return !latest.hasNext || canStopClosedIssuePagination(
+      new Map(candidates.map((milestone) => [milestone.number, milestone])),
+      limit, latest.oldestUpdatedAt
     );
-    const pages = [];
-    const milestonesByNumber = new Map();
+  }
 
-    for (let pageNumber = 1; pageNumber <= MAX_PAGES; pageNumber += 1) {
-      const cachedPage = cachedPages.get(pageNumber);
-      const headers = buildHeaders(cachedPage?.etag);
-      const response = await fetchImpl(
-        buildClosedIssueActivityUrl(owner, repository, pageNumber),
-        { headers }
-      );
+  async function fetchRepositoryClosedIssueActivity(owner, repository, limit, cachedEntry, fetchImpl) {
+    const result = await loadRepositories(
+      { owner, repositories: [repository], limit },
+      cachedEntry ? { [repository]: cachedEntry } : {}, fetchImpl
+    );
+    if (result.errors.length) throw result.errors[0];
+    return result.repositories[repository];
+  }
 
-      let etag;
-      let hasNext;
-      let itemCount;
-      let milestones;
-      let oldestUpdatedAt;
-
-      if (response.status === 304 && cachedPage) {
-        etag = cachedPage.etag;
-        itemCount = cachedPage.itemCount;
-        milestones = cachedPage.milestones;
-        oldestUpdatedAt = cachedPage.oldestUpdatedAt;
-        const linkHeader = getHeader(response, "link");
-        hasNext = linkHeader
-          ? hasNextPage(linkHeader)
-          : cachedPage.hasNext;
-      } else {
-        if (!response.ok) {
-          throw new Error(
-            `GitHub API returned ${response.status} for ${repository} issues page ${pageNumber}`
-          );
-        }
-
-        const payload = await response.json();
-        if (!Array.isArray(payload)) {
-          throw new Error(
-            `GitHub API returned malformed issue data for ${repository}`
-          );
-        }
-
-        etag = getHeader(response, "etag");
-        itemCount = payload.length;
-        milestones = normalizeClosedIssueActivity(payload, repository);
-        oldestUpdatedAt = findOldestUpdatedAt(payload);
-        if (itemCount > 0 && !oldestUpdatedAt) {
-          throw new Error(
-            `GitHub API returned malformed issue update data for ${repository}`
-          );
-        }
-        hasNext = hasNextPage(getHeader(response, "link"));
-      }
-
-      pages.push({
-        page: pageNumber,
-        etag,
-        hasNext,
-        itemCount,
-        oldestUpdatedAt,
-        milestones,
-      });
-
-      for (const milestone of milestones) {
-        const current = milestonesByNumber.get(milestone.number);
-        if (!current || isNewerMilestoneCandidate(milestone, current)) {
-          milestonesByNumber.set(milestone.number, milestone);
-        }
-      }
-
-      if (
-        !hasNext ||
-        canStopClosedIssuePagination(
-          milestonesByNumber,
-          limit,
-          oldestUpdatedAt
-        )
-      ) {
-        return { pages };
-      }
+  async function fetchClosedIssuePage(owner, repository, pageNumber, cachedPage, fetchImpl) {
+    const response = await fetchImpl(
+      buildClosedIssueActivityUrl(owner, repository, pageNumber),
+      { headers: buildHeaders(cachedPage?.etag) },
+      { priority: pageNumber > 1 ? 1 : 0 }
+    );
+    if (response.status === 304 && cachedPage) {
+      const link = getHeader(response, "link");
+      return { ...cachedPage, hasNext: link ? hasNextPage(link) : cachedPage.hasNext };
     }
-
-    throw new Error(`GitHub issue pagination exceeded ${MAX_PAGES} pages`);
+    if (!response.ok) throw shared.createHttpError(response, `${repository} issues page ${pageNumber}`);
+    const payload = await response.json();
+    if (!Array.isArray(payload)) {
+      throw new Error(`GitHub API returned malformed issue data for ${repository}`);
+    }
+    const oldestUpdatedAt = findOldestUpdatedAt(payload);
+    if (payload.length > 0 && !oldestUpdatedAt) {
+      throw new Error(`GitHub API returned malformed issue update data for ${repository}`);
+    }
+    return {
+      page: pageNumber,
+      etag: getHeader(response, "etag"),
+      hasNext: hasNextPage(getHeader(response, "link")),
+      itemCount: payload.length,
+      oldestUpdatedAt,
+      milestones: normalizeClosedIssueActivity(payload, repository),
+    };
   }
 
   function buildClosedIssueActivityUrl(owner, repository, page = 1) {
@@ -481,7 +414,7 @@
       const entry = repositories?.[repository];
       if (!entry?.pages) continue;
 
-      for (const page of entry.pages) {
+      for (const page of [...entry.pages, { milestones: entry.retainedCandidates || [] }]) {
         for (const milestone of page.milestones) {
           const key = `${repository}:${milestone.number}`;
           const current = milestonesByKey.get(key);
@@ -729,7 +662,7 @@
   }
 
   function getStorageKey(owner, limit) {
-    return `recent-milestones:v4:${owner.toLowerCase()}:limit:${limit}`;
+    return `recent-milestones:v5:${owner.toLowerCase()}:limit:${limit}`;
   }
 
   function getFailureKey(owner, repositories, limit) {
@@ -738,7 +671,7 @@
       .slice()
       .sort()
       .join(",");
-    return `recent-milestones:v4:failure:${owner.toLowerCase()}:limit:${limit}:${repoKey}`;
+    return `recent-milestones:v5:failure:${owner.toLowerCase()}:limit:${limit}:${repoKey}`;
   }
 
   function getLegacyStorageKey(owner, limit) {
@@ -772,9 +705,12 @@
     return globalThis.fetch.bind(globalThis);
   }
 
-  function readCache(storageKey, repositories, storage, now) {
+  function readCache(storageKey, repositories, storage, now, legacy = false) {
     const cached = readStoredObject(storage, storageKey);
-    if (!cached) return null;
+    if (!cached) return legacy ? null : shared.migratePagedCache(
+      storageKey, storageKey.replace(":v5:", ":v4:"), repositories, readCache, storage, now,
+      (entry, name) => mergeMilestones({ [name]: entry }, [name], MAX_MILESTONES)
+    );
 
     if (
       !isValidStoredTime(cached.fetchedAt, now) ||
@@ -793,7 +729,7 @@
 
     for (const [repository, entry] of Object.entries(cached.repositories)) {
       if (!currentNames.has(repository)) continue;
-      const normalized = normalizeCachedEntry(entry, repository);
+      const normalized = normalizeCachedEntry(entry, repository, legacy);
       if (!normalized) {
         removeStorageItem(storage, storageKey);
         return null;
@@ -849,12 +785,13 @@
       isFresh:
         sameRepositorySet &&
         complete &&
+        cached.fetchedAt > 0 &&
         now - cached.fetchedAt < CACHE_TTL_MS,
       repositories: normalizedRepositories,
     };
   }
 
-  function normalizeCachedEntry(entry, repository) {
+  function normalizeCachedEntry(entry, repository, legacy) {
     if (!entry || typeof entry !== "object" || !Array.isArray(entry.pages)) {
       return null;
     }
@@ -868,7 +805,7 @@
         typeof page !== "object" ||
         !Number.isInteger(page.page) ||
         page.page < 1 ||
-        page.page > MAX_PAGES ||
+        page.page > (legacy ? 100 : MAX_PAGES) ||
         pageNumbers.has(page.page) ||
         typeof page.etag !== "string" ||
         typeof page.hasNext !== "boolean" ||
@@ -909,9 +846,18 @@
       });
     }
 
-    if (pages.length === 0) return null;
+    if ([entry.limited, entry.deferred].some((flag) => flag !== undefined && typeof flag !== "boolean")) return null;
+    if (pages.length === 0 && entry.deferred !== true) return null;
     pages.sort((left, right) => left.page - right.page);
-    return { pages };
+    if (pages.some((page, index) => page.page !== index + 1)) return null;
+    const retained = entry.retainedCandidates ?? [];
+    if (!Array.isArray(retained)) return null;
+    const retainedCandidates = retained.map((value) => normalizeCachedMilestone(value, repository));
+    if (retainedCandidates.some((value) => !value)) return null;
+    return {
+      pages, retainedCandidates: compactMilestones(retainedCandidates),
+      limited: entry.limited === true, deferred: entry.deferred === true,
+    };
   }
 
   function normalizeCachedMilestone(value, repository) {
@@ -988,21 +934,11 @@
   }
 
   function hasRecentFailure(failureKey, storage, now) {
-    const failure = readStoredObject(storage, failureKey);
-    if (!failure) return false;
-
-    if (
-      !isValidStoredTime(failure.failedAt, now) ||
-      now - failure.failedAt >= FAILURE_TTL_MS
-    ) {
-      removeStorageItem(storage, failureKey);
-      return false;
-    }
-    return true;
+    return shared.hasRecentFailure(failureKey, storage, now);
   }
 
   function writeFailure(failureKey, storage, now) {
-    writeStoredJson(storage, failureKey, { failedAt: now });
+    shared.writeFailure(failureKey, storage, now);
   }
 
   function isValidStoredTime(value, now) {
@@ -1075,7 +1011,12 @@
   const shared = (() => {
     const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const FAILURE_TTL_MS = 6 * 60 * 60 * 1000;
+    const TRANSIENT_FAILURE_TTL_MS = 5 * 60 * 1000;
     const REQUEST_TIMEOUT_MS = 15 * 1000;
+    const SECTION_TIMEOUT_MS = 30 * 1000;
+    const MAX_REQUESTS = 40;
+    const MAX_MILESTONE_PAGES = 2;
+    const MAX_MILESTONE_REQUESTS = 12;
     const API_VERSION = "2026-03-10";
 
     function getStorage() {
@@ -1172,7 +1113,10 @@
       if (!failure) return false;
       if (
         !isValidStoredTime(failure.failedAt, now) ||
-        now - failure.failedAt >= FAILURE_TTL_MS
+        (failure.retryAt !== undefined && (
+          !Number.isFinite(failure.retryAt) || failure.retryAt < failure.failedAt
+        )) ||
+        now >= (failure.retryAt ?? failure.failedAt + FAILURE_TTL_MS)
       ) {
         removeStorageItem(storage, key);
         return false;
@@ -1180,8 +1124,122 @@
       return true;
     }
 
-    function writeFailure(key, storage, now, kind = "resource") {
-      writeStoredJson(storage, key, { failedAt: now, kind });
+    function writeFailure(key, storage, now, kind = "resource", retryAt) {
+      writeStoredJson(storage, key, {
+        failedAt: now, kind, ...(retryAt === undefined ? {} : { retryAt }),
+      });
+    }
+
+    function isDeferred(error) {
+      return error?.name === "ActivityDeferredError";
+    }
+
+    function createDeferredError(reason) {
+      const error = new Error(`GitHub activity deferred: ${reason}`);
+      error.name = "ActivityDeferredError";
+      error.reason = reason;
+      return error;
+    }
+
+    function isRateLimitResponse(response, payload) {
+      return response?.status === 429 || (response?.status === 403 && (
+        response.rateLimited === true ||
+        getHeader(response, "x-ratelimit-remaining") === "0" ||
+        Boolean(getHeader(response, "retry-after")) ||
+        /rate limit|abuse detection/i.test(payload?.message || "")
+      ));
+    }
+
+    function getRetryAt(response, now) {
+      const candidates = [];
+      const retryAfter = getHeader(response, "retry-after");
+      if (retryAfter) {
+        const seconds = Number(retryAfter);
+        const time = Number.isFinite(seconds) && seconds >= 0
+          ? now + seconds * 1000 : Date.parse(retryAfter);
+        if (Number.isFinite(time) && time > now) candidates.push(time);
+      }
+      if (getHeader(response, "x-ratelimit-remaining") === "0") {
+        const reset = Number(getHeader(response, "x-ratelimit-reset")) * 1000;
+        if (Number.isFinite(reset) && reset > now) candidates.push(reset);
+      }
+      return candidates.length ? Math.max(...candidates) : now + 60 * 1000;
+    }
+
+    function createHttpError(response, context, now = Date.now()) {
+      const error = new Error(`GitHub API returned ${response.status}${context ? ` for ${context}` : ""}`);
+      error.kind = isRateLimitResponse(response)
+        ? "rate-limit" : response.status >= 500 ? "transient" : "resource";
+      if (error.kind === "rate-limit") error.retryAt = response.retryAt ?? getRetryAt(response, now);
+      return error;
+    }
+
+    function recordFailures(key, storage, now, errors) {
+      const failures = errors.filter((error) => !isDeferred(error));
+      if (failures.length === 0) return;
+      const periods = failures.map((error) => ({
+        kind: error?.kind || "resource",
+        retryAt: error?.kind === "rate-limit"
+          ? error.retryAt ?? now + 60 * 1000
+          : now + (error?.kind === "transient" ? TRANSIENT_FAILURE_TTL_MS : FAILURE_TTL_MS),
+      }));
+      const longest = periods.reduce((left, right) => left.retryAt >= right.retryAt ? left : right);
+      writeFailure(key, storage, now, longest.kind, longest.retryAt);
+    }
+
+    function createRefresh(fetchImpl, { timeoutMs = SECTION_TIMEOUT_MS } = {}) {
+      const controller = typeof AbortController === "function" ? new AbortController() : null;
+      const listeners = new Set();
+      let expired = false;
+      const reason = createDeferredError("deadline");
+      const timer = setTimeout(() => {
+        expired = true;
+        controller?.abort(reason);
+        for (const listener of listeners) listener();
+      }, timeoutMs);
+      async function wait(operation) {
+        if (expired) throw reason;
+        let cancel;
+        const deadline = new Promise((_resolve, reject) => {
+          cancel = () => reject(reason);
+          listeners.add(cancel);
+        });
+        try {
+          return await Promise.race([operation, deadline]);
+        } finally {
+          listeners.delete(cancel);
+        }
+      }
+      return {
+        fetch: (url, options = {}, metadata) => {
+          if (expired) return Promise.reject(reason);
+          const operation = (async () => {
+            let signal = controller?.signal;
+            const removeListeners = [];
+            if (controller && options.signal) {
+              const combined = new AbortController();
+              for (const input of [controller.signal, options.signal]) {
+                const abort = () => combined.abort(input.reason);
+                if (input.aborted) abort();
+                else input.addEventListener("abort", abort, { once: true });
+                removeListeners.push(() => input.removeEventListener("abort", abort));
+              }
+              signal = combined.signal;
+            } else if (options.signal) signal = options.signal;
+            try {
+              return await fetchImpl(url, { ...options, ...(signal ? { signal } : {}) }, metadata);
+            } catch (error) {
+              if (!error?.kind && !isDeferred(error) && error?.name !== "AbortError") error.kind = "transient";
+              throw error;
+            } finally {
+              for (const remove of removeListeners) remove();
+            }
+          })();
+          return wait(operation);
+        },
+        wait,
+        close() { clearTimeout(timer); },
+      };
     }
 
     function getGlobalFailureKey(owner) {
@@ -1191,10 +1249,11 @@
     function createTimeoutError(timeoutMs) {
       const error = new Error(`GitHub request timed out after ${timeoutMs} ms`);
       error.name = "TimeoutError";
+      error.kind = "transient";
       return error;
     }
 
-    function createBufferedResponse(response, payload) {
+    function createBufferedResponse(response, payload, rateLimited = response.rateLimited) {
       const buffered = {
         headers: response.headers,
         ok: response.ok,
@@ -1203,11 +1262,13 @@
         statusText: response.statusText,
         type: response.type,
         url: response.url,
+        rateLimited,
+        retryAt: response.retryAt,
         async json() {
           return payload;
         },
       };
-      buffered.clone = () => createBufferedResponse(response, payload);
+      buffered.clone = () => createBufferedResponse(buffered, payload);
       return buffered;
     }
 
@@ -1218,6 +1279,7 @@
       now = () => Date.now(),
       maxConcurrent = 4,
       requestTimeoutMs = REQUEST_TIMEOUT_MS,
+      maxRequests = MAX_REQUESTS,
     }) {
       const inFlight = new Map();
       const queue = [];
@@ -1228,6 +1290,22 @@
           ? requestTimeoutMs
           : REQUEST_TIMEOUT_MS;
       let active = 0;
+      let issued = 0;
+      let reserved = 0;
+      let sequence = 0;
+      const failureKey = getGlobalFailureKey(owner);
+      const previousFailure = readStoredObject(storage, failureKey);
+      if (["network", "timeout", "unavailable"].includes(previousFailure?.kind)) {
+        removeStorageItem(storage, failureKey);
+      }
+
+      function pausedError() {
+        const error = new Error("GitHub requests are temporarily paused");
+        const failure = readStoredObject(storage, failureKey);
+        error.kind = "rate-limit";
+        error.retryAt = failure?.retryAt ?? (failure?.failedAt || now()) + FAILURE_TTL_MS;
+        return error;
+      }
 
       function requestKey(url, options) {
         const headers = options?.headers || {};
@@ -1243,34 +1321,36 @@
         }
       }
 
-      async function fetchWithTimeout(url, options) {
-        const callerSignal = options?.signal;
-        const controller =
-          typeof AbortController === "function" ? new AbortController() : null;
-        const requestOptions = { ...options };
-        let callerAbortHandler = null;
+      async function fetchWithTimeout(item) {
+        const { url, options, controller } = item;
+        const requestOptions = { ...options, ...(controller ? { signal: controller.signal } : {}) };
         let timeoutId = null;
-
-        if (controller) {
-          callerAbortHandler = () => controller.abort(callerSignal?.reason);
-          if (callerSignal?.aborted) {
-            callerAbortHandler();
-          } else {
-            callerSignal?.addEventListener?.("abort", callerAbortHandler, {
-              once: true,
-            });
-          }
-          requestOptions.signal = controller.signal;
-        }
-
+        const cancelled = new Promise((_resolve, reject) => {
+          item.cancel = (reason) => {
+            reject(reason);
+            controller?.abort(reason);
+          };
+        });
         const operation = Promise.resolve().then(async () => {
-          const response = await fetchImpl(url, requestOptions);
-          if (!response?.ok) return response;
+          let response;
+          try {
+            response = await fetchImpl(url, requestOptions);
+          } catch (error) {
+            if (!isDeferred(error) && error?.name !== "AbortError") error.kind = "transient";
+            throw error;
+          }
+          if (response?.status === 304) return response;
           if (typeof response.json !== "function") {
+            if (!response.ok) return response;
             throw new Error("GitHub API returned a response without a JSON body");
           }
-          const payload = await response.json();
-          return createBufferedResponse(response, payload);
+          let payload;
+          try {
+            payload = await response.json();
+          } catch (error) {
+            if (response.ok) throw error;
+          }
+          return createBufferedResponse(response, payload, isRateLimitResponse(response, payload));
         });
         const timeout = new Promise((_resolve, reject) => {
           timeoutId = setTimeout(() => {
@@ -1281,63 +1361,94 @@
         });
 
         try {
-          return await Promise.race([operation, timeout]);
+          return await Promise.race([operation, timeout, cancelled]);
         } finally {
           if (timeoutId !== null) clearTimeout(timeoutId);
-          if (callerAbortHandler) {
-            callerSignal?.removeEventListener?.("abort", callerAbortHandler);
-          }
+          item.cancel = null;
         }
       }
 
-      async function run({ url, options, resolve, reject }) {
-        const failureKey = getGlobalFailureKey(owner);
+      async function run(item) {
+        let started = false;
         try {
-          if (hasRecentFailure(failureKey, storage, now())) {
-            throw new Error("GitHub requests are temporarily paused");
-          }
+          if (hasRecentFailure(failureKey, storage, now())) throw pausedError();
           if (typeof fetchImpl !== "function") {
-            writeFailure(failureKey, storage, now(), "unavailable");
             throw new Error("Fetch API unavailable");
           }
-
-          const response = await fetchWithTimeout(url, options);
-          if (response?.status === 403 || response?.status === 429) {
-            writeFailure(failureKey, storage, now(), "rate-limit");
+          reserved -= 1;
+          issued += 1;
+          started = true;
+          item.status = "running";
+          const response = await fetchWithTimeout(item);
+          if (isRateLimitResponse(response)) {
+            const retryAt = getRetryAt(response, now());
+            response.retryAt = retryAt;
+            const previous = readStoredObject(storage, failureKey);
+            writeFailure(failureKey, storage, now(), "rate-limit", Math.max(
+              retryAt, previous?.retryAt ?? (previous ? previous.failedAt + FAILURE_TTL_MS : 0)
+            ));
           }
-          resolve(response);
+          item.resolve(response);
         } catch (error) {
-          if (!hasRecentFailure(failureKey, storage, now())) {
-            writeFailure(
-              failureKey,
-              storage,
-              now(),
-              error?.name === "TimeoutError" ? "timeout" : "network"
-            );
-          }
-          reject(error);
+          item.reject(error);
         } finally {
+          if (!started) reserved -= 1;
+          item.status = "settled";
           active -= 1;
           drain();
         }
       }
 
-      function enqueue(url, options) {
-        return new Promise((resolve, reject) => {
-          queue.push({ url, options, resolve, reject });
+      async function fetchCoordinated(url, options = {}, { priority = 0 } = {}) {
+        if (options.signal?.aborted) throw options.signal.reason;
+        const key = requestKey(url, options);
+        let item = inFlight.get(key);
+        if (!item) {
+          if (hasRecentFailure(failureKey, storage, now())) throw pausedError();
+          if (issued + reserved >= maxRequests) throw createDeferredError("budget");
+          reserved += 1;
+          item = {
+            url, options: { ...options }, priority, sequence: sequence++, status: "queued",
+            controller: typeof AbortController === "function" ? new AbortController() : null,
+            consumers: new Set(),
+          };
+          delete item.options.signal;
+          item.promise = new Promise((resolve, reject) => { item.resolve = resolve; item.reject = reject; });
+          inFlight.set(key, item);
+          queue.push(item);
+          queue.sort((left, right) => left.priority - right.priority || left.sequence - right.sequence);
+          void item.promise.finally(() => {
+            if (inFlight.get(key) === item) inFlight.delete(key);
+          }).catch(() => {});
+        }
+        const response = await new Promise((resolve, reject) => {
+          const consumer = {};
+          const cleanup = () => {
+            options.signal?.removeEventListener?.("abort", cancel);
+            item.consumers.delete(consumer);
+          };
+          const cancel = () => {
+            cleanup();
+            reject(options.signal.reason);
+            if (item.consumers.size > 0 || item.status === "settled") return;
+            if (inFlight.get(key) === item) inFlight.delete(key);
+            if (item.status === "queued") {
+              queue.splice(queue.indexOf(item), 1);
+              reserved -= 1;
+              item.status = "settled";
+              item.reject(options.signal.reason);
+            } else {
+              item.cancel?.(options.signal.reason);
+            }
+          };
+          item.consumers.add(consumer);
+          options.signal?.addEventListener?.("abort", cancel, { once: true });
+          item.promise.then(
+            (value) => { cleanup(); resolve(value); },
+            (error) => { cleanup(); reject(error); }
+          );
           drain();
         });
-      }
-
-      async function fetchCoordinated(url, options = {}) {
-        const key = requestKey(url, options);
-        let request = inFlight.get(key);
-        if (!request) {
-          request = enqueue(url, options);
-          inFlight.set(key, request);
-          void request.finally(() => inFlight.delete(key)).catch(() => {});
-        }
-        const response = await request;
         return typeof response?.clone === "function" ? response.clone() : response;
       }
 
@@ -1349,6 +1460,65 @@
         get queuedCount() {
           return queue.length;
         },
+        get issuedCount() { return issued; },
+        get reservedCount() { return reserved; },
+      };
+    }
+
+    async function collectPagedRepositories(repoNames, cachedRepositories, fetchPage, isComplete, selectCandidates) {
+      const repositories = {};
+      const errors = [];
+      const jobs = repoNames.map((name) => {
+        const cached = cachedRepositories[name];
+        if (cached) repositories[name] = cached;
+        return { name, cached, pages: [], done: false, deferred: false };
+      });
+      let remaining = MAX_MILESTONE_REQUESTS;
+      for (let page = 1; page <= MAX_MILESTONE_PAGES && remaining > 0; page += 1) {
+        const selected = jobs.filter((job) => !job.done && !job.error && !job.deferred).slice(0, remaining);
+        remaining -= selected.length;
+        await Promise.all(selected.map(async (job) => {
+          try {
+            const result = await fetchPage(job.name, page, job.cached?.pages?.find((value) => value.page === page));
+            job.pages.push(result);
+            job.done = isComplete(job.pages);
+          } catch (error) {
+            if (isDeferred(error)) job.deferred = true;
+            else { job.error = error; errors.push(error); }
+          }
+        }));
+      }
+      for (const job of jobs) {
+        if (job.error && job.pages.length === 0) continue;
+        const deferred = !job.done && (job.deferred || Boolean(job.error) || job.pages.length < MAX_MILESTONE_PAGES);
+        repositories[job.name] = {
+          pages: deferred
+            ? job.pages.concat(job.cached?.pages?.slice(job.pages.length, MAX_MILESTONE_PAGES) || [])
+            : job.pages,
+          retainedCandidates: deferred && job.cached ? selectCandidates(job.cached, job.name) : [],
+          limited: !job.done,
+          deferred,
+        };
+      }
+      return { repositories, errors, allSuccessful: errors.length === 0 };
+    }
+
+    function migratePagedCache(storageKey, legacyKey, repoNames, readCache, storage, now, selectCandidates) {
+      const cached = readCache(legacyKey, repoNames, storage, now, true);
+      if (!cached) return null;
+      const repositories = Object.fromEntries(Object.entries(cached.repositories).map(([name, entry]) => [
+        name, {
+          pages: entry.pages.slice(0, MAX_MILESTONE_PAGES),
+          retainedCandidates: selectCandidates(entry, name),
+          limited: true,
+          deferred: true,
+        },
+      ]));
+      const replacement = { fetchedAt: 0, repoNames, repositories };
+      if (writeStoredJson(storage, storageKey, replacement)) removeStorageItem(storage, legacyKey);
+      return {
+        ...replacement, isFresh: false,
+        complete: repoNames.every((name) => repositories[name]),
       };
     }
 
@@ -1363,9 +1533,19 @@
       API_VERSION,
       CACHE_TTL_MS,
       FAILURE_TTL_MS,
+      TRANSIENT_FAILURE_TTL_MS,
+      SECTION_TIMEOUT_MS,
+      MAX_REQUESTS,
       REQUEST_TIMEOUT_MS,
       buildHeaders,
       createRequestCoordinator,
+      collectPagedRepositories,
+      migratePagedCache,
+      createDeferredError,
+      createHttpError,
+      createRefresh,
+      isDeferred,
+      recordFailures,
       getFetch,
       getGlobalFailureKey,
       getHeader,
@@ -1385,7 +1565,7 @@
   const completedMilestones = (() => {
     const LIMIT = 2;
     const PER_PAGE = 100;
-    const MAX_PAGES = 100;
+    const MAX_PAGES = 2;
     const API_BASE_URL = "https://api.github.com";
 
     async function loadCompletedMilestones(
@@ -1396,6 +1576,7 @@
         storage = shared.getStorage(),
         now = Date.now(),
         logger = console,
+        refreshTimeoutMs = shared.SECTION_TIMEOUT_MS,
       } = {}
     ) {
       const owner =
@@ -1414,6 +1595,7 @@
       const storageKey = getStorageKey(owner);
       const failureKey = getFailureKey(owner, repositories);
       const cached = readCache(storageKey, repositories, storage, now);
+      shared.removeStorageItem(storage, failureKey.replace(":v2:", ":v1:"));
       const cachedMilestones = cached
         ? mergeCompletedMilestones(cached.repositories, repositories, LIMIT)
         : [];
@@ -1463,11 +1645,12 @@
         return false;
       }
 
+      const refresh = shared.createRefresh(fetchImpl, { timeoutMs: refreshTimeoutMs });
       try {
         const result = await loadRepositories(
           { owner, repositories },
           cached?.repositories || {},
-          fetchImpl
+          refresh.fetch
         );
         const milestones = mergeCompletedMilestones(
           result.repositories,
@@ -1488,7 +1671,7 @@
         if (result.allSuccessful) {
           shared.removeStorageItem(storage, failureKey);
         } else {
-          writeFailure(failureKey, storage, now);
+          shared.recordFailures(failureKey, storage, now, result.errors);
           for (const error of result.errors) {
             logger.error(
               "Failed to load recently completed GitHub milestones",
@@ -1508,7 +1691,7 @@
         renderCompletedMilestones(container, [], owner);
         return false;
       } catch (error) {
-        writeFailure(failureKey, storage, now);
+        shared.recordFailures(failureKey, storage, now, [error]);
         logger.error(
           "Failed to load recently completed GitHub milestones",
           error
@@ -1522,105 +1705,53 @@
         }
         renderCompletedMilestones(container, [], owner);
         return false;
+      } finally {
+        refresh.close();
       }
     }
 
     async function loadRepositories(config, cachedRepositories, fetchImpl) {
-      const repositories = {};
-      const errors = [];
-
-      for (const repository of config.repositories) {
-        if (cachedRepositories[repository]) {
-          repositories[repository] = cachedRepositories[repository];
-        }
-      }
-
-      const results = await Promise.allSettled(
-        config.repositories.map((repository) =>
-          fetchRepositoryCompletedMilestones(
-            config.owner,
-            repository,
-            cachedRepositories[repository],
-            fetchImpl
-          )
-        )
+      return shared.collectPagedRepositories(
+        config.repositories, cachedRepositories,
+        (repository, page, cachedPage) => fetchCompletedMilestonePage(
+          config.owner, repository, page, cachedPage, fetchImpl
+        ),
+        (pages) => !pages[pages.length - 1].hasNext,
+        (entry, name) => mergeCompletedMilestones({ [name]: entry }, [name])
       );
-      for (const [index, result] of results.entries()) {
-        if (result.status === "fulfilled") {
-          repositories[config.repositories[index]] = result.value;
-        } else {
-          errors.push(result.reason);
-        }
-      }
-
-      return {
-        allSuccessful: errors.length === 0,
-        errors,
-        repositories,
-      };
     }
 
-    async function fetchRepositoryCompletedMilestones(
-      owner,
-      repository,
-      cachedEntry,
-      fetchImpl
-    ) {
-      const cachedPages = new Map(
-        (cachedEntry?.pages || []).map((page) => [page.page, page])
+    async function fetchRepositoryCompletedMilestones(owner, repository, cachedEntry, fetchImpl) {
+      const result = await loadRepositories(
+        { owner, repositories: [repository] },
+        cachedEntry ? { [repository]: cachedEntry } : {}, fetchImpl
       );
-      const pages = [];
+      if (result.errors.length) throw result.errors[0];
+      return result.repositories[repository];
+    }
 
-      for (let pageNumber = 1; pageNumber <= MAX_PAGES; pageNumber += 1) {
-        const cachedPage = cachedPages.get(pageNumber);
-        const response = await fetchImpl(
-          buildCompletedMilestonesUrl(owner, repository, pageNumber),
-          { headers: shared.buildHeaders(cachedPage?.etag) }
-        );
-
-        let etag;
-        let hasNext;
-        let itemCount;
-        let milestones;
-
-        if (response.status === 304 && cachedPage) {
-          etag = cachedPage.etag;
-          itemCount = cachedPage.itemCount;
-          milestones = cachedPage.milestones;
-          const linkHeader = shared.getHeader(response, "link");
-          hasNext = linkHeader ? hasNextPage(linkHeader) : cachedPage.hasNext;
-        } else {
-          if (!response.ok) {
-            throw new Error(
-              `GitHub API returned ${response.status} for ${repository} milestones page ${pageNumber}`
-            );
-          }
-
-          const payload = await response.json();
-          if (!Array.isArray(payload)) {
-            throw new Error(
-              `GitHub API returned malformed milestone data for ${repository}`
-            );
-          }
-
-          etag = shared.getHeader(response, "etag");
-          itemCount = payload.length;
-          milestones = normalizeCompletedMilestones(payload, repository);
-          hasNext = hasNextPage(shared.getHeader(response, "link"));
-        }
-
-        pages.push({
-          page: pageNumber,
-          etag,
-          hasNext,
-          itemCount,
-          milestones,
-        });
-
-        if (!hasNext) return { pages };
+    async function fetchCompletedMilestonePage(owner, repository, pageNumber, cachedPage, fetchImpl) {
+      const response = await fetchImpl(
+        buildCompletedMilestonesUrl(owner, repository, pageNumber),
+        { headers: shared.buildHeaders(cachedPage?.etag) },
+        { priority: pageNumber > 1 ? 1 : 0 }
+      );
+      if (response.status === 304 && cachedPage) {
+        const link = shared.getHeader(response, "link");
+        return { ...cachedPage, hasNext: link ? hasNextPage(link) : cachedPage.hasNext };
       }
-
-      throw new Error(`GitHub milestone pagination exceeded ${MAX_PAGES} pages`);
+      if (!response.ok) throw shared.createHttpError(response, `${repository} milestones page ${pageNumber}`);
+      const payload = await response.json();
+      if (!Array.isArray(payload)) {
+        throw new Error(`GitHub API returned malformed milestone data for ${repository}`);
+      }
+      return {
+        page: pageNumber,
+        etag: shared.getHeader(response, "etag"),
+        hasNext: hasNextPage(shared.getHeader(response, "link")),
+        itemCount: payload.length,
+        milestones: normalizeCompletedMilestones(payload, repository),
+      };
     }
 
     function buildCompletedMilestonesUrl(owner, repository, page = 1) {
@@ -1681,7 +1812,7 @@
         const entry = repositories?.[repository];
         if (!entry?.pages) continue;
 
-        for (const page of entry.pages) {
+        for (const page of [...entry.pages, { milestones: entry.retainedCandidates || [] }]) {
           for (const milestone of page.milestones) {
             const key = `${repository}:${milestone.number}`;
             const current = milestonesByKey.get(key);
@@ -1767,7 +1898,7 @@
     }
 
     function getStorageKey(owner) {
-      return `recent-completed-milestones:v1:${owner.toLowerCase()}:limit:${LIMIT}`;
+      return `recent-completed-milestones:v2:${owner.toLowerCase()}:limit:${LIMIT}`;
     }
 
     function getFailureKey(owner, repositories) {
@@ -1776,11 +1907,15 @@
         .slice()
         .sort()
         .join(",");
-      return `recent-completed-milestones:v1:failure:${owner.toLowerCase()}:limit:${LIMIT}:${repoKey}`;
+      return `recent-completed-milestones:v2:failure:${owner.toLowerCase()}:limit:${LIMIT}:${repoKey}`;
     }
 
-    function readCache(storageKey, repositories, storage, now) {
+    function readCache(storageKey, repositories, storage, now, legacy = false) {
       const cached = shared.readStoredObject(storage, storageKey);
+      if (!cached && !legacy) return shared.migratePagedCache(
+        storageKey, storageKey.replace(":v2:", ":v1:"), repositories, readCache, storage, now,
+        (entry, name) => mergeCompletedMilestones({ [name]: entry }, [name])
+      );
       if (
         !cached ||
         !shared.isValidStoredTime(cached.fetchedAt, now) ||
@@ -1799,7 +1934,7 @@
       const normalizedRepositories = {};
       for (const [repository, entry] of Object.entries(cached.repositories)) {
         if (!currentNames.has(repository)) continue;
-        const normalized = normalizeCachedEntry(entry, repository);
+        const normalized = normalizeCachedEntry(entry, repository, legacy);
         if (!normalized) {
           shared.removeStorageItem(storage, storageKey);
           return null;
@@ -1824,12 +1959,13 @@
         isFresh:
           sameRepositorySet &&
           complete &&
+          cached.fetchedAt > 0 &&
           now - cached.fetchedAt < shared.CACHE_TTL_MS,
         repositories: normalizedRepositories,
       };
     }
 
-    function normalizeCachedEntry(entry, repository) {
+    function normalizeCachedEntry(entry, repository, legacy) {
       if (!entry || typeof entry !== "object" || !Array.isArray(entry.pages)) {
         return null;
       }
@@ -1842,7 +1978,7 @@
           typeof page !== "object" ||
           !Number.isInteger(page.page) ||
           page.page < 1 ||
-          page.page > MAX_PAGES ||
+          page.page > (legacy ? 100 : MAX_PAGES) ||
           pageNumbers.has(page.page) ||
           typeof page.etag !== "string" ||
           typeof page.hasNext !== "boolean" ||
@@ -1870,10 +2006,19 @@
         });
       }
 
-      if (pages.length === 0) return null;
+      if ([entry.limited, entry.deferred].some((flag) => flag !== undefined && typeof flag !== "boolean")) return null;
+      if (pages.length === 0 && entry.deferred !== true) return null;
       pages.sort((left, right) => left.page - right.page);
-      if (pages[pages.length - 1].hasNext) return null;
-      return { pages };
+      if (pages.some((page, index) => page.page !== index + 1)) return null;
+      if (pages.length && pages[pages.length - 1].hasNext && !entry.limited && !entry.deferred) return null;
+      const retained = entry.retainedCandidates ?? [];
+      if (!Array.isArray(retained)) return null;
+      const retainedCandidates = retained.map((value) => normalizeCachedMilestone(value, repository));
+      if (retainedCandidates.some((value) => !value)) return null;
+      return {
+        pages, retainedCandidates: compactCompletedMilestones(retainedCandidates),
+        limited: entry.limited === true, deferred: entry.deferred === true,
+      };
     }
 
     function normalizeCachedMilestone(value, repository) {
@@ -2090,6 +2235,7 @@
         now = Date.now(),
         logger = console,
         force = false,
+        refreshTimeoutMs = shared.SECTION_TIMEOUT_MS,
       } = {}
     ) {
       const storageKey = getStorageKey(owner);
@@ -2111,8 +2257,9 @@
           : { repositories: null, successful: false, validated: false };
       }
 
+      const refresh = shared.createRefresh(fetchImpl, { timeoutMs: refreshTimeoutMs });
       try {
-        const response = await fetchImpl(getOwnerRepoListUrl(owner), {
+        const response = await refresh.fetch(getOwnerRepoListUrl(owner), {
           headers: shared.buildHeaders(cached?.etag),
         });
         if (response.status === 304 && cached) {
@@ -2130,7 +2277,7 @@
           };
         }
         if (!response.ok) {
-          throw new Error(`GitHub API returned ${response.status}`);
+          throw shared.createHttpError(response, "repository catalogue", now);
         }
         const payload = await response.json();
         const repositories = normalizeRepositoryCatalogue(payload);
@@ -2155,11 +2302,13 @@
         shared.removeStorageItem(storage, getLegacyFailureKey(owner));
         return result;
       } catch (error) {
-        shared.writeFailure(failureKey, storage, now);
-        logger.error(`Failed to load repository data for ${owner}`, error);
+        shared.recordFailures(failureKey, storage, now, [error]);
+        if (!shared.isDeferred(error)) logger.error(`Failed to load repository data for ${owner}`, error);
         return cached
           ? { ...cached, successful: false, validated: false }
           : { repositories: null, successful: false, validated: false };
+      } finally {
+        refresh.close();
       }
     }
 
@@ -2230,6 +2379,9 @@
 
   const recentCommits = (() => {
     const MAX_RECENT_COMMITS = 10;
+    const FALLBACK_PAGE_SIZE = 100;
+    const MAX_FALLBACK_PAGES = 2;
+    const MAX_FALLBACK_REQUESTS = 12;
     const API_BASE_URL = "https://api.github.com";
     const AUTHOR_MODE = "author";
     const LINKED_AUTHOR_MODE = "linked-author";
@@ -2242,6 +2394,7 @@
         storage = shared.getStorage(),
         now = Date.now(),
         logger = console,
+        refreshTimeoutMs = shared.SECTION_TIMEOUT_MS,
         getCatalogueImpl = null,
       } = {}
     ) {
@@ -2257,10 +2410,7 @@
       for (const key of getLegacyFailureKeys(config.owner, config.limit)) {
         shared.removeStorageItem(storage, key);
       }
-      let cached = readCache(storageKey, config.repositories, storage, now);
-      if (!cached) {
-        cached = migrateLegacyCache(config, storageKey, storage, now);
-      }
+      const cached = readCachedHistory(config, storage, now);
       let cachedCommits = cached
         ? mergeCommits(cached.repositories, config.limit)
         : [];
@@ -2281,20 +2431,23 @@
         renderStatus(container, "error");
         return false;
       }
-      if (!renderStatus(container, "loading")) {
+      if (hasCachedResult) {
+        if (!renderCommits(container, cachedCommits, config.limit)) return false;
+      } else if (!renderStatus(container, "loading")) {
         renderStatus(container, "error");
         logger.error("Failed to load recent GitHub commits: invalid page markup");
         return false;
       }
 
       container.setAttribute("aria-busy", "true");
+      const refresh = shared.createRefresh(fetchImpl, { timeoutMs: refreshTimeoutMs });
       try {
         let catalogue = null;
         if (typeof getCatalogueImpl === "function") {
           try {
-            catalogue = await getCatalogueImpl(Boolean(cached));
+            catalogue = await refresh.wait(getCatalogueImpl(Boolean(cached)));
           } catch (error) {
-            logger.error("Failed to validate the GitHub repository catalogue", error);
+            if (!shared.isDeferred(error)) logger.error("Failed to validate the GitHub repository catalogue", error);
           }
         }
 
@@ -2321,7 +2474,7 @@
         const result = await loadRepositories(
           activeConfig,
           cachedRepositories,
-          fetchImpl,
+          refresh.fetch,
           repositoriesToFetch,
           catalogue?.repositories || {}
         );
@@ -2341,7 +2494,7 @@
         if (result.allSuccessful) {
           shared.removeStorageItem(storage, failureKey);
         } else {
-          writeFailure(failureKey, storage, now);
+          shared.recordFailures(failureKey, storage, now, result.errors);
           for (const error of result.errors) {
             logger.error("Failed to load recent GitHub commits", error);
           }
@@ -2353,12 +2506,13 @@
         renderStatus(container, "error");
         return false;
       } catch (error) {
-        writeFailure(failureKey, storage, now);
-        logger.error("Failed to load recent GitHub commits", error);
+        shared.recordFailures(failureKey, storage, now, [error]);
+        if (!shared.isDeferred(error)) logger.error("Failed to load recent GitHub commits", error);
         if (hasCachedResult) return renderCommits(container, cachedCommits, config.limit);
         renderStatus(container, "error");
         return false;
       } finally {
+        refresh.close();
         container.removeAttribute("aria-busy");
       }
     }
@@ -2423,6 +2577,7 @@
           !cached ||
           !current ||
           !cached.pushedAt ||
+          cached.deferred ||
           (cached.mode === AUTHOR_MODE && cached.commits?.length === 0) ||
           cached.pushedAt !== current.pushedAt
         );
@@ -2436,58 +2591,116 @@
       repositoriesToFetch = config.repositories,
       catalogue = {}
     ) {
+      const repositories = { ...cachedRepositories };
+      const errors = [];
       const results = await Promise.all(
         repositoriesToFetch.map(async (repository) => {
           try {
             const cachedEntry = cachedRepositories[repository.name];
-            const entry = await fetchRepositoryCommits(
-              repository,
-              config.owner,
-              config.limit,
-              cachedEntry,
-              fetchImpl
-            );
-            return {
-              entry: {
-                ...entry,
-                pushedAt:
-                  catalogue[repository.name]?.pushedAt ||
-                  cachedEntry?.pushedAt ||
-                  "",
-              },
-              name: repository.name,
-            };
+            const entry = cachedEntry?.mode === LINKED_AUTHOR_MODE
+              ? null
+              : await fetchAuthorCommits(
+                repository, config.owner, config.limit, cachedEntry, fetchImpl
+              );
+            return { repository, cachedEntry, entry };
           } catch (error) {
-            return { error, name: repository.name };
+            return { error, repository };
           }
         })
       );
 
-      const repositories = { ...cachedRepositories };
-      const errors = [];
+      const fallbackJobs = [];
       for (const result of results) {
-        if (result.entry) repositories[result.name] = result.entry;
-        else errors.push(result.error);
+        const { repository, cachedEntry, entry, error } = result;
+        if (shared.isDeferred(error)) {
+          repositories[repository.name] = {
+            ...(cachedEntry || cachedRepositories[repository.name] || {
+              mode: AUTHOR_MODE, etag: "", commits: [], pushedAt: "",
+            }),
+            limited: true, deferred: true,
+          };
+        } else if (error) {
+          errors.push(error);
+        } else if (entry) {
+          repositories[repository.name] = {
+            ...entry,
+            limited: false,
+            deferred: false,
+            pushedAt: catalogue[repository.name]?.pushedAt || cachedEntry?.pushedAt || "",
+          };
+        } else {
+          fallbackJobs.push({ repository, cachedEntry, pages: [], commits: [], done: false });
+        }
+      }
+
+      const repositoryOrder = new Map(config.repositories.map(({ name }, index) => [name, index]));
+      const pushedTime = (name) => Date.parse(catalogue[name]?.pushedAt) || 0;
+      fallbackJobs.sort((left, right) =>
+        pushedTime(right.repository.name) - pushedTime(left.repository.name) ||
+        repositoryOrder.get(left.repository.name) - repositoryOrder.get(right.repository.name)
+      );
+
+      let remainingRequests = MAX_FALLBACK_REQUESTS;
+      for (let page = 1; page <= MAX_FALLBACK_PAGES && remainingRequests > 0; page += 1) {
+        const selected = fallbackJobs
+          .filter((job) => !job.done && !job.error && !job.deferred)
+          .slice(0, remainingRequests);
+        // Reserve the whole round before any request reaches the shared queue.
+        remainingRequests -= selected.length;
+        await Promise.all(selected.map(async (job) => {
+          try {
+            const cachedPage = job.cachedEntry?.pages?.find((value) => value.page === page);
+            const result = await fetchLinkedAuthorPage(
+              job.repository, config.owner, config.limit, page, cachedPage, fetchImpl
+            );
+            job.pages.push(result);
+            job.commits = mergeCommits({
+              collected: { commits: job.commits },
+              page: result,
+            }, config.limit);
+            job.done = job.commits.length >= config.limit || !result.hasNext;
+          } catch (error) {
+            if (shared.isDeferred(error)) job.deferred = true;
+            else { job.error = error; errors.push(error); }
+          }
+        }));
+      }
+
+      for (const job of fallbackJobs) {
+        if (job.error) continue;
+        const { repository, cachedEntry, pages, commits, done } = job;
+        const deferred = !done && pages.length < MAX_FALLBACK_PAGES;
+        if (pages.length === 0) {
+          repositories[repository.name] = {
+            ...(cachedEntry || { mode: LINKED_AUTHOR_MODE, pages: [], commits: [], pushedAt: "" }),
+            limited: true,
+            deferred: true,
+          };
+          continue;
+        }
+        repositories[repository.name] = {
+          mode: LINKED_AUTHOR_MODE,
+          pages: deferred ? pages.concat(cachedEntry?.pages?.slice(pages.length) || []) : pages,
+          commits: deferred
+            ? mergeCommits({ collected: { commits }, cached: cachedEntry }, config.limit)
+            : commits,
+          limited: !done,
+          deferred,
+          pushedAt: deferred
+            ? cachedEntry?.pushedAt || ""
+            : catalogue[repository.name]?.pushedAt || cachedEntry?.pushedAt || "",
+        };
       }
       return { allSuccessful: errors.length === 0, errors, repositories };
     }
 
-    async function fetchRepositoryCommits(
+    async function fetchAuthorCommits(
       repository,
       owner,
       limit,
       cachedEntry,
       fetchImpl
     ) {
-      if (cachedEntry?.mode === LINKED_AUTHOR_MODE) {
-        return fetchLinkedAuthorCommits(
-          repository,
-          owner,
-          limit,
-          cachedEntry,
-          fetchImpl
-        );
-      }
       const response = await fetchImpl(
         buildCommitListUrl(repository.name, owner, limit, AUTHOR_MODE),
         { headers: shared.buildHeaders(cachedEntry?.etag) }
@@ -2497,7 +2710,7 @@
         entry = cachedEntry;
       } else {
         if (!response.ok) {
-          throw new Error(`GitHub API returned ${response.status} for ${repository.name}`);
+          throw shared.createHttpError(response, repository.name);
         }
         const payload = await response.json();
         if (!Array.isArray(payload)) {
@@ -2509,52 +2722,43 @@
           commits: normalizeApiCommits(payload, repository, owner, limit),
         };
       }
-      if (entry.commits.length > 0) return entry;
-      // An author-filtered ETag cannot validate the unfiltered history.
-      return fetchLinkedAuthorCommits(repository, owner, limit, null, fetchImpl);
+      return entry.commits.length > 0 ? entry : null;
     }
 
-    async function fetchLinkedAuthorCommits(
+    async function fetchLinkedAuthorPage(
       repository,
       owner,
       limit,
-      cachedEntry,
+      page,
+      cachedPage,
       fetchImpl
     ) {
-      const commits = [];
-      const seen = new Set();
-      let etag = "";
-      let page = 1;
-      while (commits.length < limit) {
-        const response = await fetchImpl(
-          buildCommitListUrl(repository.name, owner, limit, LINKED_AUTHOR_MODE, page),
-          { headers: shared.buildHeaders(page === 1 ? cachedEntry?.etag : "") }
-        );
-        if (page === 1 && response.status === 304 && cachedEntry) return cachedEntry;
-        if (!response.ok) {
-          throw new Error(`GitHub API returned ${response.status} for ${repository.name}`);
-        }
-        if (page === 1) etag = shared.getHeader(response, "etag");
-        const payload = await response.json();
-        if (!Array.isArray(payload)) {
-          throw new Error(`GitHub API returned malformed commit data for ${repository.name}`);
-        }
-        for (const commit of normalizeApiCommits(payload, repository, owner, limit)) {
-          if (seen.has(commit.sha)) continue;
-          seen.add(commit.sha);
-          commits.push(commit);
-          if (commits.length === limit) break;
-        }
-        if (
-          commits.length === limit ||
-          !hasNextPage(shared.getHeader(response, "link"))
-        ) {
-          break;
-        }
-        page += 1;
+      const response = await fetchImpl(
+        buildCommitListUrl(repository.name, owner, limit, LINKED_AUTHOR_MODE, page),
+        { headers: shared.buildHeaders(cachedPage?.etag) },
+        { priority: page > 1 ? 1 : 0 }
+      );
+      const link = shared.getHeader(response, "link");
+      if (response.status === 304 && cachedPage) {
+        return { ...cachedPage, hasNext: link ? hasNextPage(link) : cachedPage.hasNext };
       }
-      commits.sort(compareCommits);
-      return { mode: LINKED_AUTHOR_MODE, etag, commits: commits.slice(0, limit) };
+      if (!response.ok) {
+        throw shared.createHttpError(response, repository.name);
+      }
+      const payload = await response.json();
+      if (!Array.isArray(payload)) {
+        throw new Error(`GitHub API returned malformed commit data for ${repository.name}`);
+      }
+      return {
+        page,
+        etag: shared.getHeader(response, "etag"),
+        hasNext: hasNextPage(link),
+        commits: normalizeApiCommits(payload, repository, owner, limit),
+      };
+    }
+
+    function hasLimitedHistory(repositories) {
+      return Object.values(repositories || {}).some((entry) => entry.limited || entry.deferred);
     }
 
     function normalizeApiCommits(payload, repository, owner, limit) {
@@ -2627,6 +2831,10 @@
         item.removeAttribute("data-commit-history-last");
       }
       if (commits.length === 0) {
+        const empty = container.querySelector("[data-commit-history-empty]");
+        if (empty) {
+          empty.textContent = "No recent commits found";
+        }
         if (renderStatus(container, "empty")) return true;
         renderStatus(container, "error");
         return false;
@@ -2668,7 +2876,7 @@
         loading: container.querySelector("[data-commit-history-loading]"),
       };
       list?.setAttribute("hidden", "");
-      for (const element of Object.values(statuses)) element?.setAttribute("hidden", "");
+      hideStatuses(container);
       const target = statuses[status];
       if (!target) return false;
       target.removeAttribute("hidden");
@@ -2695,7 +2903,7 @@
         `${API_BASE_URL}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/commits`
       );
       if (mode === AUTHOR_MODE) url.searchParams.set("author", owner);
-      url.searchParams.set("per_page", String(limit));
+      url.searchParams.set("per_page", String(mode === LINKED_AUTHOR_MODE ? FALLBACK_PAGE_SIZE : limit));
       if (page > 1) url.searchParams.set("page", String(page));
       return url.href;
     }
@@ -2705,15 +2913,16 @@
     }
 
     function getStorageKey(owner, limit) {
-      return `github-activity:v2:${owner.toLowerCase()}:commits:limit:${limit}`;
+      return `github-activity:v3:${owner.toLowerCase()}:commits:limit:${limit}`;
     }
 
     function getFailureKey(owner, limit) {
-      return `github-activity:v2:failure:${owner.toLowerCase()}:commits:limit:${limit}`;
+      return `github-activity:v3:failure:${owner.toLowerCase()}:commits:limit:${limit}`;
     }
 
     function getLegacyStorageKeys(owner, limit) {
       return [
+        `github-activity:v2:${owner.toLowerCase()}:commits:limit:${limit}`,
         `github-activity:v1:${owner.toLowerCase()}:commits:limit:${limit}`,
         `commit-history:v1:${owner.toLowerCase()}:limit:${limit}`,
       ];
@@ -2721,12 +2930,19 @@
 
     function getLegacyFailureKeys(owner, limit) {
       return [
+        `github-activity:v2:failure:${owner.toLowerCase()}:commits:limit:${limit}`,
         `github-activity:v1:failure:${owner.toLowerCase()}:commits:limit:${limit}`,
         `commit-history:v1:failure:${owner.toLowerCase()}:limit:${limit}`,
       ];
     }
 
-    function readCache(storageKey, repositories, storage, now) {
+    function readCachedHistory(config, storage, now) {
+      const storageKey = getStorageKey(config.owner, config.limit);
+      return readCache(storageKey, config.repositories, storage, now) ||
+        migrateLegacyCache(config, storageKey, storage, now);
+    }
+
+    function readCache(storageKey, repositories, storage, now, legacy = false) {
       const cached = shared.readStoredObject(storage, storageKey);
       if (!cached) return null;
       if (
@@ -2759,7 +2975,7 @@
       for (const [name, entry] of Object.entries(cached.repositories)) {
         const repository = currentByName.get(name);
         if (!repository) continue;
-        const normalized = normalizeCachedEntry(entry, repository, cached.mode);
+        const normalized = normalizeCachedEntry(entry, repository, cached.mode, legacy);
         if (!normalized) {
           shared.removeStorageItem(storage, storageKey);
           return null;
@@ -2785,15 +3001,14 @@
         repoNames: cached.repoNames.slice(),
         excludedRepoNames: excludedRepoNames.filter((name) => currentByName.has(name)),
         repositories: normalizedRepositories,
+        limited: hasLimitedHistory(normalizedRepositories),
       };
     }
 
-    function normalizeCachedEntry(entry, repository, legacyMode) {
-      if (!entry || typeof entry !== "object" || !Array.isArray(entry.commits)) return null;
-      const mode = entry.mode ?? legacyMode;
-      if (![AUTHOR_MODE, LINKED_AUTHOR_MODE].includes(mode)) return null;
+    function normalizeCachedCommits(values, repository) {
+      if (!Array.isArray(values)) return null;
       const commits = [];
-      for (const value of entry.commits.slice(0, MAX_RECENT_COMMITS)) {
+      for (const value of values.slice(0, MAX_RECENT_COMMITS)) {
         const sha = typeof value?.sha === "string" ? value.sha.trim() : "";
         const message = getMessageSubject(value?.message);
         const committedAt = shared.normalizeDate(value?.committedAt);
@@ -2811,25 +3026,69 @@
         }
         commits.push({ sha, repoName: repository.name, repoUrl, commitUrl, message, committedAt });
       }
+      return commits;
+    }
+
+    function normalizeCachedEntry(entry, repository, legacyMode, legacy) {
+      if (!entry || typeof entry !== "object") return null;
+      const mode = entry.mode ?? legacyMode;
+      if (![AUTHOR_MODE, LINKED_AUTHOR_MODE].includes(mode)) return null;
+      const commits = normalizeCachedCommits(entry.commits, repository);
+      if (!commits) return null;
+      if ([entry.limited, entry.deferred].some((flag) => flag !== undefined && typeof flag !== "boolean")) {
+        return null;
+      }
       const pushedAt = entry.pushedAt ? shared.normalizeDate(entry.pushedAt) : "";
       if (entry.pushedAt && !pushedAt) return null;
-      return {
+      const normalized = {
         mode,
-        etag: typeof entry.etag === "string" ? entry.etag : "",
         commits,
         pushedAt,
+        limited: entry.limited === true || entry.deferred === true,
+        deferred: entry.deferred === true,
       };
+      if (mode === AUTHOR_MODE || legacy) {
+        return { ...normalized, etag: typeof entry.etag === "string" ? entry.etag : "" };
+      }
+      if (
+        !Array.isArray(entry.pages) ||
+        entry.pages.length > MAX_FALLBACK_PAGES ||
+        (entry.pages.length === 0 && !normalized.deferred)
+      ) {
+        return null;
+      }
+      const pages = [];
+      for (const [index, page] of entry.pages.entries()) {
+        const pageCommits = normalizeCachedCommits(page?.commits, repository);
+        if (page?.page !== index + 1 || typeof page.hasNext !== "boolean" || !pageCommits) {
+          return null;
+        }
+        pages.push({
+          page: page.page,
+          etag: typeof page.etag === "string" ? page.etag : "",
+          hasNext: page.hasNext,
+          commits: pageCommits,
+        });
+      }
+      return { ...normalized, pages };
     }
 
     function migrateLegacyCache(config, storageKey, storage, now) {
       const legacyKeys = getLegacyStorageKeys(config.owner, config.limit);
       for (const key of legacyKeys) {
-        const cached = readCache(key, config.repositories, storage, now);
+        const cached = readCache(key, config.repositories, storage, now, true);
         if (!cached) continue;
         // Preserve displayable data, but verify every migrated request once.
         const repositories = Object.fromEntries(
           Object.entries(cached.repositories).map(([name, entry]) => [
-            name, { ...entry, etag: "", pushedAt: "" },
+            name, {
+              ...entry,
+              etag: "",
+              pushedAt: "",
+              ...(entry.mode === LINKED_AUTHOR_MODE
+                ? { pages: [], limited: true, deferred: true }
+                : {}),
+            },
           ])
         );
         const replacement = {
@@ -2842,7 +3101,10 @@
         if (writeCache(storageKey, replacement, storage)) {
           for (const legacyKey of legacyKeys) shared.removeStorageItem(storage, legacyKey);
         }
-        return { ...cached, ...replacement, isFresh: false };
+        return {
+          ...cached, ...replacement, isFresh: false,
+          complete: config.repositories.every(({ name }) => repositories[name]),
+        };
       }
       return null;
     }
@@ -2875,6 +3137,7 @@
       normalizeApiCommits,
       normalizeRepositories,
       readCache,
+      readCachedHistory,
       renderCommits,
       renderStatus,
       selectRepositoriesToFetch,
@@ -2977,6 +3240,7 @@
       now = () => Date.now(),
       observerFactory = null,
       locks = null,
+      refreshTimeoutMs = shared.SECTION_TIMEOUT_MS,
     } = {}) {
       const config = readPageConfiguration(documentImpl);
       if (!config) {
@@ -3011,6 +3275,7 @@
           logger,
           now: now(),
           storage,
+          refreshTimeoutMs,
         });
         try {
           catalogueResult = await cataloguePromise;
@@ -3044,18 +3309,27 @@
         const groups = repositoryUpdates.groupCardsByOwner(cards);
         const ownerCards = groups.get(config.owner) || [];
         if (ownerCards.length === 0) return;
-        const load = (cacheOnly = false) =>
+        const renderCached = () => {
+          const cached = repositoryUpdates.readCache(
+            repositoryUpdates.getStorageKey(config.owner), storage, now(), config.owner
+          );
+          if (!cached) return false;
+          repositoryUpdates.renderOwnerCards(ownerCards, cached.repositories, "Last updated unavailable");
+          return true;
+        };
+        renderCached();
+        const load = () =>
           runLocked("repositories", () =>
             repositoryUpdates.loadOwnerUpdates(config.owner, ownerCards, {
-              fetchImpl: cacheOnly ? null : coordinator.fetch,
-              loadCatalogueImpl: cacheOnly ? null : getCatalogue,
+              fetchImpl: coordinator.fetch,
+              loadCatalogueImpl: getCatalogue,
               logger,
               now: now(),
               storage,
             })
           );
-        void load(false);
-        registerStorageRefresh(repositoryUpdates.getStorageKey(config.owner), () => load(true));
+        void load();
+        registerStorageRefresh(repositoryUpdates.getStorageKey(config.owner), renderCached);
       }
 
       function startCommits() {
@@ -3067,23 +3341,32 @@
           const section = container.closest?.('[data-home-section="recent_commits"]');
           section?.removeAttribute("hidden");
           let hasLoaded = false;
-          const load = (cacheOnly = false) => {
+          const renderCached = () => {
+            const cached = recentCommits.readCachedHistory(config.commits, storage, now());
+            if (!cached) return false;
+            const commits = recentCommits.mergeCommits(cached.repositories, config.commits.limit);
+            if (!cached.complete && commits.length === 0) return false;
+            return recentCommits.renderCommits(container, commits, config.commits.limit);
+          };
+          const load = () => {
             hasLoaded = true;
+            renderCached();
             return runLocked("commits", () =>
               recentCommits.loadCommitHistory(container, {
                 config: config.commits,
-                fetchImpl: cacheOnly ? null : coordinator.fetch,
-                getCatalogueImpl: cacheOnly ? null : getCatalogue,
+                fetchImpl: coordinator.fetch,
+                getCatalogueImpl: getCatalogue,
                 logger,
                 now: now(),
                 storage,
+                refreshTimeoutMs,
               })
             );
           };
-          schedules.push(scheduleNearViewport(container, () => load(false), effectiveObserverFactory));
+          schedules.push(scheduleNearViewport(container, load, effectiveObserverFactory));
           registerStorageRefresh(
             recentCommits.getStorageKey(config.owner, config.commits.limit),
-            () => (hasLoaded ? load(true) : Promise.resolve())
+            () => hasLoaded && renderCached()
           );
         }
       }
@@ -3144,6 +3427,7 @@
               logger,
               now: now(),
               storage,
+              refreshTimeoutMs,
             });
           const loadCompletedMilestones = () =>
             completedMilestones.loadCompletedMilestones(container, {
@@ -3152,6 +3436,7 @@
               logger,
               now: now(),
               storage,
+              refreshTimeoutMs,
             });
           const load = () => {
             hasLoaded = true;

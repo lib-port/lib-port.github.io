@@ -1,5 +1,7 @@
 "use strict";
 
+const { clientAssetPath } = require("./client_assets");
+
 process.env.TZ = "Europe/Paris";
 
 const assert = require("node:assert/strict");
@@ -15,7 +17,7 @@ const scriptPath = path.join(
   "js",
   "github_activity.js"
 );
-const githubActivity = require(scriptPath);
+const githubActivity = require(clientAssetPath(scriptPath));
 const {
   API_VERSION,
   CACHE_TTL_MS,
@@ -534,7 +536,7 @@ test("formats due dates by browser locale in UTC and calculates progress", () =>
     ["en-US", "March 31, 2027", "March 30, 2027"],
     ["fr-FR", "31 mars 2027", "30 mars 2027"],
   ]) {
-    const { formatDueDate } = loadWithLocale(scriptPath, locale).recentMilestones;
+    const { formatDueDate } = loadWithLocale(clientAssetPath(scriptPath), locale).recentMilestones;
     assert.equal(formatDueDate("2027-03-31T00:00:00Z"), expected, locale);
     assert.equal(formatDueDate("2027-03-31T23:00:00Z"), expected, locale);
     assert.equal(formatDueDate("2027-03-31T00:00:00+14:00"), previousDay, locale);
@@ -925,7 +927,9 @@ test("conditionally revalidates and reuses a cached closed-issue page", async ()
   );
 
   assert.equal(request.options.headers["If-None-Match"], '"etag"');
-  assert.deepEqual(entry, cachedEntry);
+  assert.deepEqual(entry.pages, cachedEntry.pages);
+  assert.equal(entry.limited, false);
+  assert.equal(entry.deferred, false);
 });
 
 test("keeps complete milestone caches indefinitely but fresh for seven days", () => {
@@ -933,10 +937,10 @@ test("keeps complete milestone caches indefinitely but fresh for seven days", ()
   const storageKey = getStorageKey(OWNER, 1);
   const repositories = { "tech-lib": makeEntry("tech-lib") };
 
-  assert.match(storageKey, /^recent-milestones:v4:/);
+  assert.match(storageKey, /^recent-milestones:v5:/);
   assert.match(
     getFailureKey(OWNER, ["tech-lib"], 1),
-    /^recent-milestones:v4:failure:/
+    /^recent-milestones:v5:failure:/
   );
   assert.equal(CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000);
   writeCache(
@@ -989,7 +993,7 @@ test("removes only the matching v3 data and failure keys", async () => {
   assert.equal(
     await loadRecentMilestones(container, {
       fetchImpl: async () => {
-        throw new Error("fresh v4 cache should prevent a request");
+        throw new Error("fresh v5 cache should prevent a request");
       },
       storage,
       now: NOW,
@@ -1002,7 +1006,7 @@ test("removes only the matching v3 data and failure keys", async () => {
   assert.equal(storage.getItem(unrelatedLegacyKey), "keep me");
 });
 
-test("compacts duplicate v4 candidates per cached page", () => {
+test("compacts duplicate v5 candidates per cached page", () => {
   const storage = new FakeStorage();
   const storageKey = getStorageKey(OWNER, 2);
   const older = makeNormalizedMilestone("tech-lib", {
@@ -1072,7 +1076,7 @@ test("compacts duplicate v4 candidates per cached page", () => {
     ),
     [1, 1]
   );
-  assert.match(storageKey, /^recent-milestones:v4:/);
+  assert.match(storageKey, /^recent-milestones:v5:/);
 });
 
 test("deletes malformed and future-dated milestone caches", () => {
@@ -1316,7 +1320,7 @@ test("retains a failed repository's stale card alongside refreshed results", asy
   assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW - CACHE_TTL_MS);
 });
 
-test("restores stale data after failure and backs off for six hours", async () => {
+test("retains stale data and backs off for five minutes after a timeout", async () => {
   const storage = new FakeStorage();
   const storageKey = getStorageKey(OWNER, 1);
   const first = makeContainer({ limit: 1 });
@@ -1359,7 +1363,7 @@ test("restores stale data after failure and backs off for six hours", async () =
     await loadRecentMilestones(second.container, {
       fetchImpl,
       storage,
-      now: NOW + FAILURE_TTL_MS - 1,
+      now: NOW + githubActivity.shared.TRANSIENT_FAILURE_TTL_MS - 1,
       logger: silentLogger,
     }),
     true
@@ -1582,4 +1586,108 @@ test("displays caches before a browser lock and handles storage events without r
   assert.equal(fetches, 0);
   assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Fresh from other tab");
   assert.equal(completed.items[0].querySelector("[data-recent-completed-milestone-link]").textContent, "Fresh from other tab");
+});
+
+for (const count of [8, 15]) {
+  test(`bounds detailed milestone collection across ${count} repositories in page rounds`, async () => {
+    const repositories = Array.from({ length: count }, (_, index) => `repo-${index}`);
+    const storage = new FakeStorage();
+    const view = makeContainer({ limit: 1 });
+    const config = { owner: OWNER, repositories, limit: 1 };
+    const calls = [];
+    const options = {
+      config, storage, now: NOW, logger: silentLogger,
+      fetchImpl: async (url, _options, { priority }) => {
+        const parsed = new URL(url);
+        const page = Number(parsed.searchParams.get("page"));
+        const repository = parsed.pathname.split("/")[3];
+        assert.equal(parsed.searchParams.get("per_page"), "100");
+        assert.equal(priority, page === 1 ? 0 : 1);
+        calls.push([repository, page]);
+        return makeResponse({
+          payload: [makeApiIssue({ title: repository })],
+          link: '<https://api.github.com/example?page=99>; rel="next"',
+        });
+      },
+    };
+    assert.equal(await loadRecentMilestones(view.container, options), true);
+    assert.deepEqual(calls, [
+      ...repositories.slice(0, 12).map(name => [name, 1]),
+      ...repositories.slice(0, Math.max(0, 12 - count)).map(name => [name, 2]),
+    ]);
+    const cached = readCache(getStorageKey(OWNER, 1), repositories, storage, NOW);
+    assert.equal(cached.isFresh, true);
+    for (const [index, name] of repositories.entries()) {
+      const entry = cached.repositories[name];
+      assert.equal(entry.pages.length, index < Math.max(0, 12 - count) ? 2 : index < 12 ? 1 : 0);
+      assert.equal(entry.limited, true);
+      assert.equal(entry.deferred, entry.pages.length < 2);
+    }
+    assert.equal(storage.getItem(getFailureKey(OWNER, repositories, 1)), null);
+    await loadRecentMilestones(makeContainer({ limit: 1 }).container, { ...options, now: NOW + 1 });
+    assert.equal(calls.length, 12, "partial results remain fresh for seven days");
+  });
+}
+
+test("revalidates both bounded issue pages using each page's own ETag", async () => {
+  const cachedEntry = makeEntry();
+  cachedEntry.pages[0].hasNext = true;
+  cachedEntry.pages.push({ ...cachedEntry.pages[0], page: 2, etag: '"page-two"', hasNext: false });
+  const calls = [];
+  const entry = await fetchRepositoryClosedIssueActivity(OWNER, "tech-lib", 1, cachedEntry,
+    async (url, { headers }) => {
+      calls.push([new URL(url).searchParams.get("page"), headers["If-None-Match"]]);
+      return makeResponse({ status: 304 });
+    });
+  assert.deepEqual(calls, [["1", '"etag"'], ["2", '"page-two"']]);
+  assert.deepEqual(entry.pages, cachedEntry.pages);
+  assert.equal(entry.limited, false);
+});
+
+test("migrates v4 issue caches as stale data and retains candidates beyond page two", async () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER, 1);
+  const legacyKey = key.replace(":v5:", ":v4:");
+  const legacyFailure = getFailureKey(OWNER, ["tech-lib"], 1).replace(":v5:", ":v4:");
+  const entry = { pages: [1, 2, 3].map(page => ({
+    ...makeEntry("tech-lib", [makeNormalizedMilestone("tech-lib", {
+      number: page, title: `Page ${page}`, closedAt: `2026-08-24T0${page}:00:00Z`,
+    })]).pages[0], page, etag: `"page-${page}"`, hasNext: page < 3,
+  })) };
+  writeCache(legacyKey, { fetchedAt: NOW, repoNames: ["tech-lib"], repositories: { "tech-lib": entry } }, storage);
+  githubActivity.shared.writeFailure(legacyFailure, storage, NOW);
+  const migrated = readCache(key, ["tech-lib"], storage, NOW);
+  assert.equal(migrated.isFresh, false);
+  assert.equal(migrated.fetchedAt, 0);
+  assert.equal(migrated.repositories["tech-lib"].pages.length, 2);
+  assert.equal(mergeMilestones(migrated.repositories, ["tech-lib"], 1)[0].title, "Page 3");
+  assert.equal(storage.getItem(legacyKey), null);
+  const view = makeContainer({ limit: 1 });
+  let calls = 0;
+  assert.equal(await loadRecentMilestones(view.container, {
+    storage, now: NOW, logger: silentLogger,
+    fetchImpl: async () => { calls += 1; throw new Error("offline"); },
+  }), true);
+  assert.equal(calls, 1, "old failure records do not block the migrated cache's refresh");
+  assert.equal(storage.getItem(legacyFailure), null);
+  assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Page 3");
+});
+
+test("a detailed milestone deadline preserves cached results without failure backoff", async () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER, 1);
+  writeCache(key, { fetchedAt: NOW - CACHE_TTL_MS, repoNames: ["tech-lib"], repositories: { "tech-lib": makeEntry() } }, storage);
+  const view = makeContainer({ limit: 1 });
+  assert.equal(await loadRecentMilestones(view.container, {
+    storage, now: NOW, refreshTimeoutMs: 10,
+    logger: { error() { assert.fail("a deadline is not a failure"); } },
+    fetchImpl: () => new Promise(() => {}),
+  }), true);
+  assert.equal(isVisible(view.list), true);
+  assert.equal(view.container.hasAttribute("aria-busy"), false);
+  const cached = readCache(key, ["tech-lib"], storage, NOW);
+  assert.equal(cached.isFresh, true);
+  assert.equal(cached.repositories["tech-lib"].deferred, true);
+  assert.equal(cached.repositories["tech-lib"].pages[0].etag, '"etag"');
+  assert.equal(storage.getItem(getFailureKey(OWNER, ["tech-lib"], 1)), null);
 });

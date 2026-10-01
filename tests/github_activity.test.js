@@ -1,11 +1,13 @@
 "use strict";
 
+const { clientAssetPath } = require("./client_assets");
+
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const test = require("node:test");
 
 const scriptPath = path.join(__dirname, "..", "assets", "js", "github_activity.js");
-const { controller, recentCommits, shared } = require(scriptPath);
+const { controller, recentCommits, shared } = require(clientAssetPath(scriptPath));
 
 const OWNER = "lib-port";
 const REPOSITORIES = [
@@ -44,15 +46,16 @@ function makeDocument(value) {
   };
 }
 
-function makeResponse(status = 200, payload = {}) {
+function makeResponse(status = 200, payload = {}, headers = {}) {
   return {
     status,
     ok: status >= 200 && status < 300,
+    headers: { get(name) { return headers[name.toLowerCase()] ?? null; } },
     async json() {
       return payload;
     },
     clone() {
-      return makeResponse(status, payload);
+      return makeResponse(status, payload, headers);
     },
   };
 }
@@ -317,10 +320,7 @@ test("times out and aborts a GitHub request that never responds", async () => {
   assert.equal(requestSignal.aborted, true);
   assert.equal(coordinator.activeCount, 0);
   assert.equal(coordinator.queuedCount, 0);
-  assert.equal(
-    JSON.parse(storage.getItem(shared.getGlobalFailureKey(OWNER))).kind,
-    "timeout"
-  );
+  assert.equal(storage.getItem(shared.getGlobalFailureKey(OWNER)), null);
 });
 
 test("times out while reading a GitHub response body", async () => {
@@ -480,7 +480,7 @@ test("retains a concurrent rate-limit failure after another request succeeds", a
   assert.equal(calls, 2);
 });
 
-test("retains a concurrent network failure after another request succeeds", async () => {
+test("a network failure does not pause other sections", async () => {
   const storage = new FakeStorage();
   const failed = makeDeferred();
   const successful = makeDeferred();
@@ -507,13 +507,10 @@ test("retains a concurrent network failure after another request succeeds", asyn
 
   assert.equal(
     shared.hasRecentFailure(shared.getGlobalFailureKey(OWNER), storage, 1000),
-    true
+    false
   );
-  await assert.rejects(
-    coordinator.fetch("https://api.github.com/paused"),
-    /temporarily paused/
-  );
-  assert.equal(calls, 2);
+  assert.equal((await coordinator.fetch("https://api.github.com/another-section")).status, 200);
+  assert.equal(calls, 3);
 });
 
 test("selects only repositories whose push state changed", () => {
@@ -544,4 +541,213 @@ test("selects only repositories whose push state changed", () => {
       .map(({ name }) => name),
     ["alpha", "beta"]
   );
+});
+
+test("reserves the 40-request visit budget before queueing and shares deduplicated reservations", async () => {
+  let calls = 0;
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER, storage: new FakeStorage(),
+    fetchImpl: async () => { calls += 1; return makeResponse(); },
+  });
+  const requests = Array.from({ length: 40 }, (_, index) =>
+    coordinator.fetch(`https://api.github.com/budget/${index}`)
+  );
+  const duplicate = coordinator.fetch("https://api.github.com/budget/0");
+  assert.equal(shared.MAX_REQUESTS, 40);
+  assert.equal(coordinator.issuedCount, 4);
+  assert.equal(coordinator.reservedCount, 36);
+  assert.equal(coordinator.queuedCount, 36);
+  await assert.rejects(coordinator.fetch("https://api.github.com/over-budget"),
+    error => shared.isDeferred(error) && error.reason === "budget");
+  await Promise.all([...requests, duplicate]);
+  assert.equal(calls, 40);
+  assert.equal(coordinator.issuedCount, 40);
+  assert.equal(coordinator.reservedCount, 0);
+});
+
+test("queued first pages run before extra pages", async () => {
+  const gate = makeDeferred();
+  const calls = [];
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER, storage: new FakeStorage(), maxConcurrent: 1,
+    fetchImpl: async url => {
+      calls.push(url);
+      return url === "busy" ? gate.promise : makeResponse();
+    },
+  });
+  const requests = [
+    coordinator.fetch("busy"),
+    coordinator.fetch("second-page", {}, { priority: 1 }),
+    coordinator.fetch("first-page"),
+  ];
+  gate.resolve(makeResponse());
+  await Promise.all(requests);
+  assert.deepEqual(calls, ["busy", "first-page", "second-page"]);
+});
+
+test("cancelling a queued request releases its unused budget reservation", async () => {
+  const gate = makeDeferred();
+  const abort = new AbortController();
+  const calls = [];
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER, storage: new FakeStorage(), maxConcurrent: 1, maxRequests: 2,
+    fetchImpl: async url => { calls.push(url); return url === "busy" ? gate.promise : makeResponse(); },
+  });
+  const first = coordinator.fetch("busy");
+  const queued = coordinator.fetch("cancelled", { signal: abort.signal });
+  abort.abort(shared.createDeferredError("deadline"));
+  await assert.rejects(queued, shared.isDeferred);
+  assert.equal(coordinator.reservedCount, 0);
+  const replacement = coordinator.fetch("replacement");
+  assert.equal(coordinator.reservedCount, 1);
+  gate.resolve(makeResponse());
+  await Promise.all([first, replacement]);
+  assert.deepEqual(calls, ["busy", "replacement"]);
+  assert.equal(coordinator.issuedCount, 2);
+});
+
+test("cancelling one deduplicated consumer keeps the other request alive", async () => {
+  const gate = makeDeferred();
+  const abort = new AbortController();
+  let signal;
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER, storage: new FakeStorage(),
+    fetchImpl: (_url, options) => { signal = options.signal; return gate.promise; },
+  });
+  const first = coordinator.fetch("shared", { signal: abort.signal });
+  const second = coordinator.fetch("shared");
+  await Promise.resolve();
+  abort.abort(shared.createDeferredError("deadline"));
+  await assert.rejects(first, shared.isDeferred);
+  assert.equal(signal.aborted, false);
+  gate.resolve(makeResponse(200, { alive: true }));
+  assert.deepEqual(await (await second).json(), { alive: true });
+  assert.equal(coordinator.issuedCount, 1);
+});
+
+test("a section deadline cancels its queued and active requests without recording failures", async () => {
+  const storage = new FakeStorage();
+  let signal;
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER, storage, maxConcurrent: 1,
+    fetchImpl: (_url, options) => { signal = options.signal; return new Promise(() => {}); },
+  });
+  const refresh = shared.createRefresh(coordinator.fetch, { timeoutMs: 10 });
+  try {
+    const result = await Promise.allSettled([refresh.fetch("active"), refresh.fetch("queued")]);
+    assert.ok(result.every(value => value.status === "rejected" && shared.isDeferred(value.reason)));
+    assert.equal(signal.aborted, true);
+    assert.equal(coordinator.activeCount, 0);
+    assert.equal(coordinator.queuedCount, 0);
+    assert.equal(coordinator.reservedCount, 0);
+    assert.equal(coordinator.issuedCount, 1);
+    assert.equal(storage.getItem(shared.getGlobalFailureKey(OWNER)), null);
+  } finally { refresh.close(); }
+});
+
+test("a section deadline does not abort a shared request with another live consumer", async () => {
+  const gate = makeDeferred();
+  let signal;
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER, storage: new FakeStorage(),
+    fetchImpl: (_url, options) => { signal = options.signal; return gate.promise; },
+  });
+  const refresh = shared.createRefresh(coordinator.fetch, { timeoutMs: 10 });
+  try {
+    const expired = refresh.fetch("shared");
+    const live = coordinator.fetch("shared");
+    await assert.rejects(expired, error => shared.isDeferred(error) && error.reason === "deadline");
+    assert.equal(signal.aborted, false);
+    gate.resolve(makeResponse());
+    assert.equal((await live).status, 200);
+  } finally { refresh.close(); }
+});
+
+test("refreshes honour caller cancellation as well as their own deadline", async () => {
+  const caller = new AbortController();
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER, storage: new FakeStorage(), fetchImpl: () => new Promise(() => {}),
+  });
+  const refresh = shared.createRefresh(coordinator.fetch);
+  try {
+    const request = refresh.fetch("cancelled", { signal: caller.signal });
+    caller.abort(new Error("caller cancelled"));
+    await assert.rejects(request, /caller cancelled/);
+    assert.equal(coordinator.activeCount, 0);
+  } finally { refresh.close(); }
+});
+
+test("section deadlines settle even when a raw fetch ignores cancellation", async () => {
+  const refresh = shared.createRefresh(() => new Promise(() => {}), { timeoutMs: 10 });
+  try {
+    assert.equal(shared.SECTION_TIMEOUT_MS, 30_000);
+    await assert.rejects(refresh.fetch("hung"), shared.isDeferred);
+    await assert.rejects(refresh.fetch("already-expired"), shared.isDeferred);
+  } finally { refresh.close(); }
+});
+
+for (const example of [
+  { name: "Retry-After seconds", status: 429, headers: { "retry-after": "120" }, delay: 120_000 },
+  { name: "Retry-After date", status: 429, headers: { "retry-after": "Thu, 01 Oct 2026 12:02:00 GMT" }, delay: 120_000 },
+  { name: "primary reset time", status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(Date.parse("2026-10-01T12:03:00Z") / 1000) }, delay: 180_000 },
+  { name: "secondary rate-limit message", status: 403, payload: { message: "You have exceeded a secondary rate limit." }, headers: {}, delay: 60_000 },
+]) {
+  test(`global rate-limit protection respects ${example.name}`, async () => {
+    const start = Date.parse("2026-10-01T12:00:00Z");
+    let now = start;
+    let calls = 0;
+    const storage = new FakeStorage();
+    const coordinator = shared.createRequestCoordinator({
+      owner: OWNER, storage, now: () => now,
+      fetchImpl: async () => ++calls === 1
+        ? makeResponse(example.status, example.payload, example.headers) : makeResponse(),
+    });
+    const response = await coordinator.fetch("limited");
+    const error = shared.createHttpError(response, "test", start);
+    assert.equal(error.kind, "rate-limit");
+    assert.equal(error.retryAt, start + example.delay);
+    assert.equal(JSON.parse(storage.getItem(shared.getGlobalFailureKey(OWNER))).retryAt, error.retryAt);
+    now = start + example.delay - 1;
+    await assert.rejects(coordinator.fetch("paused"), /temporarily paused/);
+    now += 1;
+    assert.equal((await coordinator.fetch("retry")).status, 200);
+    assert.equal(calls, 2);
+  });
+}
+
+test("permission errors and server failures do not create an owner-wide pause", async () => {
+  const storage = new FakeStorage();
+  const coordinator = shared.createRequestCoordinator({
+    owner: OWNER, storage,
+    fetchImpl: async url => makeResponse(url === "forbidden" ? 403 : url === "server" ? 503 : 200),
+  });
+  assert.equal(shared.createHttpError(await coordinator.fetch("forbidden")).kind, "resource");
+  assert.equal(shared.createHttpError(await coordinator.fetch("server")).kind, "transient");
+  assert.equal((await coordinator.fetch("healthy")).status, 200);
+  assert.equal(storage.getItem(shared.getGlobalFailureKey(OWNER)), null);
+});
+
+test("section failures use appropriate retry periods and ignore deferrals", () => {
+  const storage = new FakeStorage();
+  const now = 1000;
+  shared.recordFailures("section", storage, now, [shared.createDeferredError("budget")]);
+  assert.equal(storage.getItem("section"), null);
+  shared.recordFailures("section", storage, now, [shared.createHttpError(makeResponse(503))]);
+  assert.equal(JSON.parse(storage.getItem("section")).retryAt, now + 5 * 60 * 1000);
+  assert.equal(shared.hasRecentFailure("section", storage, now + 5 * 60 * 1000), false);
+  shared.recordFailures("section", storage, now, [shared.createHttpError(makeResponse(404))]);
+  assert.equal(JSON.parse(storage.getItem("section")).retryAt, now + 6 * 60 * 60 * 1000);
+});
+
+test("retires legacy global transport failures while retaining rate-limit records", () => {
+  for (const kind of ["network", "timeout", "unavailable", "rate-limit"]) {
+    const storage = new FakeStorage();
+    const key = shared.getGlobalFailureKey(OWNER);
+    shared.writeFailure(key, storage, 1000, kind);
+    shared.createRequestCoordinator({ owner: OWNER, storage, now: () => 2000 });
+    assert.equal(shared.hasRecentFailure(key, storage, 2000), kind === "rate-limit");
+    if (kind === "rate-limit") {
+      assert.equal(shared.hasRecentFailure(key, storage, 1000 + shared.FAILURE_TTL_MS), false);
+    }
+  }
 });

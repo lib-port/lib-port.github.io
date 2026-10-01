@@ -1,12 +1,14 @@
 "use strict";
 
+const { clientAssetPath } = require("./client_assets");
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
 const scriptPath = path.join(__dirname, "..", "assets", "js", "github_activity.js");
-const githubActivity = require(scriptPath);
+const githubActivity = require(clientAssetPath(scriptPath));
 const {
   AUTHOR_MODE,
   CACHE_TTL_MS,
@@ -130,6 +132,9 @@ function makeContainer({ limit = 2, repositories = [REPOSITORY] } = {}) {
   const empty = new FakeElement();
   empty.textContent = "No recent commits found";
   empty.setAttribute("hidden", "");
+  const limited = new FakeElement();
+  limited.textContent = "Some repository history could not be searched completely.";
+  limited.setAttribute("hidden", "");
   const items = Array.from({ length: limit }, makeItem);
 
   container.selectors.set("[data-commit-history-repositories]", repositoryData);
@@ -137,8 +142,9 @@ function makeContainer({ limit = 2, repositories = [REPOSITORY] } = {}) {
   container.selectors.set("[data-commit-history-loading]", loading);
   container.selectors.set("[data-commit-history-error]", error);
   container.selectors.set("[data-commit-history-empty]", empty);
+  container.selectors.set("[data-commit-history-limited]", limited);
   container.selectors.set("[data-commit-history-item]", items);
-  return { container, empty, error, items, list, loading };
+  return { container, empty, error, items, limited, list, loading };
 }
 
 function isVisible(element) {
@@ -199,7 +205,7 @@ test("builds filtered and fallback commit-list URLs", () => {
   );
   assert.equal(
     buildCommitListUrl("repo name", OWNER, 10, LINKED_AUTHOR_MODE, 2),
-    "https://api.github.com/repos/lib-port/repo%20name/commits?per_page=10&page=2"
+    "https://api.github.com/repos/lib-port/repo%20name/commits?per_page=100&page=2"
   );
 });
 
@@ -465,6 +471,304 @@ test("falls back to linked author history, paginates, and remembers the mode", a
   );
 });
 
+test("finds an owner commit after 100 collaborator commits in three requests", async () => {
+  const storage = new FakeStorage();
+  const view = makeContainer({ limit: 1 });
+  const requests = [];
+  assert.equal(await loadCommitHistory(view.container, {
+    fetchImpl: async (url) => {
+      requests.push(url);
+      const query = new URL(url).searchParams;
+      if (query.has("author")) return makeResponse();
+      assert.equal(query.get("per_page"), "100");
+      return makeResponse({
+        payload: query.get("page") === "2"
+          ? [makeCommit({ sha: "owner-after-collaborators" })]
+          : Array.from({ length: 100 }, (_, index) => makeCommit({
+            sha: `collaborator-${index}`, owner: "someone-else",
+          })),
+        link: '<https://api.github.com/example?page=3>; rel="next"',
+      });
+    },
+    storage, now: NOW, logger: silentLogger,
+  }), true);
+  assert.equal(requests.length, 3);
+  assert.equal(isVisible(view.limited), false, "finding the display limit completes the search");
+  assert.match(view.items[0].querySelector("[data-commit-history-message]").href, /owner-after-collaborators$/);
+});
+
+test("stops an endless empty history after two fallback pages without failure backoff", async () => {
+  const storage = new FakeStorage();
+  const view = makeContainer({ limit: 1 });
+  let requests = 0;
+  const pushedAt = "2026-08-23T00:00:00.000Z";
+  const options = {
+    fetchImpl: async () => {
+      requests += 1;
+      return makeResponse({ link: '<https://api.github.com/example?page=99>; rel="next"' });
+    },
+    getCatalogueImpl: async () => ({
+      validated: true, complete: true, repositories: { [REPOSITORY.name]: { pushedAt } },
+    }),
+    storage, now: NOW, logger: silentLogger,
+  };
+  assert.equal(await loadCommitHistory(view.container, options), true);
+  assert.equal(requests, 3);
+  assertOnlyVisible({ list: view.list, loading: view.loading, error: view.error, empty: view.empty }, "empty");
+  assert.equal(view.empty.textContent, "No recent commits found");
+  const cached = readCache(getStorageKey(OWNER, 1), [REPOSITORY], storage, NOW);
+  const entry = cached.repositories[REPOSITORY.name];
+  assert.equal(cached.isFresh, true);
+  assert.equal(entry.limited, true);
+  assert.equal(entry.deferred, false);
+  assert.equal(entry.pages.length, 2);
+  assert.equal(entry.pushedAt, pushedAt);
+  assert.equal(storage.getItem(getFailureKey(OWNER, 1)), null);
+  assert.equal(storage.getItem(githubActivity.shared.getGlobalFailureKey(OWNER)), null);
+
+  for (const now of [NOW + 1, NOW + CACHE_TTL_MS]) {
+    const cachedView = makeContainer({ limit: 1 });
+    assert.equal(await loadCommitHistory(cachedView.container, { ...options, now }), true);
+    assert.equal(cachedView.empty.textContent, "No recent commits found");
+    assert.equal(requests, 3, "fresh results and unchanged pushes avoid repeating a capped search");
+  }
+});
+
+test("silently renders collected commits and restores partial results from cache", async () => {
+  const storage = new FakeStorage();
+  const view = makeContainer();
+  assert.equal(await loadCommitHistory(view.container, {
+    fetchImpl: async (url) => makeResponse({
+      payload: new URL(url).searchParams.get("page") === "2" ? [makeCommit()] : [],
+      link: '<https://api.github.com/example?page=3>; rel="next"',
+    }),
+    storage, now: NOW, logger: silentLogger,
+  }), true);
+  assert.equal(isVisible(view.list), true);
+  assert.equal(isVisible(view.limited), false);
+  assert.equal(view.items.filter(isVisible).length, 1);
+  assert.equal(storage.getItem(getFailureKey(OWNER, 2)), null);
+
+  const cachedView = makeContainer();
+  await loadCommitHistory(cachedView.container, {
+    fetchImpl: async () => { throw new Error("fresh partial results must be cached"); },
+    storage, now: NOW + 1, logger: silentLogger,
+  });
+  assert.equal(isVisible(cachedView.limited), false);
+  assert.equal(renderCommits(cachedView.container, normalizeApiCommits([makeCommit()], REPOSITORY, OWNER, 2), 2), true);
+  assert.equal(isVisible(cachedView.limited), false, "complete results clear the notice");
+  renderCommits(view.container, [], 2);
+  assert.equal(view.empty.textContent, "No recent commits found");
+  assert.equal(isVisible(view.limited), false);
+});
+
+test("shares 12 fallback requests across concurrent repositories in fair page rounds", async () => {
+  const repositories = Array.from({ length: 8 }, (_, index) => ({
+    name: `repo-${index}`, url: `https://github.com/${OWNER}/repo-${index}`,
+  }));
+  const pushedDays = [20, 23, 21, 23, 19, 22, 18, 17];
+  const catalogue = Object.fromEntries(repositories.map((repo, index) => [repo.name, {
+    pushedAt: `2026-08-${pushedDays[index]}T00:00:00.000Z`,
+  }]));
+  const requests = [];
+  const storage = new FakeStorage();
+  let active = 0;
+  let maximumActive = 0;
+  const coordinator = createRequestCoordinator({
+    owner: OWNER, storage, now: () => NOW,
+    fetchImpl: async (url) => {
+      requests.push(url);
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      const query = new URL(url).searchParams;
+      await new Promise((resolve) => setTimeout(resolve, query.has("author") ? 3 : 1));
+      active -= 1;
+      return makeResponse({ link: '<https://api.github.com/example?page=99>; rel="next"' });
+    },
+  });
+  assert.equal(await loadCommitHistory(makeContainer({ repositories, limit: 1 }).container, {
+    fetchImpl: coordinator.fetch,
+    getCatalogueImpl: async () => ({ validated: true, complete: true, repositories: catalogue }),
+    storage, now: NOW, logger: silentLogger,
+  }), true);
+  assert.equal(requests.length, 20);
+  assert.equal(maximumActive, 4);
+  const fallbackRequests = requests.filter((url) => !new URL(url).searchParams.has("author"));
+  const requestOrder = fallbackRequests.map((url) => {
+    const parsed = new URL(url);
+    return `${parsed.pathname.split("/")[3]}:${parsed.searchParams.get("page") || "1"}`;
+  });
+  assert.deepEqual(requestOrder, [
+    "repo-1:1", "repo-3:1", "repo-5:1", "repo-2:1", "repo-0:1", "repo-4:1", "repo-6:1", "repo-7:1",
+    "repo-1:2", "repo-3:2", "repo-5:2", "repo-2:2",
+  ]);
+  const cached = readCache(getStorageKey(OWNER, 1), repositories, storage, NOW);
+  assert.equal(cached.isFresh, true);
+  for (const { name } of repositories) {
+    const entry = cached.repositories[name];
+    assert.equal(entry.limited, true);
+    assert.equal(entry.deferred, !["repo-1", "repo-3", "repo-5", "repo-2"].includes(name));
+    assert.equal(entry.pushedAt, entry.deferred ? "" : catalogue[name].pushedAt);
+  }
+  assert.equal(storage.getItem(getFailureKey(OWNER, 1)), null);
+  assert.equal(storage.getItem(githubActivity.shared.getGlobalFailureKey(OWNER)), null);
+});
+
+test("defers repositories beyond the budget and retries them after cache expiry", async () => {
+  const repositories = Array.from({ length: 15 }, (_, index) => ({
+    name: `repo-${index}`, url: `https://github.com/${OWNER}/repo-${index}`,
+  }));
+  const storage = new FakeStorage();
+  const requests = [];
+  const catalogue = Object.fromEntries(repositories.map(({ name }) => [name, {
+    pushedAt: "2026-08-23T00:00:00.000Z",
+  }]));
+  const options = {
+    fetchImpl: async (url) => {
+      requests.push(url);
+      const parsed = new URL(url);
+      const repository = repositories.find(({ name }) => name === parsed.pathname.split("/")[3]);
+      return makeResponse({ payload: parsed.searchParams.has("author") ? [] : [makeCommit({ repo: repository })] });
+    },
+    getCatalogueImpl: async () => ({ validated: true, complete: true, repositories: catalogue }),
+    storage, now: NOW, logger: silentLogger,
+  };
+  assert.equal(await loadCommitHistory(makeContainer({ repositories, limit: 1 }).container, options), true);
+  assert.equal(requests.length, 27);
+  assert.deepEqual(requests.slice(15).map((url) => new URL(url).pathname.split("/")[3]), repositories.slice(0, 12).map(({ name }) => name));
+  const cached = readCache(getStorageKey(OWNER, 1), repositories, storage, NOW);
+  for (const { name } of repositories.slice(12)) {
+    assert.equal(cached.repositories[name].deferred, true);
+    assert.equal(cached.repositories[name].pushedAt, "");
+    assert.deepEqual(cached.repositories[name].pages, []);
+  }
+  await loadCommitHistory(makeContainer({ repositories, limit: 1 }).container, { ...options, now: NOW + 1 });
+  assert.equal(requests.length, 27);
+  requests.length = 0;
+  assert.equal(await loadCommitHistory(makeContainer({ repositories, limit: 1 }).container, {
+    ...options, now: NOW + CACHE_TTL_MS,
+  }), true);
+  assert.deepEqual(requests, repositories.slice(12).map(({ name }) => buildCommitListUrl(name, OWNER, 1, LINKED_AUTHOR_MODE)));
+  const refreshed = readCache(getStorageKey(OWNER, 1), repositories, storage, NOW + CACHE_TTL_MS);
+  assert.equal(refreshed.limited, false);
+});
+
+test("preserves cached commits, page ETags and verified push times for deferred searches", async () => {
+  const repositories = Array.from({ length: 13 }, (_, index) => ({
+    name: `repo-${index}`, url: `https://github.com/${OWNER}/repo-${index}`,
+  }));
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER, 2);
+  const pushedAt = "2026-08-20T00:00:00.000Z";
+  const cachedRepositories = Object.fromEntries(repositories.map((repository) => {
+    const commits = normalizeApiCommits([makeCommit({ repo: repository, sha: "cached" })], repository, OWNER, 2);
+    return [repository.name, {
+      mode: LINKED_AUTHOR_MODE, commits, pushedAt, limited: false, deferred: false,
+      pages: [
+        { page: 1, etag: '"page-one"', hasNext: true, commits: [] },
+        { page: 2, etag: '"page-two"', hasNext: false, commits },
+      ],
+    }];
+  }));
+  writeCache(key, { fetchedAt: NOW - CACHE_TTL_MS, repoNames: repositories.map(({ name }) => name), repositories: cachedRepositories }, storage);
+  let requests = 0;
+  const view = makeContainer({ repositories });
+  assert.equal(await loadCommitHistory(view.container, {
+    fetchImpl: async (url, { headers }) => {
+      requests += 1;
+      assert.equal(headers["If-None-Match"], '"page-one"');
+      assert.doesNotMatch(url, /page=2|author=/);
+      return makeResponse({ etag: '"updated-page-one"', link: '<https://api.github.com/example?page=2>; rel="next"' });
+    },
+    getCatalogueImpl: async () => ({
+      validated: true, complete: true,
+      repositories: Object.fromEntries(repositories.map(({ name }) => [name, { pushedAt: "2026-08-23T00:00:00.000Z" }])),
+    }),
+    storage, now: NOW, logger: silentLogger,
+  }), true);
+  assert.equal(requests, 12);
+  assert.equal(isVisible(view.list), true);
+  assert.equal(isVisible(view.limited), false);
+  const cached = readCache(key, repositories, storage, NOW);
+  assert.equal(cached.isFresh, true);
+  for (const [index, { name }] of repositories.entries()) {
+    const entry = cached.repositories[name];
+    assert.equal(entry.commits[0].sha, "cached");
+    assert.equal(entry.pushedAt, pushedAt);
+    assert.equal(entry.deferred, true);
+    assert.equal(entry.pages[0].etag, index < 12 ? '"updated-page-one"' : '"page-one"');
+    assert.equal(entry.pages[1].etag, '"page-two"');
+  }
+  assert.deepEqual(githubActivity.recentCommits.selectRepositoriesToFetch(repositories, cached.repositories, {
+    validated: true, repositories: Object.fromEntries(repositories.map(({ name }) => [name, { pushedAt }])),
+  }), repositories, "deferred searches retry even when their old push timestamp matches");
+  assert.equal(storage.getItem(getFailureKey(OWNER, 2)), null);
+});
+
+test("revalidates page two separately when page one returns 304", async () => {
+  const storage = new FakeStorage();
+  const options = { storage, now: NOW, logger: silentLogger };
+  await loadCommitHistory(makeContainer({ limit: 1 }).container, {
+    ...options,
+    fetchImpl: async (url) => {
+      const query = new URL(url).searchParams;
+      if (query.has("author")) return makeResponse();
+      const secondPage = query.get("page") === "2";
+      return makeResponse({
+        payload: secondPage ? [makeCommit({ sha: "old-page-two" })] : [],
+        etag: secondPage ? '"page-two"' : '"page-one"',
+        link: secondPage ? "" : '<https://api.github.com/example?page=2>; rel="next"',
+      });
+    },
+  });
+  const requests = [];
+  const view = makeContainer({ limit: 1 });
+  assert.equal(await loadCommitHistory(view.container, {
+    ...options, now: NOW + CACHE_TTL_MS,
+    fetchImpl: async (url, { headers }) => {
+      requests.push({ url, etag: headers["If-None-Match"] });
+      return url.includes("page=2")
+        ? makeResponse({ payload: [makeCommit({ sha: "new-page-two" })], etag: '"updated-page-two"' })
+        : makeResponse({ status: 304 });
+    },
+  }), true);
+  assert.deepEqual(requests, [
+    { url: buildCommitListUrl(REPOSITORY.name, OWNER, 1, LINKED_AUTHOR_MODE), etag: '"page-one"' },
+    { url: buildCommitListUrl(REPOSITORY.name, OWNER, 1, LINKED_AUTHOR_MODE, 2), etag: '"page-two"' },
+  ]);
+  assert.match(view.items[0].querySelector("[data-commit-history-message]").href, /new-page-two$/);
+  const cached = readCache(getStorageKey(OWNER, 1), [REPOSITORY], storage, NOW + CACHE_TTL_MS);
+  assert.equal(cached.repositories[REPOSITORY.name].pages[1].etag, '"updated-page-two"');
+
+  requests.length = 0;
+  const unchangedView = makeContainer({ limit: 1 });
+  assert.equal(await loadCommitHistory(unchangedView.container, {
+    ...options, now: NOW + CACHE_TTL_MS * 2,
+    fetchImpl: async (url, { headers }) => {
+      requests.push({ url, etag: headers["If-None-Match"] });
+      return makeResponse({ status: 304 });
+    },
+  }), true);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].etag, '"updated-page-two"');
+  assert.match(unchangedView.items[0].querySelector("[data-commit-history-message]").href, /new-page-two$/);
+});
+
+test("keeps genuine fallback HTTP failures under shared rate-limit protection", async () => {
+  const storage = new FakeStorage();
+  const coordinator = createRequestCoordinator({
+    owner: OWNER, storage, now: () => NOW,
+    fetchImpl: async (url) => makeResponse({ status: url.includes("author=") ? 200 : 429 }),
+  });
+  const view = makeContainer({ limit: 1 });
+  assert.equal(await loadCommitHistory(view.container, {
+    fetchImpl: coordinator.fetch, storage, now: NOW, logger: silentLogger,
+  }), false);
+  assert.equal(isVisible(view.error), true);
+  assert.equal(hasRecentFailure(getFailureKey(OWNER, 1), storage, NOW), true);
+  assert.equal(hasRecentFailure(githubActivity.shared.getGlobalFailureKey(OWNER), storage, NOW), true);
+});
+
 test("renders best-effort commits when another repository fails", async () => {
   const storage = new FakeStorage();
   const workingRepository = {
@@ -703,8 +1007,9 @@ test("reconsiders missing, archived and forked repositories after cache expiry",
   }
 });
 
-test("migrates both legacy caches and retries despite their old failure records", async () => {
+test("migrates all legacy caches and retries despite their old failure records", async () => {
   const legacyKeys = [
+    [`github-activity:v2:${OWNER}:commits:limit:1`, `github-activity:v2:failure:${OWNER}:commits:limit:1`],
     [`github-activity:v1:${OWNER}:commits:limit:1`, `github-activity:v1:failure:${OWNER}:commits:limit:1`],
     [`commit-history:v1:${OWNER}:limit:1`, `commit-history:v1:failure:${OWNER}:limit:1`],
   ];
@@ -716,7 +1021,7 @@ test("migrates both legacy caches and retries despite their old failure records"
         fetchedAt: NOW,
         mode,
         repoNames: [REPOSITORY.name],
-        repositories: { [REPOSITORY.name]: { commits: [commit], etag: '"legacy"', pushedAt: "2026-08-23T00:00:00.000Z" } },
+        repositories: { [REPOSITORY.name]: { mode, commits: [commit], etag: '"legacy"', pushedAt: "2026-08-23T00:00:00.000Z" } },
       }, storage);
       writeFailure(failureKey, storage, NOW);
       const requests = [];
@@ -838,7 +1143,7 @@ test("skips commit requests when the repository has not been pushed", async () =
   assert.equal(JSON.parse(storage.getItem(key)).fetchedAt, NOW);
 });
 
-test("shows loading instead of stale data, then restores it after refresh failure", async () => {
+test("keeps stale commits visible throughout a failed refresh", async () => {
   const storage = new FakeStorage();
   const key = getStorageKey(OWNER, 1);
   const failureKey = getFailureKey(OWNER, 1);
@@ -881,9 +1186,9 @@ test("shows loading instead of stale data, then restores it after refresh failur
       error: first.error,
       empty: first.empty,
     },
-    "loading"
+    "list"
   );
-  assert.equal(first.items[0].attributes.has("hidden"), true);
+  assert.equal(first.items[0].attributes.has("hidden"), false);
 
   assert.equal(await refresh, true);
   assertOnlyVisible(
@@ -901,7 +1206,7 @@ test("shows loading instead of stale data, then restores it after refresh failur
   assert.equal(await loadCommitHistory(duringBackoff.container, {
     fetchImpl,
     storage,
-    now: NOW + FAILURE_TTL_MS - 1,
+    now: NOW + githubActivity.shared.TRANSIENT_FAILURE_TTL_MS - 1,
     logger: silentLogger,
   }), true);
 
@@ -915,11 +1220,11 @@ test("shows loading instead of stale data, then restores it after refresh failur
     },
     "list"
   );
-  assert.equal(hasRecentFailure(failureKey, storage, NOW + FAILURE_TTL_MS - 1), true);
+  assert.equal(hasRecentFailure(failureKey, storage, NOW + githubActivity.shared.TRANSIENT_FAILURE_TTL_MS - 1), true);
   assert.equal(readCache(key, [REPOSITORY], storage, NOW).repositories[REPOSITORY.name].commits.length, 1);
 });
 
-test("restores a cached empty result when its stale refresh fails", async () => {
+test("keeps a cached empty result visible throughout a failed refresh", async () => {
   const storage = new FakeStorage();
   writeCache(
     getStorageKey(OWNER, 1),
@@ -949,7 +1254,7 @@ test("restores a cached empty result when its stale refresh fails", async () => 
       error: view.error,
       empty: view.empty,
     },
-    "loading"
+    "empty"
   );
   assert.equal(await refresh, true);
   assertOnlyVisible(
@@ -1118,8 +1423,126 @@ test("deletes malformed, future-dated cache and failure records", () => {
   assert.equal(storage.getItem(failureKey), null);
 });
 
+test("rejects malformed fallback page caches before using their ETags", () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER, 1);
+  const page = { page: 1, etag: '"page-one"', hasNext: false, commits: [] };
+  const invalidEntries = [
+    {},
+    { pages: [] },
+    { pages: [null] },
+    { pages: [{ ...page, page: 2 }] },
+    { pages: [{ ...page, hasNext: "false" }] },
+    { pages: [{ ...page, commits: [{ sha: "invalid" }] }] },
+    { pages: [page, { ...page, page: 2 }, { ...page, page: 3 }] },
+    { pages: [page], deferred: "true" },
+  ];
+  for (const fields of invalidEntries) {
+    writeCache(key, {
+      fetchedAt: NOW, repoNames: [REPOSITORY.name],
+      repositories: { [REPOSITORY.name]: { mode: LINKED_AUTHOR_MODE, commits: [], ...fields } },
+    }, storage);
+    assert.equal(readCache(key, [REPOSITORY], storage, NOW), null);
+    assert.equal(storage.getItem(key), null);
+  }
+});
+
 test("the unified controller selects commit-history containers", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
   assert.match(source, /querySelectorAll\("\[data-commit-history\]"\)/);
   assert.match(source, /\[data-home-section="recent_commits"\]/);
+});
+
+test("a deadline preserves commit data and its last verified push state", async () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER, 1);
+  const [commit] = normalizeApiCommits([makeCommit()], REPOSITORY, OWNER, 1);
+  const pushedAt = "2026-08-01T00:00:00.000Z";
+  writeCache(key, {
+    fetchedAt: NOW - CACHE_TTL_MS, repoNames: [REPOSITORY.name],
+    repositories: { [REPOSITORY.name]: { mode: AUTHOR_MODE, etag: '"cached"', commits: [commit], pushedAt } },
+  }, storage);
+  const view = makeContainer({ limit: 1 });
+  assert.equal(await loadCommitHistory(view.container, {
+    storage, now: NOW, refreshTimeoutMs: 10,
+    getCatalogueImpl: async () => ({ validated: true, complete: true, repositories: { [REPOSITORY.name]: { pushedAt: "2026-08-23T00:00:00.000Z" } } }),
+    fetchImpl: () => new Promise(() => {}),
+    logger: { error() { assert.fail("a deadline is not a failure"); } },
+  }), true);
+  const cached = readCache(key, [REPOSITORY], storage, NOW);
+  assert.equal(cached.isFresh, true);
+  assert.equal(cached.repositories[REPOSITORY.name].commits[0].sha, commit.sha);
+  assert.equal(cached.repositories[REPOSITORY.name].pushedAt, pushedAt);
+  assert.equal(cached.repositories[REPOSITORY.name].deferred, true);
+  assert.equal(storage.getItem(getFailureKey(OWNER, 1)), null);
+  assert.equal(view.container.hasAttribute("aria-busy"), false);
+});
+
+test("a deadline while validating the catalogue settles without starting commit requests", async () => {
+  const storage = new FakeStorage();
+  let calls = 0;
+  const view = makeContainer({ limit: 1 });
+  assert.equal(await loadCommitHistory(view.container, {
+    storage, now: NOW, refreshTimeoutMs: 10,
+    getCatalogueImpl: () => new Promise(() => {}),
+    fetchImpl: async () => { calls += 1; return makeResponse(); },
+    logger: { error() { assert.fail("a deadline is not a failure"); } },
+  }), true);
+  assert.equal(calls, 0);
+  const entry = readCache(getStorageKey(OWNER, 1), [REPOSITORY], storage, NOW).repositories[REPOSITORY.name];
+  assert.equal(entry.deferred, true);
+  assert.equal(entry.pushedAt, "");
+  assert.equal(storage.getItem(getFailureKey(OWNER, 1)), null);
+});
+
+test("displays cached commits before a browser lock and renders storage updates directly", async t => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER, 1);
+  const view = makeContainer({ limit: 1 });
+  const writeResult = (timestamp, sha) => {
+    const commits = normalizeApiCommits([makeCommit({ sha })], REPOSITORY, OWNER, 1);
+    writeCache(key, { fetchedAt: timestamp, repoNames: [REPOSITORY.name], repositories: { [REPOSITORY.name]: { mode: AUTHOR_MODE, etag: "", commits } } }, storage);
+  };
+  writeResult(NOW - CACHE_TTL_MS, "cached");
+  let release;
+  let task;
+  let locks = 0;
+  let fetches = 0;
+  let storageEvent;
+  let activate;
+  const gate = new Promise(resolve => { release = resolve; });
+  const instance = githubActivity.controller.createController({
+    documentImpl: {
+      querySelector() { return { textContent: JSON.stringify({ owner: OWNER, repositoryUpdates: false, repositories: [REPOSITORY], commitLimit: 1, milestones: null }) }; },
+      querySelectorAll(selector) { assert.equal(selector, "[data-commit-history]"); return [view.container]; },
+    },
+    windowImpl: { addEventListener(_name, listener) { storageEvent = listener; }, removeEventListener() {} },
+    observerFactory: callback => { activate = () => callback([{ isIntersecting: true }]); return { observe() {}, disconnect() {} }; },
+    locks: { request(name, callback) {
+      assert.equal(name, `github-activity:${OWNER}:commits`);
+      locks += 1; task = gate.then(callback); return task;
+    } },
+    storage, now: () => NOW, logger: silentLogger,
+    fetchImpl: async () => { fetches += 1; return makeResponse(); },
+  });
+  t.after(() => instance.destroy());
+  instance.start();
+  storageEvent({ key, newValue: storage.getItem(key) });
+  assert.equal(isVisible(view.list), false);
+  activate();
+  assert.equal(isVisible(view.list), true);
+  assert.equal(locks, 1);
+  assert.equal(fetches, 0);
+  writeResult(NOW - CACHE_TTL_MS, "other-tab");
+  const snapshot = storage.getItem(key);
+  storageEvent({ key, newValue: snapshot });
+  assert.match(view.items[0].querySelector("[data-commit-history-message]").href, /other-tab$/);
+  assert.equal(locks, 1);
+  assert.equal(fetches, 0);
+  assert.equal(storage.getItem(key), snapshot);
+  assert.equal(storage.getItem(getFailureKey(OWNER, 1)), null);
+  writeResult(NOW, "fresh-from-other-tab");
+  release();
+  assert.equal(await task, true);
+  assert.equal(fetches, 0);
 });

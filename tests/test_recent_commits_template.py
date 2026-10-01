@@ -59,6 +59,7 @@ class RecentCommitsTemplateTests(unittest.TestCase):
         self.assertIn("unable to load recent commits", template)
         self.assertIn("data-commit-history-empty", template)
         self.assertIn("No recent commits found", template)
+        self.assertNotIn("data-commit-history-limited", template)
         self.assertNotIn("View GitHub activity", template)
         self.assertNotIn("data-commit-history-fallback", template)
 

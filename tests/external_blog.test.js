@@ -1,5 +1,7 @@
 "use strict";
 
+const { clientAssetPath } = require("./client_assets");
+
 process.env.TZ = "Europe/Paris";
 
 const assert = require("node:assert/strict");
@@ -20,7 +22,7 @@ const {
   readCache,
   truncateText,
   writeCache,
-} = require(scriptPath);
+} = require(clientAssetPath(scriptPath));
 
 const FEED_URL = "https://example.com/feed.xml";
 const ARCHIVE_URL = "https://example.com/archive";
@@ -164,7 +166,7 @@ test("formats RSS2JSON dates in UTC using the browser locale", () => {
     ["en-US", "Aug 2, 2026"],
     ["fr-FR", "2 août 2026"],
   ]) {
-    const { formatPublishedAt } = loadWithLocale(scriptPath, locale);
+    const { formatPublishedAt } = loadWithLocale(clientAssetPath(scriptPath), locale);
     assert.equal(formatPublishedAt("2026-08-02 23:01:29"), expected, locale);
     assert.equal(formatPublishedAt("2026-08-03T01:01:29+02:00"), expected, locale);
     assert.equal(formatPublishedAt("not-a-date"), "", locale);

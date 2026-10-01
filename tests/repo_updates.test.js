@@ -1,5 +1,7 @@
 "use strict";
 
+const { clientAssetPath } = require("./client_assets");
+
 process.env.TZ = "Europe/Paris";
 
 const assert = require("node:assert/strict");
@@ -10,7 +12,7 @@ const vm = require("node:vm");
 const { loadWithLocale } = require("./helpers/load_with_locale");
 
 const scriptPath = path.join(__dirname, "..", "assets", "js", "github_activity.js");
-const githubActivity = require(scriptPath);
+const githubActivity = require(clientAssetPath(scriptPath));
 const {
   CACHE_TTL_MS,
   FAILURE_TTL_MS,
@@ -22,7 +24,7 @@ const {
   readCache,
   writeCache,
 } = githubActivity.repositoryUpdates;
-const { hasRecentFailure, writeFailure } = githubActivity.shared;
+const { hasRecentFailure, writeFailure, TRANSIENT_FAILURE_TTL_MS } = githubActivity.shared;
 
 const OWNER = "libport";
 const REPO_NAME = "example-repo";
@@ -106,7 +108,7 @@ test("formats repository updates by the visitor's locale and local calendar", ()
     ["en-US", "updated on Jul 7"],
     ["fr-FR", "updated on 7 juil."],
   ]) {
-    const { formatPushedAt } = loadWithLocale(scriptPath, locale).repositoryUpdates;
+    const { formatPushedAt } = loadWithLocale(clientAssetPath(scriptPath), locale).repositoryUpdates;
     const cases = [
       ["2026-08-03T22:05:00Z", "updated today"],
       ["2026-08-02T23:00:00Z", "updated yesterday"],
@@ -132,7 +134,7 @@ test("uses an absolute date for a future calendar day", () => {
     ["en-US", "updated on Aug 5"],
     ["fr-FR", "updated on 5 août"],
   ]) {
-    const { formatPushedAt } = loadWithLocale(scriptPath, locale).repositoryUpdates;
+    const { formatPushedAt } = loadWithLocale(clientAssetPath(scriptPath), locale).repositoryUpdates;
     assert.equal(formatPushedAt("2026-08-04T23:00:00Z", now), expected, locale);
   }
 });
@@ -153,7 +155,7 @@ test("chooses the displayed year from local dates", () => {
     ["en-US", "updated on Jan 1", "updated on Dec 31, 2025"],
     ["fr-FR", "updated on 1 janv.", "updated on 31 déc. 2025"],
   ]) {
-    const { formatPushedAt } = loadWithLocale(scriptPath, locale).repositoryUpdates;
+    const { formatPushedAt } = loadWithLocale(clientAssetPath(scriptPath), locale).repositoryUpdates;
     assert.equal(formatPushedAt("2025-12-31T23:30:00Z", now), currentYear, locale);
     assert.equal(formatPushedAt("2025-12-30T23:30:00Z", now), previousYear, locale);
   }
@@ -308,7 +310,7 @@ test("replaces stale cache data and ETag after a successful response", async () 
   assert.equal(textNode.textContent, formatPushedAt(replacementTimestamp));
 });
 
-test("retains stale data and backs off for six hours after a failed validation", async () => {
+test("retains stale data and backs off for five minutes after a network failure", async () => {
   const storage = new FakeStorage();
   const storageKey = getStorageKey(OWNER);
   const failureKey = getFailureKey(OWNER);
@@ -336,7 +338,7 @@ test("retains stale data and backs off for six hours after a failed validation",
   await loadOwnerUpdates(OWNER, ownerCards, {
     fetchImpl,
     storage,
-    now: NOW + FAILURE_TTL_MS - 1,
+    now: NOW + TRANSIENT_FAILURE_TTL_MS - 1,
     logger: silentLogger,
   });
 
@@ -344,8 +346,8 @@ test("retains stale data and backs off for six hours after a failed validation",
   assert.equal(fetchCalls, 1);
   assert.equal(textNode.textContent, formatPushedAt(PUSHED_AT));
   assert.ok(storage.getItem(storageKey));
-  assert.equal(hasRecentFailure(failureKey, storage, NOW + FAILURE_TTL_MS - 1), true);
-  assert.equal(hasRecentFailure(failureKey, storage, NOW + FAILURE_TTL_MS), false);
+  assert.equal(hasRecentFailure(failureKey, storage, NOW + TRANSIENT_FAILURE_TTL_MS - 1), true);
+  assert.equal(hasRecentFailure(failureKey, storage, NOW + TRANSIENT_FAILURE_TTL_MS), false);
   assert.equal(storage.getItem(failureKey), null);
 });
 
@@ -465,4 +467,69 @@ test("starts the unified browser controller by reading its page configuration", 
   });
 
   assert.equal(selector, "[data-github-activity-config]");
+});
+
+test("a catalogue deadline returns stale data without renewing the cache or recording a failure", async () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER);
+  writeCache(key, { etag: '"cached"', repositories: makeCatalogue() }, storage, NOW - CACHE_TTL_MS);
+  const snapshot = storage.getItem(key);
+  const result = await loadRepositoryCatalogue(OWNER, {
+    storage, now: NOW, refreshTimeoutMs: 10,
+    fetchImpl: () => new Promise(() => {}),
+    logger: { error() { assert.fail("a deadline is not a failure"); } },
+  });
+  assert.equal(result.validated, false);
+  assert.deepEqual(result.repositories, makeCatalogue());
+  assert.equal(storage.getItem(key), snapshot);
+  assert.equal(storage.getItem(getFailureKey(OWNER)), null);
+});
+
+test("displays cached repository updates before a lock and renders storage updates directly", async t => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER);
+  const { ownerCards, textNode } = makeOwnerCards();
+  const { wrapper } = ownerCards[0];
+  const card = {
+    dataset: { repoOwner: OWNER, repoName: REPO_NAME },
+    querySelector(selector) { return selector === ".repo-updated" ? wrapper : textNode; },
+  };
+  writeCache(key, { etag: '"cached"', repositories: makeCatalogue() }, storage, NOW - CACHE_TTL_MS);
+  let release;
+  let task;
+  let locks = 0;
+  let fetches = 0;
+  let storageEvent;
+  const gate = new Promise(resolve => { release = resolve; });
+  const instance = githubActivity.controller.createController({
+    documentImpl: {
+      querySelector() { return { textContent: JSON.stringify({ owner: OWNER, repositoryUpdates: true, repositories: [], commitLimit: null, milestones: null }) }; },
+      querySelectorAll() { return [card]; },
+    },
+    windowImpl: { addEventListener(_name, listener) { storageEvent = listener; }, removeEventListener() {} },
+    locks: { request(name, callback) {
+      assert.equal(name, `github-activity:${OWNER}:repositories`);
+      locks += 1; task = gate.then(callback); return task;
+    } },
+    storage, now: () => NOW, logger: silentLogger,
+    fetchImpl: async () => { fetches += 1; return makeResponse(); },
+  });
+  t.after(() => instance.destroy());
+  instance.start();
+  assert.equal(textNode.textContent, formatPushedAt(PUSHED_AT));
+  assert.equal(locks, 1);
+  assert.equal(fetches, 0);
+  const changed = "2026-08-03T23:00:00Z";
+  writeCache(key, { etag: '"other-tab"', repositories: makeCatalogue(changed) }, storage, NOW - CACHE_TTL_MS);
+  const snapshot = storage.getItem(key);
+  storageEvent({ key, newValue: snapshot });
+  assert.equal(textNode.textContent, formatPushedAt(changed));
+  assert.equal(storage.getItem(key), snapshot);
+  assert.equal(storage.getItem(getFailureKey(OWNER)), null);
+  assert.equal(fetches, 0);
+  assert.equal(locks, 1);
+  writeCache(key, { etag: '"fresh"', repositories: makeCatalogue(changed) }, storage, NOW);
+  release();
+  await task;
+  assert.equal(fetches, 0);
 });

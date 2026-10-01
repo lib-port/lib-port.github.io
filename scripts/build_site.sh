@@ -6,3 +6,6 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 python3 scripts/validate_site_config.py
 bundle exec jekyll build -d ./_site
+if [[ "${JEKYLL_ENV:-development}" == "production" ]]; then
+  node scripts/optimise_assets.mjs ./_site
+fi

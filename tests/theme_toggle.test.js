@@ -1,5 +1,7 @@
 "use strict";
 
+const { clientAssetPath } = require("./client_assets");
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -20,7 +22,7 @@ const {
   THEME_STORAGE_KEY,
   initThemeToggle,
   readStoredTheme,
-} = require(scriptPath);
+} = require(clientAssetPath(scriptPath));
 
 class FakeStorage {
   constructor(entries = []) {

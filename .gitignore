@@ -6,3 +6,4 @@ _site/
 .sass-cache/
 .codex/
 /AGENTS.md
+node_modules/

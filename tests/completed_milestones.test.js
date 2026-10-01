@@ -1,5 +1,7 @@
 "use strict";
 
+const { clientAssetPath } = require("./client_assets");
+
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const test = require("node:test");
@@ -11,7 +13,7 @@ const scriptPath = path.join(
   "js",
   "github_activity.js"
 );
-const githubActivity = require(scriptPath);
+const githubActivity = require(clientAssetPath(scriptPath));
 const {
   LIMIT,
   buildClosedMilestoneUrl,
@@ -158,6 +160,121 @@ function makeResponse({
 
 const silentLogger = { error() {} };
 
+for (const count of [8, 15]) {
+  test(`bounds completed milestone collection across ${count} repositories in page rounds`, async () => {
+    const repositories = Array.from({ length: count }, (_, index) => `repo-${index}`);
+    const storage = new FakeStorage();
+    const config = { owner: OWNER, repositories };
+    const calls = [];
+    const options = {
+      config, storage, now: NOW, logger: silentLogger,
+      fetchImpl: async (url, _options, { priority }) => {
+        const parsed = new URL(url);
+        const page = Number(parsed.searchParams.get("page"));
+        const repository = parsed.pathname.split("/")[3];
+        assert.equal(parsed.searchParams.get("per_page"), "100");
+        assert.equal(priority, page === 1 ? 0 : 1);
+        calls.push([repository, page]);
+        return makeResponse({
+          payload: [makeApiMilestone({ number: page, title: repository })],
+          link: '<https://api.github.com/example?page=99>; rel="next"',
+        });
+      },
+    };
+    assert.equal(await loadCompletedMilestones(makeContainer().container, options), true);
+    assert.deepEqual(calls, [
+      ...repositories.slice(0, 12).map(name => [name, 1]),
+      ...repositories.slice(0, Math.max(0, 12 - count)).map(name => [name, 2]),
+    ]);
+    const cached = readCache(getStorageKey(OWNER), repositories, storage, NOW);
+    assert.equal(cached.isFresh, true);
+    for (const [index, name] of repositories.entries()) {
+      const entry = cached.repositories[name];
+      assert.equal(entry.pages.length, index < Math.max(0, 12 - count) ? 2 : index < 12 ? 1 : 0);
+      assert.equal(entry.limited, true);
+      assert.equal(entry.deferred, entry.pages.length < 2);
+    }
+    assert.equal(storage.getItem(getFailureKey(OWNER, repositories)), null);
+    await loadCompletedMilestones(makeContainer().container, { ...options, now: NOW + 1 });
+    assert.equal(calls.length, 12, "partial results remain fresh for seven days");
+  });
+}
+
+test("migrates v1 completed caches as stale data and retains candidates beyond page two", async () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER);
+  const legacyKey = key.replace(":v2:", ":v1:");
+  const legacyFailure = getFailureKey(OWNER, ["tech-lib"]).replace(":v2:", ":v1:");
+  const entry = { pages: [1, 2, 3].map(page => ({
+    ...makeEntry("tech-lib", [makeMilestone("tech-lib", {
+      number: page, title: `Page ${page}`, closedAt: `2026-09-30T0${page}:00:00Z`,
+    })]).pages[0], page, etag: `"page-${page}"`, hasNext: page < 3,
+  })) };
+  writeCache(legacyKey, { fetchedAt: NOW, repoNames: ["tech-lib"], repositories: { "tech-lib": entry } }, storage);
+  githubActivity.shared.writeFailure(legacyFailure, storage, NOW);
+  const migrated = readCache(key, ["tech-lib"], storage, NOW);
+  assert.equal(migrated.isFresh, false);
+  assert.equal(migrated.fetchedAt, 0);
+  assert.equal(migrated.repositories["tech-lib"].pages.length, 2);
+  assert.deepEqual(mergeCompletedMilestones(migrated.repositories, ["tech-lib"]).map(value => value.title), ["Page 3", "Page 2"]);
+  assert.equal(storage.getItem(legacyKey), null);
+  const view = makeContainer();
+  let calls = 0;
+  assert.equal(await loadCompletedMilestones(view.container, {
+    config: { owner: OWNER, repositories: ["tech-lib"] },
+    storage, now: NOW, logger: silentLogger,
+    fetchImpl: async () => { calls += 1; throw new Error("offline"); },
+  }), true);
+  assert.equal(calls, 1);
+  assert.equal(storage.getItem(legacyFailure), null);
+  assert.equal(view.items[0].querySelector("[data-recent-completed-milestone-link]").textContent, "Page 3");
+});
+
+test("a completed milestone deadline preserves cached results without failure backoff", async () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER);
+  writeCache(key, { fetchedAt: NOW - CACHE_TTL_MS, repoNames: ["tech-lib"], repositories: { "tech-lib": makeEntry() } }, storage);
+  const view = makeContainer();
+  assert.equal(await loadCompletedMilestones(view.container, {
+    config: { owner: OWNER, repositories: ["tech-lib"] },
+    storage, now: NOW, refreshTimeoutMs: 10,
+    logger: { error() { assert.fail("a deadline is not a failure"); } },
+    fetchImpl: () => new Promise(() => {}),
+  }), true);
+  assert.equal(view.list.hasAttribute("hidden"), false);
+  const cached = readCache(key, ["tech-lib"], storage, NOW);
+  assert.equal(cached.isFresh, true);
+  assert.equal(cached.repositories["tech-lib"].deferred, true);
+  assert.equal(cached.repositories["tech-lib"].pages[0].etag, '"etag-1"');
+  assert.equal(storage.getItem(getFailureKey(OWNER, ["tech-lib"])), null);
+});
+
+test("budget deferral on a later completed page retains both refreshed and cached candidates", async () => {
+  const storage = new FakeStorage();
+  const key = getStorageKey(OWNER);
+  const entry = makeEntry("tech-lib", [makeMilestone("tech-lib", { title: "Retained", number: 7 })]);
+  entry.pages[0].hasNext = true;
+  entry.pages.push({ ...entry.pages[0], page: 2, etag: '"page-two"', hasNext: false });
+  writeCache(key, { fetchedAt: NOW - CACHE_TTL_MS, repoNames: ["tech-lib"], repositories: { "tech-lib": entry } }, storage);
+  assert.equal(await loadCompletedMilestones(makeContainer().container, {
+    config: { owner: OWNER, repositories: ["tech-lib"] }, storage, now: NOW,
+    logger: { error() { assert.fail("budget exhaustion is not a failure"); } },
+    fetchImpl: async url => {
+      if (new URL(url).searchParams.get("page") === "2") throw githubActivity.shared.createDeferredError("budget");
+      return makeResponse({
+        payload: [makeApiMilestone({ number: 8, title: "Refreshed", closedAt: "2026-09-30T07:00:00Z" })],
+        etag: '"new-page-one"', link: '<https://api.github.com/example?page=2>; rel="next"',
+      });
+    },
+  }), true);
+  const cached = readCache(key, ["tech-lib"], storage, NOW);
+  assert.deepEqual(mergeCompletedMilestones(cached.repositories, ["tech-lib"]).map(value => value.title), ["Refreshed", "Retained"]);
+  assert.equal(cached.repositories["tech-lib"].pages[0].etag, '"new-page-one"');
+  assert.equal(cached.repositories["tech-lib"].pages[1].etag, '"page-two"');
+  assert.equal(cached.repositories["tech-lib"].deferred, true);
+  assert.equal(storage.getItem(getFailureKey(OWNER, ["tech-lib"])), null);
+});
+
 test("builds encoded closed-milestone API and closed-issue page URLs", () => {
   assert.equal(LIMIT, 2);
   assert.equal(
@@ -245,7 +362,7 @@ test("merges, deduplicates, and globally ranks milestones by closed_at", () => {
   );
 });
 
-test("fetches every milestone page before ranking", async () => {
+test("fetches both available milestone pages before ranking", async () => {
   const calls = [];
   const entry = await fetchRepositoryCompletedMilestones(
     OWNER,
@@ -282,7 +399,7 @@ test("fetches every milestone page before ranking", async () => {
   );
 });
 
-test("conditionally reuses every cached page after 304 responses", async () => {
+test("conditionally reuses both cached pages after 304 responses", async () => {
   const cachedEntry = {
     pages: [
       {

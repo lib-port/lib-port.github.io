@@ -113,7 +113,9 @@ The GitHub link opens in the current tab and remains the rightmost header action
 
 ### GitHub activity controller
 
-Repository updates, recent milestones, and recent commits share [`assets/js/github_activity.js`](./assets/js/github_activity.js), one page-level configuration block, and one request coordinator. The coordinator deduplicates identical in-flight requests, limits GitHub traffic to four concurrent requests, and ends requests that have not finished reading their response after 15 seconds. Timeouts follow the same cached fallback, failure message, and six-hour pause as other network failures. Browser locks and storage events avoid duplicate work between open tabs where those APIs are available.
+Repository updates, recent milestones, and recent commits share [`assets/js/github_activity.js`](./assets/js/github_activity.js), one page-level configuration block, and one request coordinator. Each page visit permits at most 40 GitHub requests, with four running concurrently. The coordinator reserves budget before queueing, deduplicates identical in-flight requests, prioritises queued first pages over extra pages, and ends requests that have not finished reading their response after 15 seconds. Each section refresh has a 30-second deadline. Budget and deadline deferrals preserve collected and cached results without recording failures; queued work is cancelled and active requests are aborted only when no consumer still needs them. Browser locks and storage events avoid duplicate work between open tabs where those APIs are available.
+
+Only genuine rate-limit responses pause all GitHub sections. The retry time follows `Retry-After` or `X-RateLimit-Reset`, with a one-minute fallback when neither supplies a future time. Network errors, request timeouts and server errors pause the affected section for five minutes; other resource errors retain the six-hour backoff. Old global transport-failure records are retired, while existing rate-limit records remain effective. Storage events render updated caches directly without starting requests, renewing freshness or recording failures.
 
 Repository-card updates start immediately. Milestone and commit collection starts only when the corresponding section is within 800 pixels of the viewport; browsers without `IntersectionObserver` load those sections immediately. This changes when the work occurs, without changing the visible content or status states.
 
@@ -123,31 +125,31 @@ Repository cards are generated from GitHub metadata during the site build. In th
 
 Successful responses are cached in the visitor's `localStorage`. For seven days after a successful fetch or validation, the page uses the cached repository timestamps without a network request. After seven days, it continues to display the cached timestamps while conditionally revalidating them with GitHub using the stored ETag. An unchanged response renews the cache for another seven days without downloading the response body; a changed response replaces the cached data.
 
-If revalidation fails, the stale timestamps remain available and another request is not attempted for six hours. Cached repository data has no age-based expiration, but malformed and future-dated cache entries are removed.
+If revalidation fails or is deferred, the stale timestamps remain available. Genuine failures use the section retry periods described above. Cached repository data has no age-based expiration, but malformed and future-dated cache entries are removed. Cached labels appear before waiting for a browser refresh lock.
 
 ### Recent GitHub milestones
 
-When `recent_milestones.switch` is enabled and the section approaches the viewport, the activity controller loads milestone activity from every repository in `repo_grid.repo_list`. Both milestone loaders collect repositories concurrently through the shared four-request coordinator, with pages fetched sequentially within each repository. On a first visit without cached data, each loader displays its final global ranking once its repository requests settle. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
+When `recent_milestones.switch` is enabled and the section approaches the viewport, the activity controller loads milestone activity from repositories in `repo_grid.repo_list`. Each loader fetches 100 items per page, at most two pages per repository, and at most 12 pages per refresh, subject to the shared page-visit budget. First-page rounds precede second-page rounds, in configured repository order. On a first visit without cached data, each loader displays its global ranking once its bounded repository requests settle. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
 
 The two milestones most recently closed on GitHub are displayed after the `Recent Tasks (GitHub issues)` heading. They are ranked globally by `milestone.closed_at`; the newest is shown at 75% opacity and the second at 50%. Each entry uses the milestone Octicon and the same link treatment as repository names in Recent Activity, and opens the milestone page filtered to closed issues. A milestone counts as completed when GitHub reports its state as closed, even if it still contains open issues. If fewer than two completed milestones exist, only the available entries are shown.
 
-For the detailed cards, the controller requests closed, milestone-bearing issues. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title and labels of its latest closed issue. The label group is omitted when that issue has no labels. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with closed issues found`.
+For the detailed cards, the controller requests closed, milestone-bearing issues. Pull requests and closed milestones are excluded; all closed issues are eligible regardless of whether GitHub marks them as completed or not planned. The loader groups issues by milestone and ranks each milestone by its most recently closed issue (`issue.closed_at`), not by changes to the milestone metadata itself. It requests pages in descending issue-activity order until the configured number of results is definitive or a limit is reached, then merges and globally ranks the candidates. Each row links to its repository and milestone and shows the description, due date when one is set, closed/total issue count, completion percentage and bar, and the plain-text title and labels of its latest closed issue. The label group is omitted when that issue has no labels. The ranking timestamp is intentionally not displayed. A successful search with no results displays `No open milestones with closed issues found`.
 
-Results use the same cache policy as the other GitHub sections. Compacted closed-issue page summaries for the detailed cards and closed-milestone pages for the heading remain fresh in `localStorage` for seven days. Valid cached results appear immediately when the section approaches the viewport, including while waiting for another tab's refresh lock. After seven days, the cached content remains visible while every cached API page is conditionally revalidated with its ETag. Storage events display updated cached results without starting requests or recording failures. Stale data is retained indefinitely, malformed or future-dated entries are removed, and failures prevent another attempt for six hours. Successful and cached repository data is combined silently if only part of a refresh fails. The section is hidden unless JavaScript initialises. Detailed cards use the v4 cache format, while completed heading entries use an independent v1 cache.
+Results use the same seven-day cache policy as the other GitHub sections, including successful partial snapshots. Valid cached results appear immediately when the section approaches the viewport, including while waiting for another tab's refresh lock, and remain visible during revalidation. Each requested API page uses its own ETag; a 304 validates only that page. Detailed cards use the v5 cache format, while completed heading entries use an independent v2 cache. Earlier v4/v1 snapshots migrate as stale fallback data, retaining their ranked candidates even when they came from pages beyond the new limit. Limited and deferred states are recorded internally; partial results are displayed silently. Stale data is retained indefinitely, malformed or future-dated entries are removed, and genuine failures use the section retry periods described above. The section is hidden unless JavaScript initialises.
 
 ### Recent GitHub commits
 
 When `recent_commits.switch` is enabled and the section approaches the viewport, the activity controller loads commits from the default branches of public repositories owned by the account hosting the site. Forks and archived repositories are excluded at build time and rechecked against the current repository catalogue before polling. Repositories confirmed missing from a complete, revalidated catalogue are also excluded. A partial or unavailable catalogue does not establish that a repository is missing. The section is hidden unless JavaScript initialises.
 
-The browser requests at most the configured number of author-filtered commits from each eligible repository, combines the responses, sorts them by committed time, and displays the newest entries. If GitHub returns no qualifying results for a repository's username filter, the loader falls back to that repository's history and retains only commits linked to the owner account. Each repository uses fallback independently, so an unavailable repository cannot prevent healthy repositories from displaying their commits.
+The browser requests at most the configured number of author-filtered commits from each eligible repository, combines the responses, sorts them by committed time, and displays the newest entries. If GitHub returns no qualifying results for a repository's username filter, the loader falls back to that repository's history and retains only commits linked to the owner account. Fallback requests fetch 100 commits per page, search at most two pages per repository, and share a limit of 12 requests per refresh. First pages are searched before second pages, with repositories prioritised by their latest push time and ties resolved in configured order. Searching stops once enough qualifying commits are found or no further page exists. An unavailable repository cannot prevent healthy repositories from displaying their commits.
 
-Commits are rendered as a semantic unordered list in the form `repository · commit message · date`. Decorative repository, comment, and calendar Octicons identify each detail, while GitHub commit Octicons replace the native bullets and a vertical connector turns the list into a GitHub-style commit timeline. A successful request with no qualifying commits displays `No recent commits found`.
+Commits are rendered as a semantic unordered list in the form `repository · commit message · date`. Decorative repository, comment, and calendar Octicons identify each detail, while GitHub commit Octicons replace the native bullets and a vertical connector turns the list into a GitHub-style commit timeline. A successful request with no qualifying commits displays `No recent commits found`. When a search reaches a limit, collected commits and cached results from deferred searches remain available silently. Older owner-authored commits can be missed by this bounded search; reaching a limit is a successful partial result and does not trigger failure backoff.
 
-The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. The cache records exclusions and each repository's request mode and ETag. Once the cache expires, the loader revalidates the shared repository catalogue, reconsiders exclusions, compares each repository's `pushed_at` value with the value stored alongside its commit result, and requests commits for new, changed or previously unverified repositories. Unchanged cached entries are merged into the displayed timeline. ETags are reused only for the same repository and request mode.
+The commit cache follows the repository-card policy: results remain fresh for seven days and are displayed without a network request. The cache records exclusions, each repository's request mode, and whether its search was limited or deferred. Author-filtered results have a repository ETag; fallback results cache data and ETags for each page separately. A 304 response validates only the page requested. Once the cache expires, the loader revalidates the shared repository catalogue, reconsiders exclusions, compares each repository's `pushed_at` value with the value stored alongside its commit result, and requests commits for new, changed, deferred or previously unverified repositories. Deferred searches retain their previous verified push time, or remain unverified if no previous result exists. Unchanged cached entries are merged into the displayed timeline. ETags are reused only for the same repository, request mode and page.
 
-The v2 commit cache migrates older results as fallback data and revalidates them once. Older commit-specific failure records are retired so the corrected loader can retry immediately; shared rate-limit protection remains in effect.
+The v3 commit cache migrates v2 and earlier results as stale fallback data, clears their ETags and verified push times, and revalidates them once. Older commit-specific failure records are retired so the corrected loader can retry immediately; shared rate-limit protection remains in effect. With eight eligible repositories, one refresh makes at most eight author-filtered and 12 fallback commit requests, subject to the shared 40-request page-visit budget.
 
-During revalidation, the section displays a gear Octicon with `loading recent commits`. If the refresh fails, the prior cached list or successful empty state is restored and another request is not attempted for six hours. When no displayable cached result is available, an alert Octicon with `unable to load recent commits` replaces the loading state; no GitHub profile fallback link is shown. Cached commits have no age-based expiration, while malformed and future-dated entries are removed.
+Cached commits or a successful cached empty state appear before waiting for a browser refresh lock and remain visible throughout revalidation. The gear Octicon with `loading recent commits` appears when no displayable cache exists. Genuine failures use the section retry periods described above; when no displayable cached result is available, an alert Octicon with `unable to load recent commits` replaces the loading state. Cached commits have no age-based expiration, while malformed and future-dated entries are removed.
 
 ### External posts
 
@@ -167,7 +169,7 @@ The theme is selected before the main stylesheet loads to avoid a mismatched-col
 
 - Ruby 3.3 and Bundler
 - Python 3.11 and `pip`
-- Node.js 20 for client-side tests
+- Node.js 24 and npm for client-side tests and production asset optimisation
 - Network access to download the latest remote Minima theme
 
 ### Install dependencies
@@ -175,6 +177,7 @@ The theme is selected before the main stylesheet loads to avoid a mismatched-col
 ```bash
 bundle install
 python3 -m pip install -r requirements.txt
+npm ci
 ```
 
 ### Preview locally
@@ -198,17 +201,37 @@ the token.
 
 ```bash
 python3 scripts/validate_site_config.py
-./scripts/build_site.sh
+JEKYLL_ENV=production ./scripts/build_site.sh
 ```
 
-The build script validates `_config.yml` before writing the generated site to `_site`.
+The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 20 KiB for all three client scripts combined, and 8 KiB for the stylesheet. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
 
 ### Run tests
 
 ```bash
 python3 -m unittest discover -s tests
-node --test tests/*.test.js
+npm test
+npm run test:built
 ```
+
+The built-asset tests require the production build above. Validation on 1 October 2026 passed 80 Python tests and 196 JavaScript tests against both readable sources and minified assets. Development CSS source maps remain available, and production output excludes maps, npm dependencies and build tooling.
+
+| Gzipped asset | Before | After | Budget |
+| --- | ---: | ---: | ---: |
+| Activity JavaScript | 18,433 bytes | 14,527 bytes | 16 KiB |
+| All client JavaScript | 22,792 bytes | 17,679 bytes | 20 KiB |
+| Stylesheet | 7,141 bytes | 6,302 bytes | 8 KiB |
+
+Local Chromium checks used eight repository fixtures, six linked pages per history and 20 ms simulated API latency. Older owner-authored commits were placed on page six, so the bounded search intentionally returned fewer commits. The following figures record one run with automatic page scrolling; timings and layout shifts are fixture measurements rather than field performance scores. Cold visits used at most four concurrent calls, while warm `localStorage` visits made no GitHub requests.
+
+| Visit | GitHub calls before → after | Activity rendered before → after | CLS before → after |
+| --- | ---: | ---: | ---: |
+| Desktop cold, 1280 × 900 | 153 → 40 | 3,036 → 319 ms | 0.034 → 0.034 |
+| Desktop warm | 0 → 0 | 40 → 56 ms | 0.018 → 0.028 |
+| Mobile cold, 390 × 844 | 153 → 40 | 903 → 252 ms | 0.068 → 0.000 |
+| Mobile warm | 0 → 0 | 54 → 74 ms | 0.000 → 0.000 |
+
+Separate checks confirmed that cached commits stayed visible during a slow stale refresh and while another tab held the refresh locks. Storage events updated the waiting tab's timeline without requests or freshness changes. Desktop and mobile checks found no horizontal overflow or browser errors.
 
 ## How it works
 
@@ -233,10 +256,11 @@ The GitHub Actions workflow deploys pushes to `main` that can affect the publish
 
 During deployment, the workflow:
 
-1. installs the locked Ruby dependencies and required Python package
-2. validates `_config.yml`
-3. builds the site with authenticated GitHub metadata
-4. uploads and deploys `_site` to GitHub Pages
+1. installs the locked Ruby and npm dependencies and required Python package
+2. runs the Python and source JavaScript tests
+3. validates `_config.yml` and builds production assets with authenticated GitHub metadata
+4. runs the JavaScript tests against the minified production assets
+5. uploads and deploys `_site` to GitHub Pages
 
 ## GitLab mirror
 
@@ -249,10 +273,10 @@ Mirroring uses an SSH deploy-key pair. Store the private key in the GitHub repos
 | Symptom | Resolution |
 | --- | --- |
 | Repository cards are missing locally | Confirm each configured repository belongs to the site owner's account. Set `JEKYLL_GITHUB_TOKEN` in the shell if unauthenticated GitHub metadata is incomplete. Never commit the token. |
-| Recent milestones are stale | The browser cache lasts seven days. Clear the site's `recent-milestones:v4:` and `recent-completed-milestones:v1:` local-storage entries to force an immediate refresh. |
+| Recent milestones are stale | The browser cache lasts seven days. Clear the site's `recent-milestones:v5:` and `recent-completed-milestones:v2:` local-storage entries to force an immediate refresh. |
 | “unable to load recent milestones” appears | Confirm every configured repository is public and belongs to the site owner, the browser can reach `api.github.com`, and the visitor has not exhausted GitHub's unauthenticated API limit. |
 | The recent-milestone section is missing | Confirm `recent_milestones.switch` is `true` and JavaScript is enabled; the section intentionally remains hidden when JavaScript does not initialise. |
-| Recent commits are stale | The browser cache lasts seven days. After that, the loading state appears during revalidation and the cached result is restored only if the refresh fails. Clear the site's `localStorage` to force a new request. |
+| Recent commits are stale | The browser cache lasts seven days. Cached results remain visible during revalidation. Clear the site's `localStorage` to force a new request. |
 | “unable to load recent commits” appears | Confirm the browser can reach `api.github.com` and has not exhausted GitHub's unauthenticated API limit. Forked and archived repositories are intentionally excluded. |
 | The recent-commit section is missing | Confirm `recent_commits.switch` is enabled and JavaScript is available; the entire section intentionally remains hidden when JavaScript does not initialise. |
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
