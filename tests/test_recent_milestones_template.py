@@ -40,9 +40,9 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn("site.github.owner_name", activity_template)
         self.assertIn("recent_milestones.milestones", template)
         self.assertIn(
-            "repo_grid.repo_list | jsonify", activity_template
+            "recent_milestones.repo_list | jsonify", activity_template
         )
-        self.assertNotIn("recent_milestones.repo_list", activity_template)
+        self.assertNotIn("repo_grid.repo_list", activity_template)
         self.assertIn("data-recent-milestones", template)
         self.assertNotIn("data-milestone-limit", template)
         self.assertNotIn("<script", template)

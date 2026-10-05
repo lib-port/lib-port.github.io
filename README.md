@@ -65,6 +65,8 @@ repo_grid:
 recent_milestones:
   switch: true
   milestones: 3
+  repo_list:
+    - first-repository
 
 recent_commits:
   switch: true
@@ -93,9 +95,10 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `intro.switch` | YAML boolean controlling whether the introduction is shown. |
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
-| `repo_grid.repo_list` | Required, non-empty list of case-insensitively unique repository names when either the repository grid or recent milestones are enabled. Repositories must belong to the account hosting the site. The list supplies both repository cards and milestone activity. |
+| `repo_grid.repo_list` | Required, non-empty list of case-insensitively unique repository names when the repository grid is enabled. Repositories must belong to the account hosting the site. The list supplies repository cards. |
 | `recent_milestones.switch` | YAML boolean controlling whether recent GitHub milestones are loaded. |
 | `recent_milestones.milestones` | Required integer from 1 through 10 controlling how many detailed open milestones are shown when enabled. |
+| `recent_milestones.repo_list` | Required, non-empty list of case-insensitively unique repository names when recent milestones are enabled. Repositories must belong to the account hosting the site. The list supplies both open and recently completed milestones in Recent Tasks. |
 | `recent_commits.switch` | YAML boolean controlling whether recent GitHub commits are loaded. |
 | `recent_commits.commits` | Required integer from 1 through 10 when enabled. |
 | `external_blog.switch` | YAML boolean controlling whether external posts are shown. |
@@ -105,7 +108,7 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 
 Use unquoted `true` and `false` values for switches. Disabled sections ignore their inner settings, including `github-icon.link` and `github-icon.style`. When all three GitHub activity sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
 
-`repo_grid.repo_list` remains the milestone repository source when `repo_grid.switch` is `false`, so repository cards can be hidden without disabling milestone activity.
+`recent_milestones.repo_list` selects milestone repositories independently of `repo_grid.repo_list`. Repository cards can be hidden with `repo_grid.switch: false` while milestone activity remains enabled. There is no fallback to the repository grid list.
 
 Blog publication dates, milestone due dates, and absolute repository update dates follow the visitor’s browser locale. Blog and milestone dates use UTC; repository update dates use the visitor’s local time zone.
 
@@ -129,7 +132,7 @@ If revalidation fails or is deferred, the stale timestamps remain available. Gen
 
 ### Recent GitHub milestones
 
-When `recent_milestones.switch` is enabled and the section approaches the viewport, the activity controller loads milestone activity from repositories in `repo_grid.repo_list`. Each loader fetches 100 items per page, at most two pages per repository, and at most 12 pages per refresh, subject to the shared page-visit budget. First-page rounds precede second-page rounds, in configured repository order. On a first visit without cached data, each loader displays its global ranking once its bounded repository requests settle. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
+When `recent_milestones.switch` is enabled and the section approaches the viewport, the activity controller loads milestone activity from repositories in `recent_milestones.repo_list`. Each loader fetches 100 items per page, at most two pages per repository, and at most 12 pages per refresh, subject to the shared page-visit budget. First-page rounds precede second-page rounds, in configured repository order. On a first visit without cached data, each loader displays its global ranking once its bounded repository requests settle. All collection and processing occurs in the browser through GitHub's unauthenticated public REST API; no milestone data is scraped from GitHub HTML or collected during the site build.
 
 The two milestones most recently closed on GitHub are displayed after the `Recent Tasks (GitHub issues)` heading. They are ranked globally by `milestone.closed_at`; the newest is shown at 75% opacity and the second at 50%. Each entry uses the milestone Octicon and the same link treatment as repository names in Recent Activity, and opens the milestone page filtered to closed issues. A milestone counts as completed when GitHub reports its state as closed, even if it still contains open issues. If fewer than two completed milestones exist, only the available entries are shown.
 

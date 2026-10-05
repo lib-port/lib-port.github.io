@@ -61,6 +61,10 @@ repo_grid:
     - projects
 
 recent_milestones:
+  repo_list:
+    - tech-lib
+    - who-gets-heard
+    - full-stack-pm
   switch: true
   milestones: 1
 
