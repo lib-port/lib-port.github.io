@@ -45,8 +45,13 @@ github-icon:
   style: auto # {auto|text|icon}
 
 intro:
-  switch: true
+  switch: false
   text: Course notes and projects
+
+# ASCII art by github.com/bas3line
+ascii-banner:
+  switch: true
+  module: random
 
 repo_grid:
   switch: true
@@ -61,11 +66,11 @@ repo_grid:
     - projects
 
 recent_milestones:
+  switch: true
   repo_list:
     - tech-lib
     - who-gets-heard
     - full-stack-pm
-  switch: true
   milestones: 1
 
 recent_commits:

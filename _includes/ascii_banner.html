@@ -1,0 +1,5 @@
+{%- assign ascii_banner = site["ascii-banner"] -%}
+{%- if ascii_banner and ascii_banner.switch -%}
+<ascii-art piece="{{ ascii_banner.module | strip | escape }}"></ascii-art>
+<script type="module" src="{{ '/assets/js/ascii_banner.mjs' | relative_url }}"></script>
+{%- endif -%}

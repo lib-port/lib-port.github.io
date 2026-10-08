@@ -13,7 +13,8 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 
 ## Features
 
-- Configurable introduction, repository grid, recent-milestone, recent-commit, and blog-post sections
+- Configurable introduction, ASCII banner, repository grid, recent-milestone, recent-commit, and blog-post sections
+- Fifteen locally hosted animated scenes, with responsive sizing and reduced-motion support
 - Server-rendered repository metadata with client-side update labels
 - One switch-aware GitHub activity controller with shared requests and caching
 - Viewport-loaded open and recently completed milestones merged across configured repositories
@@ -56,6 +57,10 @@ intro:
   switch: true
   text: Course notes, projects, and essays.
 
+ascii-banner:
+  switch: true
+  module: misty-forest
+
 repo_grid:
   switch: true
   repo_list:
@@ -83,7 +88,7 @@ description: A short description shown in site metadata and the footer.
 
 Replace the example feed and archive URLs with the URLs for your blog.
 
-The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commits`, and `external_blog` determines their order on the homepage.
+The top-level order of `intro`, `ascii-banner`, `repo_grid`, `recent_milestones`, `recent_commits`, and `external_blog` determines their order on the homepage.
 
 | Setting | Requirement |
 | --- | --- |
@@ -94,6 +99,8 @@ The top-level order of `intro`, `repo_grid`, `recent_milestones`, `recent_commit
 | `github-icon.style` | Optional when enabled and must be exactly `auto`, `text`, or `icon`. `auto` shows the GitHub mark without JavaScript and on detected desktop Linux systems, otherwise it shows the GitHub wordmark. `text` always shows the wordmark and is the default; `icon` always shows the mark. |
 | `intro.switch` | YAML boolean controlling whether the introduction is shown. |
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
+| `ascii-banner.switch` | YAML boolean controlling whether the ASCII banner is enabled. Missing or disabled sections emit no banner markup or loader. |
+| `ascii-banner.module` | Required when enabled; must name one of the locally available scenes listed below, or be exactly `random` to choose a scene on each page load. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
 | `repo_grid.repo_list` | Required, non-empty list of case-insensitively unique repository names when the repository grid is enabled. Repositories must belong to the account hosting the site. The list supplies repository cards. |
 | `recent_milestones.switch` | YAML boolean controlling whether recent GitHub milestones are loaded. |
@@ -113,6 +120,42 @@ Use unquoted `true` and `false` values for switches. Disabled sections ignore th
 Blog publication dates, milestone due dates, and absolute repository update dates follow the visitor’s browser locale. Blog and milestone dates use UTC; repository update dates use the visitor’s local time zone.
 
 The GitHub link opens in the current tab and remains the rightmost header action. In `auto` mode, the mark is the progressive fallback when JavaScript is unavailable; an early platform check retains it for desktop Linux and selects the wordmark elsewhere. Its destination comes from the account that owns the Pages repository: `jekyll-github-metadata` resolves that owner during deployment or from the Git `origin` during local development, which keeps forks portable. The link is omitted if owner metadata is unavailable. Add future header links before it in [`_includes/header.html`](./_includes/header.html) to retain this ordering.
+
+### ASCII banner
+
+The banner uses locally hosted scene modules, a renderer and a fallback font from
+[ascii.rest by Shubham (@bas3line)](https://github.com/bas3line/ascii). It loads
+only the scene selected by `ascii-banner.module`; it makes no requests to
+ascii.rest. The banner and its section divider stay hidden without JavaScript
+or if its local component or scene cannot load. They appear after successful
+scene initialisation. Animations pause off-screen and while the tab is hidden;
+reduced-motion preferences show a still frame. The canvas scales to the content
+width and retains the scene's aspect ratio.
+
+Set `ascii-banner.module` to `random` to choose one of the local scenes with
+equal probability when the page initialises. The selection lasts for that page;
+opening or reloading the page makes a fresh choice, which may repeat the previous
+scene. Only the chosen scene is loaded, and the banner and divider retain the
+same JavaScript-dependent visibility behaviour.
+
+Available scenes: `alpine-dawn`, `aurora-fjord`, `deep-reef`, `desert-night`,
+`earthrise`, `kyoto-dusk`, `lantern-lake`, `marine-drive`, `misty-forest`,
+`night-coast`, `ocean-sunset`, `storm-plains`, `taj-dawn`, `tokyo-rain`, and
+`varanasi-ghats`.
+
+The ready-to-use browser JavaScript is committed under
+[`assets/js/ascii-rest/`](./assets/js/ascii-rest/). Its manifest records the pinned
+upstream revision and source hashes. The upstream MIT licence and fallback
+font's OFL licence are retained in that directory. Normal builds need no
+upstream download or TypeScript compilation. To import a reviewed upstream
+revision manually, use an authenticated GitHub CLI and Node 24:
+
+```bash
+node scripts/import_ascii_scenes.mjs <full-upstream-commit-sha>
+```
+
+Review the generated diff, run the tests and production build, and update this
+scene list if the upstream catalogue changes.
 
 ### GitHub activity controller
 
@@ -207,7 +250,7 @@ python3 scripts/validate_site_config.py
 JEKYLL_ENV=production ./scripts/build_site.sh
 ```
 
-The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 20 KiB for all three client scripts combined, and 8 KiB for the stylesheet. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
+The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 20 KiB for the activity, theme and blog scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
 
 ### Run tests
 
@@ -251,7 +294,7 @@ Separate checks confirmed that cached commits stayed visible during a slow stale
 | Deployment | `.github/workflows/deploy-pages.yml` validates, builds, uploads, and deploys the site. |
 | Repository mirror | `.github/workflows/gitlab-main-mirror.yml` keeps GitLab `main` aligned with GitHub `main`. |
 
-Client-side features use progressive enhancement: the automatic GitHub header style falls back to the mark, repository cards remain available without GitHub API updates, the recent-milestone and recent-commit sections stay hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system colour preference without the switcher.
+Client-side features use progressive enhancement: the automatic GitHub header style falls back to the mark, repository cards remain available without GitHub API updates, the ASCII banner, recent-milestone and recent-commit sections stay hidden without JavaScript, the blog archive link remains available without JavaScript or RSS2JSON, and the theme continues to follow the system colour preference without the switcher.
 
 ## Deployment
 

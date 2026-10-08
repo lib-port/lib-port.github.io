@@ -1,0 +1,40 @@
+{
+  "repository": "bas3line/ascii",
+  "revision": "f0eee43fe5ea40d0070c936c5c402627c6ff970a",
+  "scenes": [
+    "alpine-dawn",
+    "aurora-fjord",
+    "deep-reef",
+    "desert-night",
+    "earthrise",
+    "kyoto-dusk",
+    "lantern-lake",
+    "marine-drive",
+    "misty-forest",
+    "night-coast",
+    "ocean-sunset",
+    "storm-plains",
+    "taj-dawn",
+    "tokyo-rain",
+    "varanasi-ghats"
+  ],
+  "sourceHashes": {
+    "src/pieces/alpine-dawn.ts": "48144547a2dcfa1e1ab8ce9efdfe0cdee20674046d28e4171273dc560da4ee10",
+    "src/pieces/aurora-fjord.ts": "65e905d4a509ac3c676f840bbc0cd44bcb22aa89b0bf0907604ff97178cabd5d",
+    "src/pieces/deep-reef.ts": "54ef79ac3fdcf8b91086377532ba511f6ab3049daa8c953b1cbdf9c2dc56d4e8",
+    "src/pieces/desert-night.ts": "b0c7d8602b30314378cd2e4cf386eb2e8f97cb88073e48dc94138f6edf7f8d0b",
+    "src/pieces/earthrise.ts": "d2e34dca470e144bebafdb9d74a223e2a49b11d082af24e5392f58af6441a389",
+    "src/pieces/kyoto-dusk.ts": "95bed8916a675f445e126963e10f86f49c3c0f9fe3e8fa7c26b258cbe87027a6",
+    "src/pieces/lantern-lake.ts": "7d2b1deffe2aa6f080b2a77563ba8341a6003a798e2fd74646705066628e3b33",
+    "src/pieces/marine-drive.ts": "ca24772be3952acc800efdd86252b41e6315ea983a074307d988c40839c50a80",
+    "src/pieces/misty-forest.ts": "5b1a30b19ff9bd7dec166bc9d185d088fb3ea94d7e9de087a1075115ab8d33bf",
+    "src/pieces/night-coast.ts": "d9cd6009ab2c611d879ded36cb75a499ef31fe84e379aad41d8a33d88d484d92",
+    "src/pieces/ocean-sunset.ts": "2486c261ae6000bd3cc6bd600a305328c5bef97eba5fb4a3ee0a9d43f27d793e",
+    "src/pieces/storm-plains.ts": "8a7723a0182c11d89f2db6b6970baeeeeb2c427bf9d78b827e110e69a8b087d7",
+    "src/pieces/taj-dawn.ts": "e415586dfc287dda34eb57a7e63aa6a18781ea63768ae387a0eeddba7ba83d9f",
+    "src/pieces/tokyo-rain.ts": "188d8de173293a37f7462976e18d463a57410c570327ef86ccb24d0801386bb2",
+    "src/pieces/varanasi-ghats.ts": "24127824c67e1e29f124b3d59cf51641a8958df3feadabf1ae3c6672ebdda7f5",
+    "src/mount.ts": "36f60f0415211cb8c6d0fb4a2a530dd6dde2d156be87c3fb28e144619bf731ab",
+    "src/ascii.ts": "3754a0d981e700ba4911379c9473bcb983b59765fb461fa5398f2c4d21f5b79e"
+  }
+}

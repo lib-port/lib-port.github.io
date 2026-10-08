@@ -13,6 +13,8 @@ hide_site_title: true
     {%- case section_key -%}
       {%- when "intro" -%}
         {%- include intro.html -%}
+      {%- when "ascii-banner" -%}
+        {%- include ascii_banner.html -%}
       {%- when "repo_grid" -%}
         {%- include repo_grid.html -%}
       {%- when "recent_milestones" -%}
@@ -29,7 +31,8 @@ hide_site_title: true
   class="home-section-wrapper"
   data-home-section="{{ section_key | escape }}"
   {%- if section_key == "recent_commits" %} hidden
-  {%- elsif section_key == "recent_milestones" %} hidden{% endif -%}
+  {%- elsif section_key == "recent_milestones" %} hidden
+  {%- elsif section_key == "ascii-banner" %} hidden{% endif -%}
 >
 <hr class="section-divider">
 {{ home_section }}

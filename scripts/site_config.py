@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,12 @@ class IntroConfig:
 
 
 @dataclass(frozen=True)
+class AsciiBannerConfig:
+    enabled: bool
+    module: str
+
+
+@dataclass(frozen=True)
 class RepoGridConfig:
     enabled: bool
     repo_list: list[str]
@@ -68,6 +75,7 @@ class ExternalBlogConfig:
 class SiteConfig:
     github_icon: GitHubIconConfig
     intro: IntroConfig
+    ascii_banner: AsciiBannerConfig
     repo_grid: RepoGridConfig
     recent_milestones: RecentMilestonesConfig
     recent_commits: RecentCommitsConfig
@@ -100,6 +108,7 @@ def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     return SiteConfig(
         github_icon=validate_github_icon(raw, config_path),
         intro=validate_intro(raw, config_path),
+        ascii_banner=validate_ascii_banner(raw, config_path),
         repo_grid=repo_grid,
         recent_milestones=recent_milestones,
         recent_commits=validate_recent_commits(raw, config_path),
@@ -143,6 +152,37 @@ def validate_intro(
 
     text = _require_non_blank_string(section, "intro", "text", config_path)
     return IntroConfig(enabled=True, text=text)
+
+
+def validate_ascii_banner(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> AsciiBannerConfig:
+    section = _get_section_mapping(raw_config, "ascii-banner", config_path)
+    enabled = _get_switch(section, "ascii-banner", config_path)
+    if not enabled:
+        return AsciiBannerConfig(enabled=False, module="")
+
+    module = _require_non_blank_string(section, "ascii-banner", "module", config_path)
+    catalogue = REPO_ROOT / "assets" / "js" / "ascii-rest" / "manifest.json"
+    try:
+        scenes = json.loads(catalogue.read_text(encoding="utf-8"))["scenes"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ConfigValidationError(f"{config_path}: cannot read the local ASCII scene catalogue: {exc}") from exc
+    if module == "random":
+        if not scenes or any(
+            not (catalogue.parent / "pieces" / f"{scene}.js").is_file() for scene in scenes
+        ):
+            raise ConfigValidationError(
+                f"{config_path}: ascii-banner.module 'random' requires a non-empty "
+                "catalogue of locally available scenes"
+            )
+        return AsciiBannerConfig(enabled=True, module=module)
+    if module not in scenes or not (catalogue.parent / "pieces" / f"{module}.js").is_file():
+        raise ConfigValidationError(
+            f"{config_path}: ascii-banner.module must name a locally available scene; "
+            f"choose 'random' or one of: {', '.join(scenes)}"
+        )
+    return AsciiBannerConfig(enabled=True, module=module)
 
 
 def validate_repo_grid(

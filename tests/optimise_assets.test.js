@@ -25,6 +25,10 @@ function makeBuild(t) {
       "/*! Example licence */\nwindow.example = function (value) { return value + 1; };\n");
   }
   fs.writeFileSync(path.join(directory, "assets", "css", "style.css"), "body{margin:0}");
+  fs.cpSync(path.join(root, "assets", "js", "ascii-rest"),
+    path.join(directory, "assets", "js", "ascii-rest"), { recursive: true });
+  fs.copyFileSync(path.join(root, "assets", "js", "ascii_banner.mjs"),
+    path.join(directory, "assets", "js", "ascii_banner.mjs"));
   return directory;
 }
 
@@ -42,6 +46,10 @@ test("minifies generated JavaScript, retains licence comments and reports gzip s
     assert.match(content, /Example licence/);
     assert.doesNotMatch(content, /function \(value\)/);
   }
+  const scene = fs.readFileSync(path.join(directory, "assets", "js", "ascii-rest", "pieces", "misty-forest.js"), "utf8");
+  assert.match(scene, /MIT licence/);
+  assert.match(scene, /export/);
+  assert.match(result.stdout, /ASCII JavaScript catalogue: \d+ bytes gzipped/);
 });
 
 test("refuses to minify the repository's readable source files", t => {
@@ -58,10 +66,15 @@ test("refuses to minify the repository's readable source files", t => {
   assert.equal(fs.readFileSync(sourcePath, "utf8"), original);
 });
 
-for (const budget of ["activity", "combined", "stylesheet"]) {
+for (const budget of ["activity", "combined", "stylesheet", "ascii"]) {
   test(`rejects builds that exceed the ${budget} gzip budget`, t => {
     const directory = makeBuild(t);
-    if (budget === "stylesheet") {
+    if (budget === "ascii") {
+      for (let index = 0; index < 4; index++) {
+        fs.writeFileSync(path.join(directory, "assets", "js", "ascii-rest", `oversized-${index}.js`),
+          `export const fixture=${JSON.stringify(noise)};`);
+      }
+    } else if (budget === "stylesheet") {
       fs.writeFileSync(path.join(directory, "assets", "css", "style.css"), noise);
     } else {
       const oversized = `window.fixture=${JSON.stringify(budget === "activity" ? noise : noise.slice(0, 20_000))};`;
@@ -71,6 +84,6 @@ for (const budget of ["activity", "combined", "stylesheet"]) {
     }
     const result = optimise(directory);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "20 KiB" : "8 KiB"));
+    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "20 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
   });
 }
