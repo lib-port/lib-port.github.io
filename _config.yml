@@ -50,7 +50,7 @@ intro:
 
 # ASCII art by github.com/bas3line
 ascii-banner:
-  switch: true
+  switch: false
   module: random
 
 repo_grid:
