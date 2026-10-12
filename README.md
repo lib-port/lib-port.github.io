@@ -99,7 +99,7 @@ The top-level order of `intro`, `ascii-banner`, `repo_grid`, `recent_milestones`
 | `github-icon.style` | Optional when enabled and must be exactly `auto`, `text`, or `icon`. `auto` shows the GitHub mark without JavaScript and on detected desktop Linux systems, otherwise it shows the GitHub wordmark. `text` always shows the wordmark and is the default; `icon` always shows the mark. |
 | `intro.switch` | YAML boolean controlling whether the introduction is shown. |
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
-| `ascii-banner.switch` | YAML boolean controlling whether the ASCII banner is enabled. Missing or disabled sections emit no banner markup or loader. |
+| `ascii-banner.switch` | YAML boolean controlling whether the ASCII banner is enabled. A missing or disabled switch or section omits banner markup and all ASCII assets from local previews and production builds. |
 | `ascii-banner.module` | Required when enabled; must name one of the locally available scenes listed below, or be exactly `random` to choose a scene on each page load. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
 | `repo_grid.repo_list` | Required, non-empty list of case-insensitively unique repository names when the repository grid is enabled. Repositories must belong to the account hosting the site. The list supplies repository cards. |
@@ -122,6 +122,15 @@ Blog publication dates, milestone due dates, and absolute repository update date
 The GitHub link opens in the current tab and remains the rightmost header action. In `auto` mode, the mark is the progressive fallback when JavaScript is unavailable; an early platform check retains it for desktop Linux and selects the wordmark elsewhere. Its destination comes from the account that owns the Pages repository: `jekyll-github-metadata` resolves that owner during deployment or from the Git `origin` during local development, which keeps forks portable. The link is omitted if owner metadata is unavailable. Add future header links before it in [`_includes/header.html`](./_includes/header.html) to retain this ordering.
 
 ### ASCII banner
+
+When `ascii-banner.switch` is `false`, or the switch or section is missing,
+Jekyll excludes `assets/js/ascii_banner.mjs` and the entire
+`assets/js/ascii-rest/` directory from its output. The loader, scenes, renderer,
+font and supporting files are neither optimised nor deployed. Rebuilding also
+removes these files from an earlier enabled build. The sources remain in the
+repository, and enabling the banner includes the complete catalogue again.
+This applies to local previews as well as production builds; restart the
+preview after changing `_config.yml`.
 
 The banner uses locally hosted scene modules, a renderer and a fallback font from
 [ascii.rest by Shubham (@bas3line)](https://github.com/bas3line/ascii). It loads
@@ -250,7 +259,7 @@ python3 scripts/validate_site_config.py
 JEKYLL_ENV=production ./scripts/build_site.sh
 ```
 
-The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 20 KiB for the activity, theme and blog scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
+The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 20 KiB for the activity, theme and blog scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled banners exclude all ASCII assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
 
 ### Run tests
 
@@ -260,7 +269,13 @@ npm test
 npm run test:built
 ```
 
-The built-asset tests require the production build above. Validation on 1 October 2026 passed 80 Python tests and 196 JavaScript tests against both readable sources and minified assets. Development CSS source maps remain available, and production output excludes maps, npm dependencies and build tooling.
+The built-asset tests require the production build above. They check that ASCII
+assets match the generated banner markup, running banner behaviour tests when
+enabled and checking asset absence when disabled. The optimiser tests also run
+the banner suite against an enabled, minified fixture so it remains covered
+regardless of the repository's banner setting.
+
+Validation on 1 October 2026 passed 80 Python tests and 196 JavaScript tests against both readable sources and minified assets. Development CSS source maps remain available, and production output excludes maps, npm dependencies and build tooling.
 
 | Gzipped asset | Before | After | Budget |
 | --- | ---: | ---: | ---: |

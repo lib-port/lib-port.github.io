@@ -9,7 +9,25 @@ const { clientAssetPath } = require("./client_assets");
 const root = path.join(__dirname, "..", "assets", "js");
 const asset = name => clientAssetPath(path.join(root, name));
 const loader = () => import(pathToFileURL(asset("ascii_banner.mjs")));
-const manifest = JSON.parse(fs.readFileSync(asset("ascii-rest/manifest.json"), "utf8"));
+const homepage = process.env.CLIENT_ASSET_DIRECTORY
+  ? fs.readFileSync(path.resolve(process.env.CLIENT_ASSET_DIRECTORY, "..", "..", "index.html"), "utf8")
+  : null;
+const bannerEnabled = homepage === null || /data-home-section="ascii-banner"/.test(homepage);
+const manifest = bannerEnabled
+  ? JSON.parse(fs.readFileSync(asset("ascii-rest/manifest.json"), "utf8"))
+  : { scenes: [] };
+const bannerTest = (name, callback) => test(name, {
+  skip: !bannerEnabled && "The built homepage disables the ASCII banner.",
+}, callback);
+
+if (homepage !== null) {
+  test("built ASCII assets agree with the banner markup", () => {
+    assert.equal(/<ascii-art\b/.test(homepage), bannerEnabled);
+    assert.equal(/<script\b[^>]*\bsrc="[^"]*\/assets\/js\/ascii_banner\.mjs"/.test(homepage), bannerEnabled);
+    assert.equal(fs.existsSync(asset("ascii_banner.mjs")), bannerEnabled, "banner loader inclusion");
+    assert.equal(fs.existsSync(asset("ascii-rest")), bannerEnabled, "ASCII catalogue inclusion");
+  });
+}
 
 function fixture(piece = "misty-forest") {
   const listeners = new Map();
@@ -29,7 +47,7 @@ function fixture(piece = "misty-forest") {
   return { art, section, document };
 }
 
-test("reveals the hidden banner only after its component reports success", async () => {
+bannerTest("reveals the hidden banner only after its component reports success", async () => {
   const { initAsciiBanners } = await loader();
   const { art, section, document } = fixture();
   await initAsciiBanners(document, async () => {
@@ -42,14 +60,14 @@ test("reveals the hidden banner only after its component reports success", async
   assert.equal(section.hidden, true);
 });
 
-test("installs readiness listeners before the component can initialise", async () => {
+bannerTest("installs readiness listeners before the component can initialise", async () => {
   const { initAsciiBanners } = await loader();
   const { art, section, document } = fixture();
   await initAsciiBanners(document, async () => art.emit("ascii-art-ready"));
   assert.equal(section.hidden, false);
 });
 
-test("an already-mounted component reveals its wrapper", async () => {
+bannerTest("an already-mounted component reveals its wrapper", async () => {
   const { initAsciiBanners } = await loader();
   const { art, section, document } = fixture();
   art.ready = true;
@@ -57,7 +75,7 @@ test("an already-mounted component reveals its wrapper", async () => {
   assert.equal(section.hidden, false);
 });
 
-test("component import failure leaves the banner hidden", async () => {
+bannerTest("component import failure leaves the banner hidden", async () => {
   const { initAsciiBanners } = await loader();
   const { section, document } = fixture();
   let warnings = 0;
@@ -67,7 +85,7 @@ test("component import failure leaves the banner hidden", async () => {
   assert.equal(warnings, 1);
 });
 
-test("absent banners cause no component loading", async () => {
+bannerTest("absent banners cause no component loading", async () => {
   const { initAsciiBanners } = await loader();
   await initAsciiBanners({ querySelectorAll: () => [] }, async () => assert.fail("unexpected import"));
 });
@@ -77,7 +95,7 @@ for (const [label, draw, index] of [
   ["middle", 0.5, 7],
   ["last", 1 - Number.EPSILON, 14],
 ]) {
-  test(`random selects the ${label} scene before component initialisation`, async () => {
+  bannerTest(`random selects the ${label} scene before component initialisation`, async () => {
     const { initAsciiBanners } = await loader();
     const { art, section, document } = fixture("random");
     await initAsciiBanners(document, async () => {
@@ -89,7 +107,7 @@ for (const [label, draw, index] of [
   });
 }
 
-test("repeated initialisation retains the randomly selected scene", async () => {
+bannerTest("repeated initialisation retains the randomly selected scene", async () => {
   const { initAsciiBanners } = await loader();
   const { art, document } = fixture("random");
   let draws = 0;
@@ -101,7 +119,7 @@ test("repeated initialisation retains the randomly selected scene", async () => 
   assert.equal(art.getAttribute("piece"), chosen);
 });
 
-test("fixed scene selections never call the random chooser", async () => {
+bannerTest("fixed scene selections never call the random chooser", async () => {
   const { initAsciiBanners } = await loader();
   const { art, document } = fixture();
   await initAsciiBanners(document, async () => {},
@@ -110,7 +128,7 @@ test("fixed scene selections never call the random chooser", async () => {
   assert.equal(art.getAttribute("piece"), "misty-forest");
 });
 
-test("a failed component import keeps a random banner hidden", async () => {
+bannerTest("a failed component import keeps a random banner hidden", async () => {
   const { initAsciiBanners } = await loader();
   const { art, section, document } = fixture("random");
   let warnings = 0;
@@ -121,7 +139,7 @@ test("a failed component import keeps a random banner hidden", async () => {
   assert.equal(warnings, 1);
 });
 
-test("the local registry contains exactly the complete imported scene catalogue", async () => {
+bannerTest("the local registry contains exactly the complete imported scene catalogue", async () => {
   const { names, isPiece } = await import(pathToFileURL(asset("ascii-rest/library.js")));
   assert.equal(manifest.scenes.length, 15);
   assert.deepEqual(names, manifest.scenes);
@@ -135,7 +153,7 @@ test("the local registry contains exactly the complete imported scene catalogue"
 });
 
 for (const name of manifest.scenes) {
-  test(`${name} produces valid local frames and palette indices`, async () => {
+  bannerTest(`${name} produces valid local frames and palette indices`, async () => {
     const { load } = await import(pathToFileURL(asset("ascii-rest/library.js")));
     const piece = await load[name]();
     const { meta } = piece;

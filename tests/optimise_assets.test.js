@@ -20,6 +20,9 @@ function makeBuild(t) {
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   fs.mkdirSync(path.join(directory, "assets", "js"), { recursive: true });
   fs.mkdirSync(path.join(directory, "assets", "css"));
+  fs.writeFileSync(path.join(directory, "index.html"),
+    '<div data-home-section="ascii-banner" hidden><ascii-art piece="random"></ascii-art>' +
+    '<script type="module" src="/project/assets/js/ascii_banner.mjs"></script></div>');
   for (const name of names) {
     fs.writeFileSync(path.join(directory, "assets", "js", name),
       "/*! Example licence */\nwindow.example = function (value) { return value + 1; };\n");
@@ -36,6 +39,17 @@ function optimise(directory, optimiser = script) {
   return spawnSync(process.execPath, [optimiser, directory], { encoding: "utf8" });
 }
 
+function testBannerBuild(directory) {
+  const env = { ...process.env, CLIENT_ASSET_DIRECTORY: path.join(directory, "assets", "js") };
+  // Run a separate suite; inheriting the parent's context makes Node skip it.
+  delete env.NODE_TEST_CONTEXT;
+  return spawnSync(process.execPath, ["--test", "--test-reporter=tap", path.join(__dirname, "ascii_banner.test.js")], {
+    env,
+    encoding: "utf8",
+    timeout: 20_000,
+  });
+}
+
 test("minifies generated JavaScript, retains licence comments and reports gzip sizes", t => {
   const directory = makeBuild(t);
   const result = optimise(directory);
@@ -50,7 +64,35 @@ test("minifies generated JavaScript, retains licence comments and reports gzip s
   assert.match(scene, /MIT licence/);
   assert.match(scene, /export/);
   assert.match(result.stdout, /ASCII JavaScript catalogue: \d+ bytes gzipped/);
+  const bannerTests = testBannerBuild(directory);
+  assert.equal(bannerTests.status, 0, bannerTests.stdout + bannerTests.stderr);
+  assert.match(bannerTests.stdout, /produces valid local frames and palette indices/);
+  assert.doesNotMatch(bannerTests.stdout, /# SKIP/);
 });
+
+test("optimises a build with the ASCII banner excluded", t => {
+  const directory = makeBuild(t);
+  for (const name of ["ascii_banner.mjs", "ascii-rest"]) {
+    fs.rmSync(path.join(directory, "assets", "js", name), { recursive: true });
+  }
+  fs.writeFileSync(path.join(directory, "index.html"), "<p>Banner disabled</p>");
+  const result = optimise(directory);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /ASCII JavaScript catalogue: skipped/);
+  assert.match(result.stdout, /JavaScript total: \d+ bytes; stylesheet: \d+ bytes gzipped/);
+  const bannerTests = testBannerBuild(directory);
+  assert.equal(bannerTests.status, 0, bannerTests.stdout + bannerTests.stderr);
+});
+
+for (const missing of ["ascii_banner.mjs", "ascii-rest"]) {
+  test(`rejects an incomplete ASCII build missing ${missing}`, t => {
+    const directory = makeBuild(t);
+    fs.rmSync(path.join(directory, "assets", "js", missing), { recursive: true });
+    const result = optimise(directory);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Incomplete ASCII assets/);
+  });
+}
 
 test("refuses to minify the repository's readable source files", t => {
   const directory = makeBuild(t);
