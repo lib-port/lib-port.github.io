@@ -31,6 +31,11 @@ class FindTheBugGameConfig:
 
 
 @dataclass(frozen=True)
+class LightDarkBallConfig:
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class GitHubIconConfig:
     enabled: bool
     link: str
@@ -84,6 +89,7 @@ class ExternalBlogConfig:
 @dataclass(frozen=True)
 class SiteConfig:
     find_the_bug_game: FindTheBugGameConfig
+    light_dark_ball: LightDarkBallConfig
     github_icon: GitHubIconConfig
     paper_plane: PaperPlaneConfig
     intro: IntroConfig
@@ -119,6 +125,7 @@ def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
 
     return SiteConfig(
         find_the_bug_game=validate_find_the_bug_game(raw, config_path),
+        light_dark_ball=validate_light_dark_ball(raw, config_path),
         github_icon=validate_github_icon(raw, config_path),
         paper_plane=validate_paper_plane(raw, config_path),
         intro=validate_intro(raw, config_path),
@@ -136,6 +143,13 @@ def validate_find_the_bug_game(
 ) -> FindTheBugGameConfig:
     section = _get_section_mapping(raw_config, "find_the_bug_game", config_path)
     return FindTheBugGameConfig(enabled=_get_switch(section, "find_the_bug_game", config_path))
+
+
+def validate_light_dark_ball(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> LightDarkBallConfig:
+    section = _get_section_mapping(raw_config, "light_dark_ball", config_path)
+    return LightDarkBallConfig(enabled=_get_switch(section, "light_dark_ball", config_path))
 
 
 def validate_github_icon(

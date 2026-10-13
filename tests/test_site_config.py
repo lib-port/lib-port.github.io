@@ -90,7 +90,7 @@ class SiteConfigValidationTests(unittest.TestCase):
         self.assertIn(str(config_path), str(raised.exception))
 
     def test_old_hyphenated_names_do_not_enable_features(self) -> None:
-        for name in ("find_the_bug_game", "github_icon", "paper_plane", "ascii_banner"):
+        for name in ("find_the_bug_game", "light_dark_ball", "github_icon", "paper_plane", "ascii_banner"):
             old_name = name.replace("_", "-")
             for new_section in ("", f"{name}: {{switch: false}}"):
                 with self.subTest(name=name, new_section=new_section):
@@ -134,6 +134,34 @@ class SiteConfigValidationTests(unittest.TestCase):
             with self.subTest(section=value):
                 config_path = self.write_config(f"find_the_bug_game: {value}")
                 with self.assertRaisesRegex(ConfigValidationError, "find_the_bug_game must be a mapping"):
+                    validate_site_config(config_path)
+
+    def test_light_dark_ball_switch_controls_the_effect_independently(self) -> None:
+        for text, enabled in (
+            ("", False),
+            ("light_dark_ball:", False),
+            ("light_dark_ball: {}", False),
+            ("light_dark_ball: {switch: null}", False),
+            ("light_dark_ball: {switch: false}", False),
+            ("light_dark_ball: {switch: true}", True),
+        ):
+            for game in ("false", "true"):
+                with self.subTest(text=text, game=game):
+                    config = validate_site_config(self.write_config(
+                        f"find_the_bug_game: {{switch: {game}}}\n{text}"
+                    ))
+                    self.assertEqual(config.light_dark_ball.enabled, enabled)
+
+    def test_light_dark_ball_rejects_invalid_configuration(self) -> None:
+        for value in ('"true"', '"false"', "1", "0", "[]", "{}"):
+            with self.subTest(switch=value):
+                config_path = self.write_config(f"light_dark_ball: {{switch: {value}}}")
+                with self.assertRaisesRegex(ConfigValidationError, "light_dark_ball.switch must be a YAML boolean"):
+                    validate_site_config(config_path)
+        for value in ("true", '"false"', "1", "[]"):
+            with self.subTest(section=value):
+                config_path = self.write_config(f"light_dark_ball: {value}")
+                with self.assertRaisesRegex(ConfigValidationError, "light_dark_ball must be a mapping"):
                     validate_site_config(config_path)
 
     def test_paper_plane_switch_rejects_non_boolean_values(self) -> None:

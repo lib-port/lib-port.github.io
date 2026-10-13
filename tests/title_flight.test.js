@@ -104,7 +104,7 @@ function fixture({ reduced = false, initialHover = false, observeResize = true }
     activate(input = "mouse", legacy = false) {
       if (input === "mouse" || input === "pen") {
         this.enter(input);
-        this.wait(250);
+        this.wait(62.5);
         return;
       }
       if (input !== "keyboard") documentRef.emit("pointerdown", { pointerType: input, target: launch });
@@ -185,7 +185,7 @@ flightTest("the nose follows the flight tangent and the full plane fits its rese
   }
 });
 
-flightTest("flies an eight-second loop and finishes the remaining path at twice the speed", () => {
+flightTest("flies a four-second loop and finishes the remaining path at twice the speed", () => {
   const f = fixture();
   const home = renderedPosition(f.plane);
   close(home.x, f.bounds.width / 2 + 24);
@@ -196,31 +196,31 @@ flightTest("flies an eight-second loop and finishes the remaining path at twice 
   assert.equal(f.root.attributes.has("tabindex"), false);
   f.activate();
   f.tick(0);
-  f.tick(2000);
+  f.tick(1000);
   assert.notDeepEqual(renderedPosition(f.plane), home);
-  f.tick(6000);
+  f.tick(3000);
   close(renderedPosition(f.plane).x, home.x);
   close(renderedPosition(f.plane).y, home.y);
-  f.tick(3000);
+  f.tick(1500);
   f.leave();
-  f.tick(1000);
-  assertFlightPose(f, 7 * Math.PI / 4);
   f.tick(500);
+  assertFlightPose(f, 7 * Math.PI / 4);
+  f.tick(250);
   assertFlightPose(f, 2 * Math.PI);
   assert.equal(f.frames.size, 1, "crossing the title is not the end of the loop");
-  f.tick(750);
+  f.tick(375);
   assertFlightPose(f, 19 * Math.PI / 8);
-  f.tick(249);
+  f.tick(124);
   assert.equal(f.frames.size, 1);
   f.tick(1);
   assert.deepEqual(renderedPosition(f.plane), home);
   assert.equal(f.plane.style.zIndex, "2");
   assert.equal(f.frames.size, 0);
-  f.tick(8000);
+  f.tick(4000);
   assert.deepEqual(renderedPosition(f.plane), home);
 });
 
-for (const [departure, returnTime] of [[1, 4000], [2000, 3000], [4000, 2000], [7000, 500], [7999, 1]]) {
+for (const [departure, returnTime] of [[1, 2000], [1000, 1500], [2000, 1000], [3500, 250], [3999, 1]]) {
   flightTest(`leaving ${departure}ms into a loop parks after ${returnTime}ms at twice the speed`, () => {
     const f = fixture();
     const home = f.plane.style.transform;
@@ -241,7 +241,7 @@ flightTest("a delayed frame clamps to home without starting another loop", () =>
   const home = f.plane.style.transform;
   f.activate();
   f.tick(0);
-  f.tick(3000);
+  f.tick(1500);
   f.leave();
   f.tick(20000);
   assert.equal(f.plane.style.transform, home);
@@ -249,7 +249,7 @@ flightTest("a delayed frame clamps to home without starting another loop", () =>
 });
 
 flightTest("leaving at rest does not start an extra loop", () => {
-  for (const elapsed of [null, 0, 8000]) {
+  for (const elapsed of [null, 0, 4000]) {
     const f = fixture();
     const home = f.plane.style.transform;
     f.activate();
@@ -266,22 +266,22 @@ flightTest("focus, touch entry and an already-hovered title do not launch the pl
   f.enter("touch");
   f.focus();
   f.wait(1000);
-  f.tick(1000);
+  f.tick(500);
   assert.equal(f.frames.size, 0);
   assert.equal(f.plane.style.transform, home);
   assert.equal(f.launch.hidden, false);
 });
 
 for (const input of ["mouse", "pen"]) {
-  flightTest(`${input} launches only after a 250 ms stationary pause`, () => {
+  flightTest(`${input} launches only after a 62.5 ms stationary pause`, () => {
     const f = fixture();
     const home = f.plane.style.transform;
     f.enter(input);
     assert.equal(f.timers.size, 1);
-    f.wait(249);
+    f.wait(62);
     assert.equal(f.frames.size, 0);
     assert.equal(f.plane.style.transform, home);
-    f.wait(1);
+    f.wait(0.5);
     assert.equal(f.frames.size, 1);
     assert.equal(f.timers.size, 0);
     f.wait(1000);
@@ -293,14 +293,14 @@ for (const input of ["mouse", "pen"]) {
     const f = fixture();
     f.enter(input);
     for (let x = 41; x <= 45; x++) {
-      f.wait(100);
+      f.wait(50);
       f.move(x, 20, input);
       assert.equal(f.timers.size, 1);
       assert.equal(f.frames.size, 0);
     }
-    f.wait(249);
+    f.wait(62);
     assert.equal(f.frames.size, 0);
-    f.wait(1);
+    f.wait(0.5);
     assert.equal(f.frames.size, 1);
     f.controller.destroy();
   });
@@ -308,13 +308,16 @@ for (const input of ["mouse", "pen"]) {
 
 flightTest("unchanged coordinates and other pointers do not restart or cancel the pause", () => {
   const f = fixture();
-  f.enter(); f.wait(200);
+  f.enter(); f.wait(50);
+  assert.equal(f.frames.size, 0);
   f.move(40, 20);
   f.move(50, 20, "touch", 2);
   f.move(50, 20, "mouse", 2);
   f.root.emit("pointerleave", { pointerType: "mouse", pointerId: 2 });
   f.root.emit("pointercancel", { pointerType: "mouse", pointerId: 2 });
-  f.wait(50);
+  f.wait(12);
+  assert.equal(f.frames.size, 0);
+  f.wait(0.5);
   assert.equal(f.frames.size, 1);
   f.controller.destroy();
 });
@@ -322,7 +325,7 @@ flightTest("unchanged coordinates and other pointers do not restart or cancel th
 for (const action of ["leave", "pointercancel", "scroll", "resize", "title resize", "blur", "hidden", "reduced motion", "destroy"]) {
   flightTest(`${action} cancels a pending pause and cannot launch from an expired callback`, () => {
     const f = fixture();
-    f.enter(); f.wait(100);
+    f.enter(); f.wait(50);
     const staleCallback = [...f.timers.values()][0].callback;
     if (action === "leave") f.leave();
     else if (action === "pointercancel") f.root.emit(action, { pointerType: "mouse", pointerId: 1 });
@@ -347,9 +350,9 @@ for (const action of ["leave", "pointercancel", "scroll", "resize", "title resiz
     if (action !== "destroy") {
       f.enter();
       staleCallback();
-      f.wait(249);
+      f.wait(62);
       assert.equal(f.frames.size, 0);
-      f.wait(1);
+      f.wait(0.5);
       assert.equal(f.frames.size, 1, "a fresh entry can launch after cancellation");
       f.controller.destroy();
     }
@@ -365,7 +368,7 @@ for (const blocked of ["hidden", "reduced motion"]) {
     f.enter();
     if (blocked === "hidden") f.documentRef.hidden = true;
     else f.reducedMotion.matches = true;
-    f.wait(250);
+    f.wait(62.5);
     assert.equal(f.frames.size, 0);
     assert.equal(f.timers.size, 0);
     f.controller.destroy();
@@ -374,9 +377,9 @@ for (const blocked of ["hidden", "reduced motion"]) {
 
 flightTest("movement while flying does not start a new pause or request a return", () => {
   const f = fixture();
-  f.activate(); f.tick(0); f.tick(1000);
+  f.activate(); f.tick(0); f.tick(500);
   f.move(50, 20);
-  f.wait(1000); f.tick(1000);
+  f.wait(1000); f.tick(500);
   assertFlightPose(f, Math.PI);
   assert.equal(f.timers.size, 0);
   f.controller.destroy();
@@ -385,12 +388,12 @@ flightTest("movement while flying does not start a new pause or request a return
 for (const input of ["touch", "keyboard"]) {
   flightTest(`${input} activation launches immediately and consumes a pending mouse pause`, () => {
     const f = fixture();
-    f.enter(); f.wait(100);
+    f.enter(); f.wait(50);
     f.activate(input);
     assert.equal(f.frames.size, 1);
     assert.equal(f.timers.size, 0);
-    f.tick(0); f.tick(1000); f.wait(250);
-    f.leave(); f.tick(1000);
+    f.tick(0); f.tick(500); f.wait(62.5);
+    f.leave(); f.tick(500);
     assertFlightPose(f, Math.PI);
     f.controller.destroy();
   });
@@ -410,12 +413,12 @@ for (const input of ["mouse", "pen"]) {
     const home = f.plane.style.transform;
     f.documentRef.emit("pointerdown", { pointerType: input, target: f.launch });
     f.launch.emit("click", { detail: 1, pointerType: input });
-    f.tick(1000);
+    f.tick(500);
     assert.equal(f.frames.size, 0);
     assert.equal(f.plane.style.transform, home);
     f.enter(input);
     assert.equal(f.frames.size, 0, "entering the title waits for a pause");
-    f.wait(250);
+    f.wait(62.5);
     assert.equal(f.frames.size, 1, "pausing over the title launches without a click");
     f.controller.destroy();
   });
@@ -427,21 +430,21 @@ for (const input of ["mouse", "pen", "keyboard"]) {
     f.focus();
     f.activate(input);
     f.tick(0);
-    f.tick(2000);
+    f.tick(1000);
     assertFlightPose(f, Math.PI);
     assert.equal(f.launch.attributes.get("aria-disabled"), "true");
     if (input === "keyboard") {
       f.leave(); // Mouse movement does not end a keyboard-launched flight.
-      f.tick(1000);
+      f.tick(500);
       assertFlightPose(f, 5 * Math.PI / 4);
       f.blur();
     } else {
       f.blur(); // Pointer focus does not latch or end a pointer-launched flight.
-      f.tick(1000);
+      f.tick(500);
       assertFlightPose(f, 5 * Math.PI / 4);
       f.leave(input);
     }
-    f.tick(2499);
+    f.tick(1249);
     assert.equal(f.frames.size, 1);
     f.tick(1);
     assertFlightPose(f, Math.PI / 2);
@@ -455,30 +458,30 @@ for (const action of ["enter", "focus", "activate"]) {
   flightTest(`${action} cannot restart a pending return or extend the loop`, () => {
     const f = fixture();
     const home = f.plane.style.transform;
-    f.activate(); f.tick(0); f.tick(3000); f.leave(); f.tick(1000);
+    f.activate(); f.tick(0); f.tick(1500); f.leave(); f.tick(500);
     const returning = f.plane.style.transform;
     f[action]();
     assert.equal(f.plane.style.transform, returning);
-    f.tick(1499);
+    f.tick(749);
     assert.equal(f.frames.size, 1);
     f.tick(1);
     assert.equal(f.plane.style.transform, home);
     assert.equal(f.frames.size, 0);
-    f.wait(1000); f.move(60, 20); f.wait(250);
+    f.wait(1000); f.move(60, 20); f.wait(62.5);
     assert.equal(f.frames.size, 0, "entry while returning cannot queue another launch");
-    f.focus(); f.tick(1000);
+    f.focus(); f.tick(500);
     assert.equal(f.frames.size, 0);
-    f.enter(); f.wait(250); f.tick(0); f.tick(1000);
+    f.enter(); f.wait(62.5); f.tick(0); f.tick(500);
     assert.notEqual(f.plane.style.transform, home);
   });
 }
 
 flightTest("repeated activations during flight do not change its clock or input method", () => {
   const f = fixture();
-  f.activate(); f.tick(0); f.tick(2000);
-  f.activate("touch"); f.activate("keyboard"); f.tick(1000);
+  f.activate(); f.tick(0); f.tick(1000);
+  f.activate("touch"); f.activate("keyboard"); f.tick(500);
   assertFlightPose(f, 5 * Math.PI / 4);
-  f.leave(); f.tick(2500);
+  f.leave(); f.tick(1250);
   assert.equal(f.frames.size, 0);
 });
 
@@ -488,10 +491,10 @@ for (const legacy of [false, true]) {
       const f = fixture();
       f.activate("touch", legacy);
       f.leave("touch"); f.blur();
-      f.tick(0); f.tick(9000);
+      f.tick(0); f.tick(4500);
       assertFlightPose(f, 3 * Math.PI / 4);
       f.documentRef.emit("pointerdown", { pointerType: "touch", target: f.launch });
-      f.tick(1000);
+      f.tick(500);
       assertFlightPose(f, Math.PI);
       const event = {
         pointerType: "touch", target: f.root,
@@ -499,7 +502,7 @@ for (const legacy of [false, true]) {
         stopPropagation() { assert.fail("outside interactions must reach their targets"); },
       };
       f.documentRef.emit(exit === "touch" ? "pointerdown" : "scroll", event);
-      f.tick(2999);
+      f.tick(1499);
       assert.equal(f.frames.size, 1);
       f.tick(1);
       assert.equal(f.frames.size, 0);
@@ -513,12 +516,12 @@ flightTest("repeated departure events do not extend the current loop", () => {
   const home = f.plane.style.transform;
   f.activate();
   f.tick(0);
-  f.tick(3000);
+  f.tick(1500);
   f.leave();
-  f.tick(2000);
+  f.tick(1000);
   f.leave();
   f.blur();
-  f.tick(499);
+  f.tick(249);
   assert.equal(f.frames.size, 1);
   f.tick(1);
   assert.equal(f.plane.style.transform, home);
@@ -535,7 +538,7 @@ flightTest("reduced motion hides the launch control and needs a fresh activation
   f.reducedMotion.emit("change");
   assert.equal(f.launch.hidden, false);
   assert.equal(f.frames.size, 0);
-  f.activate("keyboard"); f.tick(0); f.tick(1000);
+  f.activate("keyboard"); f.tick(0); f.tick(500);
   assert.notEqual(f.plane.style.transform, home);
   f.reducedMotion.matches = true;
   f.reducedMotion.emit("change");
@@ -547,7 +550,7 @@ flightTest("reduced motion hides the launch control and needs a fresh activation
   f.focus();
   assert.equal(f.frames.size, 0);
   f.enter();
-  f.wait(250);
+  f.wait(62.5);
   assert.equal(f.frames.size, 1, "a fresh title entry and pause launch after reduced motion is disabled");
   f.controller.destroy();
 });
@@ -557,7 +560,7 @@ flightTest("an active frame parks when reduced motion changes before its event i
   const home = f.plane.style.transform;
   f.activate();
   f.tick(0);
-  f.tick(1000);
+  f.tick(500);
   f.reducedMotion.matches = true;
   f.tick(16);
   assert.equal(f.plane.style.transform, home);
@@ -570,9 +573,9 @@ flightTest("reduced motion interrupts loop completion and parks immediately", ()
   const home = f.plane.style.transform;
   f.activate();
   f.tick(0);
-  f.tick(3000);
+  f.tick(1500);
   f.leave();
-  f.tick(1000);
+  f.tick(500);
   f.reducedMotion.matches = true;
   f.reducedMotion.emit("change");
   assert.equal(f.plane.style.transform, home);
@@ -586,9 +589,9 @@ flightTest("hidden pages suspend both flight and loop completion without advanci
   const f = fixture();
   f.activate();
   f.tick(0);
-  f.tick(1000);
+  f.tick(500);
   for (const finishing of [false, true]) {
-    if (finishing) { f.leave(); f.tick(100); }
+    if (finishing) { f.leave(); f.tick(50); }
     const before = f.plane.style.transform;
     f.documentRef.hidden = true;
     f.documentRef.emit("visibilitychange");
@@ -599,7 +602,7 @@ flightTest("hidden pages suspend both flight and loop completion without advanci
     f.tick(0);
     assert.equal(f.plane.style.transform, before);
   }
-  f.tick(3399);
+  f.tick(1699);
   assert.equal(f.frames.size, 1);
   f.tick(1);
   assert.equal(f.frames.size, 0);
@@ -618,12 +621,12 @@ for (const observeResize of [true, false]) {
     assert.equal(f.frames.size, 0);
     f.activate();
     f.tick(0);
-    f.tick(3000);
+    f.tick(1500);
     f.leave();
-    f.tick(1000);
+    f.tick(500);
     f.resize(350, 48);
     assertFlightPose(f, 7 * Math.PI / 4);
-    f.tick(1499);
+    f.tick(749);
     assert.equal(f.frames.size, 1);
     f.tick(1);
     assert.deepEqual(renderedPosition(f.plane), home);
@@ -636,7 +639,7 @@ flightTest("cleanup removes the ready state and pages without the title are harm
   const f = fixture();
   f.activate();
   f.tick(0);
-  f.tick(1000);
+  f.tick(500);
   f.controller.destroy();
   assert.equal(f.frames.size, 0);
   assert.equal(f.root.attributes.has("tabindex"), false);

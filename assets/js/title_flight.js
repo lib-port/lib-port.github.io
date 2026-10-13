@@ -2,9 +2,9 @@
   "use strict";
 
   const IDLE = 0, FLYING = 1, FINISHING = 2;
-  const LAP_MS = 8000;
+  const LAP_MS = 4000;
   const FINISH_SPEED = 2;
-  const HOVER_PAUSE_MS = 250;
+  const HOVER_PAUSE_MS = 62.5;
   const START_PHASE = Math.PI / 2;
   const FULL_TURN = 2 * Math.PI;
 

@@ -52,6 +52,9 @@ title: Your Name
 find_the_bug_game:
   switch: true
 
+light_dark_ball:
+  switch: true
+
 github_icon:
   switch: true
   link: repos
@@ -102,6 +105,7 @@ The top-level order of `intro`, `ascii_banner`, `repo_grid`, `recent_milestones`
 | `title` | Site title used by the theme and metadata. |
 | `description` | Site description used by metadata and the footer. |
 | `find_the_bug_game.switch` | YAML boolean enabling dragging and the hidden bug/squirrel game. A false, null or missing switch excludes the game script from previews and production builds. |
+| `light_dark_ball.switch` | YAML boolean enabling theme-switcher dragging and tennis-ball physics independently of the bug game. A false, null or missing switch excludes the physics script from previews and production builds. |
 | `github_icon.switch` | YAML boolean controlling whether the rightmost header icon is shown. The default is `false` when the switch or section is missing. |
 | `github_icon.link` | Required when enabled and must be exactly `profile` or `repos`. `profile` uses the owner profile URL; `repos` adds `?tab=repositories` to it. There is no enabled default. |
 | `github_icon.style` | Optional when enabled and must be exactly `auto`, `text`, or `icon`. `auto` shows the GitHub mark without JavaScript and on detected desktop Linux systems, otherwise it shows the GitHub wordmark. `text` always shows the wordmark and is the default; `icon` always shows the mark. |
@@ -168,15 +172,18 @@ Re-grabbing a returning item delays the shuffle until its next release and
 completed return. Cancelling a drag, pressing Escape or forcing a layout reset
 discards that find. If another item is moving, the shuffle waits until all items
 are at rest. The repository cards, GitHub icon, theme switcher and loaded
-milestone cards then shake slightly with independent horizontal movements.
+milestone cards then shake with independent horizontal movements of 1.5–6 px
+over 640–880 ms.
 Milestone cards join the pool when they load and leave it when hidden. With only
 one available hiding place, the creature stays put until a later find and return
 can choose an alternative. The game also works without a repository section.
 Reduced-motion preferences and unavailable animation support return the released
 item immediately and reshuffle without shaking.
 
-When the switch is `false`, null or missing, all custom dragging is disabled,
-including Recent Tasks cards. Links and theme switching continue to work.
+When the switch is `false`, null or missing, the game and dragging of the GitHub
+icon, repository cards and Recent Tasks cards are disabled. The theme button
+remains draggable when `light_dark_ball.switch` is `true`. Links and theme
+switching continue to work.
 Jekyll excludes `assets/js/drag_reveal.js` from its output and omits the game's
 script reference and bug/squirrel SVG template. The script is neither optimised
 nor deployed, and rebuilding removes a copy left by an earlier enabled build.
@@ -187,12 +194,13 @@ preview after changing `_config.yml`.
 ### Title animation
 
 With `paper_plane.switch: true`, a 16px paper plane rests to the right of the
-homepage title at the rightmost point of its eight-second figure-of-eight.
-Pause the mouse or pen over any part of the title for 250 ms to launch it.
+homepage title at the rightmost point of its four-second figure-of-eight.
+Pause the mouse or pen over any part of the title for 62.5 ms to launch it.
 Moving within the title restarts that wait; passing across it without pausing
 leaves the plane parked. Touch users tap the resting plane; keyboard users focus
-its 44px control and press Enter or Space. Keyboard focus alone and an existing
-hover state during initialisation do not start it.
+its 44px control and press Enter or Space. The plane keeps the normal arrow
+cursor on hover. Keyboard focus alone and an existing hover state during
+initialisation do not start it.
 
 Leaving the title, cancelling the pointer, scrolling, resizing the viewport,
 losing window focus, hiding the tab or changing reduced-motion preferences
@@ -205,7 +213,7 @@ from the control to return. Touch users touch elsewhere or scroll the page;
 those interactions continue normally. There is no stop indicator.
 
 The return completes the remaining figure-of-eight at 2× normal speed, taking
-up to approximately four seconds, then parks the plane. Repeated activation
+up to approximately two seconds, then parks the plane. Repeated activation
 while flying or returning is ignored. Hovering back cannot restart a return;
 a fresh title entry, tap or keyboard activation is needed after the plane parks.
 
@@ -319,11 +327,41 @@ Successful responses are cached in the visitor's `localStorage` for seven days, 
 
 The page initially follows the visitor's operating-system light or dark preference. A fixed button in the bottom-right corner uses moon and sun GitHub Octicons to show the theme available on activation. Once selected, the explicit `light` or `dark` preference is stored in `localStorage` and reused across visits and open tabs.
 
-With `find_the_bug_game.switch: true`, drag the theme button with a mouse, pen
-or touch to reveal a stationary CPU Octicon at 1.5rem, matching the icon beneath
-the GitHub link. It springs back on release without changing the theme.
-Ordinary clicks, taps, Enter and Space still switch themes;
-Escape and reduced-motion preferences behave as they do for the GitHub icon.
+With either `find_the_bug_game.switch` or `light_dark_ball.switch` enabled,
+drag the theme button with a mouse, pen or touch to reveal a stationary CPU
+Octicon at 1.5rem, matching the icon beneath
+the GitHub link. Gentle releases spring back without changing the theme.
+With `light_dark_ball.switch: true`, flicks launch the circular button with the
+drag's release velocity. The simulation treats its rendered diameter as 6.7 cm:
+ordinary gravity pulls down at 1G (9.80665 m/s²), and collisions with the viewport
+edges lose energy like a tennis ball. Three real seconds after release, its
+original position becomes a point of attraction. This adds 0G at three seconds,
+1G at four seconds, 2G at five seconds, and continues growing smoothly without a
+cap. Its strength is independent of distance and adds to downward gravity. A
+ball resting directly below home therefore lifts off only after four seconds.
+Within three ball diameters of home, gradual braking allows overshoots before
+the button settles. It parks once within 1 mm of home and moving at no more than
+2 cm/s; fast crossings retain their momentum.
+Delayed frames retain the real elapsed time for attraction, while limiting
+physics catch-up to 100 ms per frame. Catching the button starts another drag
+from its current position; another flick starts a fresh three-second deadline.
+Ordinary clicks, taps, Enter and Space still switch themes. Escape parks a
+thrown button immediately; scrolling, resizing, hiding the tab or losing focus
+cancels the motion. Reduced-motion preferences skip the throw and park on
+release. A completed discovery reshuffles only after the button returns home.
+
+When `light_dark_ball.switch` is `false`, null or missing, tennis-ball physics
+are disabled. If the game is enabled, all theme-button releases use the normal
+400 ms spring return. If both switches are disabled, the theme button stays
+fixed and remains available for ordinary theme switching.
+
+Jekyll excludes `assets/js/light_dark_ball.js` from disabled builds and removes
+copies left by earlier enabled builds. The script is neither optimised nor
+deployed. `assets/js/drag_surface.js` provides shared dragging and is included
+only when either feature is enabled; game-specific code remains in
+`assets/js/drag_reveal.js`, included only for the game. Enabled feature scripts
+register with a single controller before dragging starts. Restart the preview
+after changing either switch in `_config.yml`.
 
 The theme is selected before the main stylesheet loads to avoid a mismatched-colour flash. If JavaScript or browser storage is unavailable, Minima's automatic colour scheme remains the fallback; storage failures do not prevent switching for the current page.
 
@@ -374,7 +412,7 @@ python3 scripts/validate_site_config.py
 JEKYLL_ENV=production ./scripts/build_site.sh
 ```
 
-The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 21 KiB for the activity, theme, blog, title animation and shared drag scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled banners exclude all ASCII assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
+The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 24 KiB for the activity, theme, blog, title animation, shared drag controller and enabled game/ball scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled features exclude their optional assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
 
 ### Run tests
 
@@ -397,7 +435,7 @@ Validation on 1 October 2026 passed 80 Python tests and 196 JavaScript tests aga
 | Gzipped asset | Before | After | Budget |
 | --- | ---: | ---: | ---: |
 | Activity JavaScript | 18,433 bytes | 14,527 bytes | 16 KiB |
-| All client JavaScript | 22,792 bytes | 17,679 bytes | 21 KiB |
+| All client JavaScript | 22,792 bytes | 17,679 bytes | 24 KiB |
 | Stylesheet | 7,141 bytes | 6,302 bytes | 8 KiB |
 
 Local Chromium checks used eight repository fixtures, six linked pages per history and 20 ms simulated API latency. Older owner-authored commits were placed on page six, so the bounded search intentionally returned fewer commits. The following figures record one run with automatic page scrolling; timings and layout shifts are fixture measurements rather than field performance scores. Cold visits used at most four concurrent calls, while warm `localStorage` visits made no GitHub requests.

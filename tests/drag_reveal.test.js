@@ -23,177 +23,9 @@ if (homepage !== null) {
   });
 }
 
-class Events {
-  listeners = new Map();
-  attributes = new Map();
-  classes = new Set();
-  classList = {
-    add: name => this.classes.add(name),
-    remove: name => this.classes.delete(name),
-    contains: name => this.classes.has(name),
-  };
-  get hidden() { return this.hasAttribute("hidden"); }
-  set hidden(value) { if (value) this.setAttribute("hidden", ""); else this.removeAttribute("hidden"); }
-  addEventListener(type, callback) {
-    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
-    this.listeners.get(type).add(callback);
-  }
-  removeEventListener(type, callback) { this.listeners.get(type)?.delete(callback); }
-  setAttribute(name, value) { this.attributes.set(name, value); }
-  removeAttribute(name) { this.attributes.delete(name); }
-  hasAttribute(name) { return this.attributes.has(name); }
-  emit(type, data = {}) {
-    const event = {
-      preventDefault() { this.defaultPrevented = true; },
-      stopPropagation() { this.stopped = true; },
-      defaultPrevented: false, ...data,
-    };
-    this.listeners.get(type)?.forEach(callback => callback(event));
-    return event;
-  }
-}
-
-function coordinates(value) {
-  return value ? [...value.matchAll(/(-?[\d.e+]+)px/g)].map(match => Number(match[1])) : [0, 0];
-}
-
-function makeIcon(name, sourceSize = 16) {
-  return {
-    name, sourceSize, style: {},
-    cloneNode(deep) { assert.equal(deep, true); return makeIcon(name, sourceSize); },
-  };
-}
-
-function makeUnderlay(bounds, size) {
-  const underlay = {
-    replaceChildren(...children) {
-      this.children = children;
-      children.forEach(icon => {
-        icon.getBoundingClientRect = () => {
-          const width = parseFloat(icon.style.width) || size;
-          const height = parseFloat(icon.style.height) || size;
-          const left = bounds.left + (bounds.width - width) / 2;
-          const top = bounds.top + (bounds.height - height) / 2;
-          return { left, top, width, height, right: left + width, bottom: top + height };
-        };
-      });
-    },
-  };
-  underlay.replaceChildren(makeIcon("cpu", size));
-  return underlay;
-}
-
-function fixture({ reduced = false, width = 92, animate = true, pointerEvents = true, card = false, top = 8, height = 44, candidateCount = 0, templates = true, random = Math.random, milestones = [] } = {}) {
-  const style = () => ({ removeProperty(name) { delete this[name]; } });
-  const windowRef = new Events();
-  function makeRoot({ left = 250, top = 8, width = 92, height = 44, card = false, eligible = true, hidden = false, ancestorHidden = false } = {}) {
-    const root = new Events();
-    const link = new Events();
-    const bounds = { left, top, width, height, right: left + width, bottom: top + height };
-    root.style = style();
-    root.hidden = hidden;
-    root.ancestorHidden = ancestorHidden;
-    const handle = new Events();
-    const icon = { getBoundingClientRect: () => ({ width: 18.4, height: 21.6 }) };
-    const underlay = makeUnderlay(bounds, card ? 32 : 24);
-    underlay.closest = selector => {
-      assert.equal(selector, "[hidden]");
-      return root.hidden || root.ancestorHidden ? root : null;
-    };
-    handle.querySelector = () => icon;
-    handle.contains = target => target === handle || target === icon;
-    root.getBoundingClientRect = () => ({ ...bounds });
-    root.querySelector = selector => ({
-      "[data-drag-surface]": link,
-      "[data-drag-handle]": card ? handle : null,
-      "[data-drag-surprise]": eligible ? underlay : null,
-      ".card-cpu > svg": underlay.children[0],
-    })[selector];
-    link.style = style();
-    const captures = new Set();
-    link.setPointerCapture = id => captures.add(id);
-    link.hasPointerCapture = id => captures.has(id);
-    link.releasePointerCapture = id => {
-      captures.delete(id);
-      windowRef.emit("lostpointercapture", { pointerId: id, target: link });
-    };
-    const animations = [];
-    let running;
-    if (animate) link.animate = (keyframes, options) => {
-      const animation = {
-        keyframes, options,
-        cancel() { this.cancelled = true; if (running === this) running = null; },
-      };
-      animations.push(animation);
-      running = animation;
-      return animation;
-    };
-    link.getBoundingClientRect = () => {
-      const [x, y] = running?.visual || coordinates(link.style.transform);
-      return { ...bounds, left: bounds.left + x, right: bounds.right + x, top: bounds.top + y, bottom: bounds.bottom + y };
-    };
-    const pointer = (type, x = 300, y = 30, extra = {}) => (type === "pointerdown" ? link : windowRef).emit(type, {
-      pointerId: 1, isPrimary: true, button: 0, pointerType: "mouse", clientX: x, clientY: y, target: card ? handle : link, ...extra,
-    });
-    return {
-      root, link, bounds, captures, animations, pointer, handle, icon, underlay,
-      get cpu() { return underlay.children[0]; },
-      position: () => coordinates(link.style.transform),
-      complete: () => animations.at(-1).onfinish(),
-      drag() { pointer("pointerdown"); pointer("pointermove", 200, 180); },
-    };
-  }
-  const first = makeRoot({ top, width, height, card, eligible: candidateCount > 0 });
-  const roots = [first, ...Array.from({ length: Math.max(0, candidateCount - 1) }, (_, index) =>
-    makeRoot({ left: 20, top: 60 + index * 60, width: 44, card: index > 1 }))];
-  const milestoneRoots = milestones.map(options => makeRoot({ card: true, width: 240, height: 120, ...options }));
-  roots.push(...milestoneRoots);
-  const candidates = [...roots.slice(0, candidateCount), ...milestoneRoots].map(entry => entry.underlay);
-  const documentRef = new Events();
-  documentRef.hidden = false;
-  documentRef.documentElement = { clientWidth: 390, clientHeight: 844 };
-  const template = {
-    content: { children: [makeIcon("bug"), makeIcon("squirrel")] },
-    removed: false,
-    remove() { this.removed = true; },
-  };
-  documentRef.querySelector = selector => selector === "[data-drag-icons]" && templates && !template.removed ? template : null;
-  documentRef.querySelectorAll = selector => ({
-    "[data-drag-reveal]": roots.map(entry => entry.root),
-    "[data-drag-surprise]": candidates,
-  })[selector] || [];
-  documentRef.body = new Events();
-  const observers = [];
-  windowRef.MutationObserver = class {
-    constructor(callback) { this.callback = callback; observers.push(this); }
-    observe(target, options) { this.target = target; this.options = options; }
-    disconnect() { this.disconnected = true; }
-  };
-  if (pointerEvents) windowRef.PointerEvent = function () {};
-  const motion = Object.assign(new Events(), { matches: reduced });
-  windowRef.matchMedia = () => motion;
-  const controller = initDragReveal({ documentRef, windowRef, random });
-  return {
-    ...first, motion, windowRef, documentRef, controller, observers, candidates, template, roots, milestoneRoots,
-    get cpu() { return first.cpu; },
-  };
-}
-
-function assertParked(f) {
-  assert.deepEqual(f.position(), [0, 0]);
-  assert.equal(f.root.hasAttribute("data-drag-active"), false);
-  assert.equal(f.root.hasAttribute("data-dragging"), false);
-  assert.equal(f.captures.size, 0);
-  assert.equal(f.root.style.height, undefined);
-  for (const property of ["left", "top", "width", "height"]) assert.equal(f.link.style[property], undefined);
-}
-
-function randomSequence(...values) {
-  return () => {
-    assert.ok(values.length, "unexpected additional random draw");
-    return values.shift();
-  };
-}
+const {
+  Events, fixture, assertParked, randomSequence, coordinates,
+} = require("./helpers/drag_fixture");
 
 dragTest("each eligible underlay occupies an equal interval of the random selection", () => {
   const count = 4;
@@ -597,7 +429,7 @@ function findAndLand(f, index = creatureIndex(f)) {
 const hidingPlaces = [
   ["GitHub icon", {}],
   ["repository card", { card: true, width: 360, height: 240 }],
-  ["theme switcher", { random: () => 0.5 }],
+  ["theme switcher", { themeIndex: 1, random: () => 0.5 }],
   ["milestone card", { candidateCount: 2, milestones: [{}], random: () => 0.999999 }],
 ];
 for (const [name, options] of hidingPlaces) {
@@ -890,17 +722,17 @@ dragTest("shakes stay horizontal and independent and return every eligible surfa
   eligible.forEach(item => {
     assertParked(item);
     const animation = item.animations.at(-1);
-    assert.ok(animation.options.duration >= 320 && animation.options.duration <= 440);
+    assert.ok(animation.options.duration >= 640 && animation.options.duration <= 880);
     assert.deepEqual(animation.keyframes[0], animation.keyframes.at(-1));
     assert.deepEqual(coordinates(animation.keyframes[0].transform), [0, 0]);
     animation.keyframes.forEach(frame => {
       const [x, y] = coordinates(frame.transform);
-      assert.ok(Math.abs(x) <= 3);
+      assert.ok(Math.abs(x) <= 6);
       assert.equal(y, 0, "shakes never move vertically");
       assert.doesNotMatch(frame.transform, /rotate\(/, "shakes never rock or rotate");
     });
     animation.keyframes.slice(1, -1).forEach(frame => {
-      assert.ok(Math.abs(coordinates(frame.transform)[0]) >= 0.75);
+      assert.ok(Math.abs(coordinates(frame.transform)[0]) >= 1.5);
     });
     item.complete();
     assert.equal(animation.cancelled, true);

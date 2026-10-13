@@ -10,7 +10,9 @@ const test = require("node:test");
 
 const root = path.join(__dirname, "..");
 const script = path.join(root, "scripts", "optimise_assets.mjs");
-const names = ["github_activity.js", "theme_toggle.js", "external_blog.js", "title_flight.js", "drag_reveal.js"];
+const names = ["github_activity.js", "theme_toggle.js", "external_blog.js", "title_flight.js", "drag_surface.js", "light_dark_ball.js", "drag_reveal.js"];
+const dragMarkup = '<script src="/project/assets/js/drag_surface.js" defer></script>';
+const ballMarkup = '<script src="/project/assets/js/light_dark_ball.js" defer></script>';
 const bannerMarkup = '<div data-home-section="ascii_banner" hidden><ascii-art piece="random"></ascii-art>' +
   '<script type="module" src="/project/assets/js/ascii_banner.mjs"></script></div>';
 const gameMarkup = '<div class="repo-section-heading"><h2>Notes and Projects</h2>' +
@@ -29,7 +31,7 @@ function makeBuild(t) {
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   fs.mkdirSync(path.join(directory, "assets", "js"), { recursive: true });
   fs.mkdirSync(path.join(directory, "assets", "css"));
-  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + gameMarkup + planeMarkup);
+  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + dragMarkup + ballMarkup + gameMarkup + planeMarkup);
   for (const name of names) {
     fs.writeFileSync(path.join(directory, "assets", "js", name),
       "/*! Example licence */\nwindow.example = function (value) { return value + 1; };\n");
@@ -82,7 +84,7 @@ test("optimises a build with the ASCII banner excluded", t => {
   for (const name of ["ascii_banner.mjs", "ascii-rest"]) {
     fs.rmSync(path.join(directory, "assets", "js", name), { recursive: true });
   }
-  fs.writeFileSync(path.join(directory, "index.html"), gameMarkup + planeMarkup);
+  fs.writeFileSync(path.join(directory, "index.html"), dragMarkup + ballMarkup + gameMarkup + planeMarkup);
   const result = optimise(directory);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /ASCII JavaScript catalogue: skipped/);
@@ -93,8 +95,10 @@ test("optimises a build with the ASCII banner excluded", t => {
 
 test("exercises the enabled game against its minified build", t => {
   const directory = makeBuild(t);
-  fs.copyFileSync(path.join(root, "assets", "js", "drag_reveal.js"),
-    path.join(directory, "assets", "js", "drag_reveal.js"));
+  for (const name of ["drag_surface.js", "light_dark_ball.js", "drag_reveal.js", "theme_toggle.js"]) {
+    fs.copyFileSync(path.join(root, "assets", "js", name),
+      path.join(directory, "assets", "js", name));
+  }
   const result = optimise(directory);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /drag_reveal\.js: \d+ bytes gzipped/);
@@ -104,12 +108,18 @@ test("exercises the enabled game against its minified build", t => {
   assert.match(gameTests.stdout, /milestones loaded after initialisation join both the shuffle/);
   assert.match(gameTests.stdout, /completed finds reshuffle once after each landing/);
   assert.doesNotMatch(gameTests.stdout, /# SKIP/);
+  const ballTests = testBuiltAssets(directory, "light_dark_ball.test.js");
+  assert.equal(ballTests.status, 0, ballTests.stdout + ballTests.stderr);
+  assert.match(ballTests.stdout, /mouse theme throws follow release velocity and gravity/);
+  assert.doesNotMatch(ballTests.stdout, /# SKIP/);
+  const themeTests = testBuiltAssets(directory, "theme_toggle.test.js");
+  assert.equal(themeTests.status, 0, themeTests.stdout + themeTests.stderr);
 });
 
 test("optimises a build with the game excluded and verifies its absence", t => {
   const directory = makeBuild(t);
   fs.rmSync(path.join(directory, "assets", "js", "drag_reveal.js"));
-  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + planeMarkup);
+  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + dragMarkup + ballMarkup + planeMarkup);
   const result = optimise(directory);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Find the bug game: skipped/);
@@ -120,13 +130,78 @@ test("optimises a build with the game excluded and verifies its absence", t => {
   assert.match(gameTests.stdout, /# SKIP The built homepage disables/);
 });
 
+for (const game of [false, true]) {
+  for (const ball of [false, true]) {
+    test(`minified drag features work independently: game ${game}, ball ${ball}`, t => {
+      const directory = makeBuild(t);
+      fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup +
+        (game || ball ? dragMarkup : "") + (ball ? ballMarkup : "") +
+        (game ? gameMarkup : "") + planeMarkup);
+      for (const [name, included] of [
+        ["drag_surface.js", game || ball], ["light_dark_ball.js", ball],
+        ["drag_reveal.js", game], ["theme_toggle.js", true],
+      ]) {
+        const destination = path.join(directory, "assets", "js", name);
+        if (included) fs.copyFileSync(path.join(root, "assets", "js", name), destination);
+        else fs.rmSync(destination);
+      }
+      const result = optimise(directory);
+      assert.equal(result.status, 0, result.stderr);
+      if (!ball) {
+        assert.match(result.stdout, /Light\/dark ball: skipped/);
+        assert.doesNotMatch(result.stdout, /light_dark_ball\.js: \d+ bytes/);
+      }
+      for (const suite of ["drag_features.test.js", "drag_reveal.test.js", "light_dark_ball.test.js", "theme_toggle.test.js"]) {
+        const checked = testBuiltAssets(directory, suite);
+        assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+      }
+    });
+  }
+}
+
+for (const mismatch of ["missing referenced ball asset", "leftover disabled ball asset", "non-file ball asset"]) {
+  test(`rejects a ${mismatch}`, t => {
+    const directory = makeBuild(t);
+    const asset = path.join(directory, "assets", "js", "light_dark_ball.js");
+    if (mismatch === "leftover disabled ball asset") {
+      fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + dragMarkup + gameMarkup + planeMarkup);
+    } else {
+      fs.rmSync(asset);
+      if (mismatch === "non-file ball asset") fs.mkdirSync(asset);
+    }
+    const result = optimise(directory);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Light\/dark ball asset inclusion mismatch/);
+  });
+}
+
+for (const mismatch of ["missing shared controller", "unused shared controller", "wrong script order"]) {
+  test(`rejects ${mismatch}`, t => {
+    const directory = makeBuild(t);
+    let markup;
+    if (mismatch === "missing shared controller") {
+      fs.rmSync(path.join(directory, "assets", "js", "drag_surface.js"));
+      markup = ballMarkup + gameMarkup;
+    } else if (mismatch === "unused shared controller") {
+      for (const name of ["light_dark_ball.js", "drag_reveal.js"]) {
+        fs.rmSync(path.join(directory, "assets", "js", name));
+      }
+      markup = dragMarkup;
+    } else markup = ballMarkup + dragMarkup + gameMarkup;
+    fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + markup + planeMarkup);
+    const result = optimise(directory);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Drag controller (dependency mismatch|must load before)/);
+  });
+}
+
 for (const mismatch of ["missing referenced game asset", "leftover disabled game asset"]) {
   test(`rejects a ${mismatch}`, t => {
     const directory = makeBuild(t);
     if (mismatch === "missing referenced game asset") {
       fs.rmSync(path.join(directory, "assets", "js", "drag_reveal.js"));
     } else {
-      fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + planeMarkup);
+      fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + dragMarkup + ballMarkup + planeMarkup);
     }
     const result = optimise(directory);
     assert.notEqual(result.status, 0);
@@ -143,14 +218,14 @@ test("exercises the enabled paper plane against its minified build", t => {
   assert.match(result.stdout, /title_flight\.js: \d+ bytes gzipped/);
   const planeTests = testBuiltAssets(directory, "title_flight.test.js");
   assert.equal(planeTests.status, 0, planeTests.stdout + planeTests.stderr);
-  assert.match(planeTests.stdout, /flies an eight-second loop and finishes the remaining path at twice the speed/);
+  assert.match(planeTests.stdout, /flies a four-second loop and finishes the remaining path at twice the speed/);
   assert.doesNotMatch(planeTests.stdout, /# SKIP/);
 });
 
 test("optimises a build with the paper plane excluded and verifies its absence", t => {
   const directory = makeBuild(t);
   fs.rmSync(path.join(directory, "assets", "js", "title_flight.js"));
-  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + gameMarkup);
+  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + dragMarkup + ballMarkup + gameMarkup);
   const result = optimise(directory);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Paper plane: skipped/);
@@ -166,7 +241,7 @@ for (const mismatch of ["missing referenced paper plane asset", "leftover disabl
     const directory = makeBuild(t);
     const asset = path.join(directory, "assets", "js", "title_flight.js");
     if (mismatch === "leftover disabled paper plane asset") {
-      fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + gameMarkup);
+      fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + dragMarkup + ballMarkup + gameMarkup);
     } else {
       fs.rmSync(asset);
       if (mismatch === "non-file paper plane asset") fs.mkdirSync(asset);
@@ -227,6 +302,6 @@ for (const budget of ["activity", "combined", "stylesheet", "ascii"]) {
     }
     const result = optimise(directory);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "21 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
+    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "24 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
   });
 }

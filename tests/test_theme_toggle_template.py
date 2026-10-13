@@ -38,6 +38,9 @@ class ThemeToggleTemplateTests(unittest.TestCase):
         )
         self.assertNotIn("data-drag-handle", template)
         self.assertRegex(template, r"theme_toggle\.js[^>]*defer")
+        self.assertEqual(template.count("/assets/js/drag_surface.js"), 1)
+        self.assertEqual(template.count("/assets/js/light_dark_ball.js"), 1)
+        self.assertLess(template.index("drag_surface.js"), template.index("light_dark_ball.js"))
         self.assertEqual(template.count("/assets/js/drag_reveal.js"), 1)
         self.assertRegex(template, r"drag_reveal\.js[^>]*defer")
 

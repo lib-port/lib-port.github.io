@@ -42,6 +42,9 @@ title: Library + Portfolio
 find_the_bug_game:
   switch: true
 
+light_dark_ball:
+  switch: true
+
 github_icon:
   switch: true
   link: repos # {profile|repos}

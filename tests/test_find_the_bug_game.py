@@ -28,6 +28,8 @@ class FindTheBugGameBuildTests(unittest.TestCase):
                     "_includes/home_section_error.html",
                     "_includes/sub-footer.html",
                     str(GAME_ASSET),
+                    "assets/js/drag_surface.js",
+                    "assets/js/light_dark_ball.js",
                     "assets/js/theme_toggle.js",
                 ):
                     target = source / relative

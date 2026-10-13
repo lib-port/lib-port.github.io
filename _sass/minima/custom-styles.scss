@@ -243,11 +243,8 @@ html[data-github-icon-variant="logo"]
   padding: 0;
   border: 0;
   background: transparent;
+  cursor: default;
   transform: translate(-50%, -50%);
-}
-
-.title-flight-launch:not([aria-disabled="true"]) {
-  cursor: pointer;
 }
 
 .title-flight-launch:focus-visible {

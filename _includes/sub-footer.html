@@ -14,6 +14,12 @@
   </button>
 </div>
 <script src="{{ '/assets/js/theme_toggle.js' | relative_url }}" defer></script>
+{%- if site["find_the_bug_game"].switch == true or site["light_dark_ball"].switch == true %}
+<script src="{{ '/assets/js/drag_surface.js' | relative_url }}" defer></script>
+{%- endif %}
+{%- if site["light_dark_ball"].switch == true %}
+<script src="{{ '/assets/js/light_dark_ball.js' | relative_url }}" defer></script>
+{%- endif %}
 {%- if site["find_the_bug_game"].switch == true %}
 <template data-drag-icons>
   {% octicon bug height:16 %}
