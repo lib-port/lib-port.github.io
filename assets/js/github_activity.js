@@ -575,7 +575,7 @@
     description.textContent = milestone.description;
     description.toggleAttribute("hidden", !milestone.description);
     due.textContent = milestone.dueOn
-      ? `Due by ${formatDueDate(milestone.dueOn)}`
+      ? `${formatDueDate(milestone.dueOn)}`
       : "";
     dueDetail.toggleAttribute("hidden", !milestone.dueOn);
     closedTotal.textContent = `${milestone.closedIssues}/${totalIssues}`;

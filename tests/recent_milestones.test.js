@@ -43,7 +43,7 @@ const { createRequestCoordinator } = githubActivity.shared;
 
 const OWNER = "lib-port";
 const NOW = Date.parse("2026-08-24T12:00:00Z");
-const DUE_DATE_LABEL = `Due by ${formatDueDate("2027-03-31T00:00:00Z")}`;
+const DUE_DATE_LABEL = formatDueDate("2027-03-31T00:00:00Z");
 
 class FakeStorage {
   constructor() {

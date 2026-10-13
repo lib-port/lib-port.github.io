@@ -62,9 +62,9 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn("data-recent-milestone-repo", template)
         self.assertIn("data-recent-milestone-due-detail", template)
         self.assertIn("{% octicon repo height:16 %}", template)
-        self.assertIn("{% octicon calendar height:16 %}", template)
-        self.assertIn("{% octicon tasklist height:16 %}", template)
         self.assertIn("{% octicon goal height:16 %}", template)
+        self.assertIn("{% octicon tasklist height:16 %}", template)
+        self.assertIn("{% octicon graph height:16 %}", template)
         self.assertIn("{% octicon issue-closed height:16 %}", template)
         self.assertIn("{% octicon tag height:16 %}", template)
         self.assertIn('role="progressbar"', template)
@@ -116,11 +116,11 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         repo_link = template.index("<a data-recent-milestone-repo>")
         self.assertLess(repo_icon, repo_link)
 
-        due_icon = metadata_markup.index("{% octicon calendar height:16 %}")
+        due_icon = metadata_markup.index("{% octicon goal height:16 %}")
         due = metadata_markup.index("<span data-recent-milestone-due></span>")
         closed_icon = metadata_markup.index("{% octicon tasklist height:16 %}")
         closed_total = metadata_markup.index("data-recent-milestone-closed-total")
-        percentage_icon = metadata_markup.index("{% octicon goal height:16 %}")
+        percentage_icon = metadata_markup.index("{% octicon graph height:16 %}")
         percentage = metadata_markup.index("data-recent-milestone-percentage")
         progress = template.index("data-recent-milestone-progress\n")
         latest_issue_icon = template.index("{% octicon issue-closed height:16 %}")
@@ -177,7 +177,7 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn("commit-history-context-icon", completed_markup)
         self.assertIn("commit-history-repo", completed_markup)
         self.assertLess(
-            completed_markup.index("{% octicon milestone height:16 %}"),
+            completed_markup.index("{% octicon checklist height:16 %}"),
             completed_markup.index("data-recent-completed-milestone-link"),
         )
 
