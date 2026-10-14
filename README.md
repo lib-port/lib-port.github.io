@@ -334,17 +334,24 @@ the GitHub link. Gentle releases spring back without changing the theme.
 With `light_dark_ball.switch: true`, flicks launch the circular button with the
 drag's release velocity. The simulation treats its rendered diameter as 6.7 cm:
 ordinary gravity pulls down at 1G (9.80665 m/s²), and collisions with the viewport
-edges lose energy like a tennis ball. Three real seconds after release, its
-original position becomes a point of attraction. This adds 0G at three seconds,
-1G at four seconds, 2G at five seconds, and continues growing smoothly without a
-cap. Its strength is independent of distance and adds to downward gravity. A
-ball resting directly below home therefore lifts off only after four seconds.
-Within three ball diameters of home, gradual braking allows overshoots before
-the button settles. It parks once within 1 mm of home and moving at no more than
-2 cm/s; fast crossings retain their momentum.
+edges lose energy like a tennis ball. From release, its original position
+becomes a point of attraction. This adds 0G at release, 0.25G after one second,
+0.5G after two seconds and 1G after four seconds. It continues growing smoothly
+at 0.25G per second without a cap. Its strength is independent of distance and
+adds to downward gravity. Within three ball diameters of home, gradual braking
+grows with the current attraction. Home also acts as a magnet: a returning ball
+snaps straight into place when its centre comes within one rendered ball
+diameter of home, including the boundary, regardless of speed or attraction
+strength. The radius is 44 px for the standard button and scales with its size.
+This also catches a ball returning along the viewport floor just below home,
+without waiting for the attraction to exceed downward gravity.
+Throws released inside the magnetic zone can still move outwards. Capture
+becomes active after they leave the zone, turn towards home or stop moving
+within it. Holding and dragging the button remains under the visitor's control.
 Delayed frames retain the real elapsed time for attraction, while limiting
-physics catch-up to 100 ms per frame. Catching the button starts another drag
-from its current position; another flick starts a fresh three-second deadline.
+physics catch-up to 100 ms per frame. Snapping into home resets the attraction to
+0G. Catching the button starts another drag
+from its current position; another flick restarts the attraction at 0G.
 Ordinary clicks, taps, Enter and Space still switch themes. Escape parks a
 thrown button immediately; scrolling, resizing, hiding the tab or losing focus
 cancels the motion. Reduced-motion preferences skip the throw and park on

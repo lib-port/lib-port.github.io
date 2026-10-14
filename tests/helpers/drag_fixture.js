@@ -43,7 +43,7 @@ class Events {
 }
 
 function coordinates(value) {
-  return value ? [...value.matchAll(/(-?[\d.e+]+)px/g)].map(match => Number(match[1])) : [0, 0];
+  return value ? [...value.matchAll(/(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)px/g)].map(match => Number(match[1])) : [0, 0];
 }
 
 function makeIcon(name, sourceSize = 16) {

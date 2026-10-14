@@ -3,42 +3,53 @@
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const PHYSICS_STEP = 1 / 120;
-  const RETURN_DELAY = 3;
   const GRAVITY = 9.80665;
   const DIAMETER = 0.067;
+  const MAGNET_RADIUS = DIAMETER;
   // Approximately 55% rebound height, matching a standard tennis ball.
   const RESTITUTION = 0.74;
   const FRICTION = 0.12;
   const EPSILON = 1e-10;
+  const homeAttraction = time => 0.25 * GRAVITY * Math.max(0, time);
 
   // The solver uses metres and seconds; only rendering uses CSS pixels.
   function gravity(position, time) {
     const distance = Math.hypot(...position);
-    const pull = GRAVITY * Math.max(0, time - RETURN_DELAY);
+    const pull = homeAttraction(time);
     return [
       distance ? -pull * (position[0] / distance) : 0,
       GRAVITY - (distance ? pull * (position[1] / distance) : 0),
     ];
   }
 
-  function damp(position, velocity, duration) {
+  function damp(position, velocity, duration, time) {
     const u = Math.max(0, 1 - Math.hypot(...position) / (3 * DIAMETER));
-    const factor = Math.exp(-12 * u * u * (3 - 2 * u) * duration);
+    // Two passes scale braking to the current pull and the ball's physical size.
+    const rate = Math.sqrt(homeAttraction(time) / DIAMETER);
+    const factor = Math.exp(-rate * u * u * (3 - 2 * u) * duration);
     for (let axis = 0; axis < 2; axis++) velocity[axis] *= factor;
   }
 
-  const settled = (position, velocity) => Math.hypot(...position) <= 0.001 && Math.hypot(...velocity) <= 0.02;
+  function captured(ball) {
+    const { position, velocity } = ball;
+    const distance = Math.hypot(...position);
+    if (distance > MAGNET_RADIUS) {
+      ball.captureArmed = true;
+      return false;
+    }
+    // Let outward and tangential launches depart until they turn inwards or stop.
+    const outward = Math.hypot(...velocity) > 0 &&
+      position.reduce((sum, value, axis) => sum + value * velocity[axis], 0) >= 0;
+    if (!outward) ball.captureArmed = true;
+    return ball.captureArmed;
+  }
 
-  function settledDuring(position, velocity, acceleration, nextVelocity, duration) {
-    // Check the slowest point inside the substep so a turning point can settle.
-    const change = nextVelocity.map((value, axis) => value - velocity[axis]);
-    const fraction = clamp(-velocity.reduce((sum, value, axis) => sum + value * change[axis], 0) /
+  function capturedDuring(position, nextPosition) {
+    // Sweep each movement segment so fast returns cannot skip the magnetic zone.
+    const change = nextPosition.map((value, axis) => value - position[axis]);
+    const fraction = clamp(-position.reduce((sum, value, axis) => sum + value * change[axis], 0) /
       (change.reduce((sum, value) => sum + value * value, 0) || 1), 0, 1);
-    const time = duration * fraction;
-    return settled(
-      position.map((value, axis) => value + velocity[axis] * time + acceleration[axis] * time * time / 2),
-      velocity.map((value, axis) => value + change[axis] * fraction),
-    );
+    return Math.hypot(...position.map((value, axis) => value + change[axis] * fraction)) <= MAGNET_RADIUS;
   }
 
   function collisionTime(position, velocity, acceleration, boundary, direction, duration) {
@@ -56,10 +67,10 @@
     ).map(time => Math.max(0, time)));
   }
 
-  function advanceBall({ position, velocity, limits }, time, duration) {
-    const returning = time >= RETURN_DELAY;
-    if (returning && settled(position, velocity)) return true;
-    if (returning) damp(position, velocity, duration);
+  function advanceBall(ball, time, duration) {
+    const { position, velocity, limits } = ball;
+    if (captured(ball)) return true;
+    damp(position, velocity, duration, time);
     let remaining = duration;
     // Velocity-Verlet between impacts, with symmetric drag around each substep.
     for (let impacts = 0; remaining > EPSILON && impacts < 16; impacts++) {
@@ -88,7 +99,7 @@
       const nextAcceleration = gravity(nextPosition, time + elapsed);
       if (resting && nextAcceleration[1] >= 0) nextAcceleration[1] = 0;
       const nextVelocity = velocity.map((value, axis) => value + (acceleration[axis] + nextAcceleration[axis]) * elapsed / 2);
-      if (returning && settledDuring(position, velocity, acceleration, nextVelocity, elapsed)) return true;
+      if (ball.captureArmed && capturedDuring(position, nextPosition)) return true;
       for (let axis = 0; axis < 2; axis++) {
         position[axis] = nextPosition[axis];
         velocity[axis] = nextVelocity[axis];
@@ -104,12 +115,13 @@
         }
         if (axis === 1 && side === 1 && Math.abs(velocity[1]) < 0.05 && nextAcceleration[1] >= 0) velocity[1] = 0;
       }
+      if (captured(ball)) return true;
       remaining -= elapsed;
       time += elapsed;
     }
     for (let axis = 0; axis < 2; axis++) position[axis] = clamp(position[axis], ...limits[axis]);
-    if (returning) damp(position, velocity, duration);
-    return returning && settled(position, velocity);
+    damp(position, velocity, duration, time);
+    return captured(ball);
   }
 
   function createLightDarkBall() {
@@ -158,14 +170,12 @@
           let steps = 0;
           while ((current.remaining || current.accumulator + EPSILON >= PHYSICS_STEP) && steps++ < 4096) {
             const interval = current.remaining || PHYSICS_STEP;
-            let elapsed = Math.max(0, (time - current.startedAt) / 1000 - current.accumulator);
-            if (Math.abs(elapsed - RETURN_DELAY) < EPSILON) elapsed = RETURN_DELAY;
+            const elapsed = Math.max(0, (time - current.startedAt) / 1000 - current.accumulator);
             const radius = Math.hypot(...current.position);
             // Resolve impacts and the rapidly changing direction near home.
-            const travel = elapsed >= RETURN_DELAY ? Math.min(DIAMETER / 64, Math.max(1e-6, radius / 8)) : DIAMETER / 64;
+            const travel = Math.min(DIAMETER / 64, Math.max(1e-6, radius / 8));
             const acceleration = Math.hypot(...gravity(current.position, elapsed));
-            let duration = Math.min(interval, travel / (Math.hypot(...current.velocity) + Math.sqrt(acceleration * travel)));
-            if (elapsed < RETURN_DELAY) duration = Math.min(duration, RETURN_DELAY - elapsed);
+            const duration = Math.min(interval, travel / (Math.hypot(...current.velocity) + Math.sqrt(acceleration * travel)));
             if (!Number.isFinite(duration) || duration <= EPSILON) { reset(); return; }
             if (advanceBall(current, elapsed, duration)) {
               park();
@@ -201,6 +211,7 @@
             position: position.map((value, axis) => clamp(value, ...limits[axis]) / scale),
             velocity: velocity.map(value => value / scale),
             limits: limits.map(sides => sides.map(value => value / scale)), scale,
+            captureArmed: false,
             startedAt: releaseTime, accumulator: 0, remaining: 0, previousTime: releaseTime, frame: null,
           };
           const current = flight;
