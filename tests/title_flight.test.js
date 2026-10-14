@@ -442,7 +442,7 @@ for (const observeResize of [true, false]) {
   });
 }
 
-flightTest("cleanup restores the static fallback and pages without the title are harmless", () => {
+flightTest("cleanup removes the ready state and pages without the title are harmless", () => {
   assert.equal(initTitleFlight({ documentRef: null, windowRef: null }), null);
   const f = fixture();
   f.activate();

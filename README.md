@@ -147,13 +147,32 @@ rendered size of the title icon. Cards spring back on release, with the same
 Escape and reduced-motion behaviour as the GitHub icon. Their primary and
 metadata links still support ordinary clicks, taps and keyboard activation.
 
-On each full page load, one CPU beneath the GitHub icon, a repository card or
-the theme switcher is chosen at random. Each individual underlay has an equal
-chance of being chosen: it becomes a bug 90% of the time and a squirrel 10% of
-the time. It keeps the same size and colour, and stays hidden until dragged.
-The choice lasts until the next page load, including across repeated drags and
-theme changes. All other underlays remain CPUs; Recent Tasks milestone cards
-are excluded. Without JavaScript or drag support, the CPU fallback remains.
+On each full page load, one CPU beneath the GitHub icon, a repository card,
+the theme switcher or a loaded milestone card is chosen at random. Each available
+underlay has an equal chance of being chosen: it becomes a bug 90% of the time
+and a squirrel 10% of the time. It keeps the same size and colour, and stays
+hidden until dragged.
+The choice stays fixed across repeated drags and theme changes until shuffled
+or the page reloads. All other underlays remain CPUs. Unloaded milestone cards
+stay outside the pool. Without JavaScript or drag support, the CPU fallback remains.
+
+Fully uncovering the bug or squirrel fades a Sync button into the right-hand
+side of the repository section heading. Its 1.5rem icon matches the GitHub mark.
+On its first appearance during each page visit, the icon and border use their
+hover colours for half a second. The highlight does not repeat if the control
+is hidden and shown again. It stays available for the rest of the page visit.
+Clicking it, or focusing it and pressing Enter or Space, restores
+the current creature to a CPU and chooses a different underlay with equal
+probability. Each shuffle independently chooses a bug 90% of the time or a
+squirrel 10% of the time; its new location remains hidden until dragged.
+Any moving cards or controls return to their resting positions before the
+shuffle. The repository cards, GitHub icon, theme switcher and loaded milestone
+cards each shake slightly with independent horizontal movements. Sync rotates
+clockwise by 180 degrees per click. Each click uses the currently visible cards,
+so milestone cards join the pool when they load and leave it when hidden.
+Reduced-motion preferences reveal Sync immediately and apply its final rotation
+without shaking or animation. The control requires a rendered repository section
+and at least two eligible underlays.
 
 When the switch is `false`, null or missing, all custom dragging is disabled,
 including Recent Tasks cards. Links and theme switching continue to work.
@@ -184,8 +203,9 @@ while flying or returning is ignored. Hovering back cannot restart a return;
 another explicit activation is needed after the plane has parked.
 
 The plane follows the active theme's link colour and adapts to wrapped titles.
-Reduced-motion preferences and pages without JavaScript keep it stationary and
-hide its launch control. Switching away from the browser tab suspends the animation.
+Without JavaScript, the plane and its launch control stay hidden. With JavaScript
+enabled, reduced-motion preferences keep the plane stationary and hide its launch
+control. Switching away from the browser tab suspends the animation.
 
 When the switch is `false`, null or missing, the homepage keeps its plain title.
 Jekyll excludes `assets/js/title_flight.js` from its output and omits the plane,
@@ -345,7 +365,7 @@ python3 scripts/validate_site_config.py
 JEKYLL_ENV=production ./scripts/build_site.sh
 ```
 
-The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 20 KiB for the activity, theme, blog, title animation and shared drag scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled banners exclude all ASCII assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
+The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 21 KiB for the activity, theme, blog, title animation and shared drag scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled banners exclude all ASCII assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
 
 ### Run tests
 
@@ -368,7 +388,7 @@ Validation on 1 October 2026 passed 80 Python tests and 196 JavaScript tests aga
 | Gzipped asset | Before | After | Budget |
 | --- | ---: | ---: | ---: |
 | Activity JavaScript | 18,433 bytes | 14,527 bytes | 16 KiB |
-| All client JavaScript | 22,792 bytes | 17,679 bytes | 20 KiB |
+| All client JavaScript | 22,792 bytes | 17,679 bytes | 21 KiB |
 | Stylesheet | 7,141 bytes | 6,302 bytes | 8 KiB |
 
 Local Chromium checks used eight repository fixtures, six linked pages per history and 20 ms simulated API latency. Older owner-authored commits were placed on page six, so the bounded search intentionally returned fewer commits. The following figures record one run with automatic page scrolling; timings and layout shifts are fixture measurements rather than field performance scores. Cold visits used at most four concurrent calls, while warm `localStorage` visits made no GitHub requests.

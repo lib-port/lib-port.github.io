@@ -70,7 +70,14 @@
 
   {%- assign repo_cards = repo_cards | strip -%}
   {%- if repo_cards != "" -%}
-  <h2>Notes and Projects <span class="section-heading-meta">(GitHub repos)</span></h2>
+  <div class="repo-section-heading">
+    <h2>Notes and Projects <span class="section-heading-meta">(GitHub repos)</span></h2>
+    {%- if site["find_the_bug_game"].switch == true %}
+    <button class="repo-shuffle" data-drag-shuffle type="button" aria-label="Shuffle hidden bug or squirrel" title="Shuffle hidden bug or squirrel">
+      {% octicon sync height:24 %}
+    </button>
+    {%- endif %}
+  </div>
   <ul class="repo-list">
     {{- repo_cards -}}
   </ul>

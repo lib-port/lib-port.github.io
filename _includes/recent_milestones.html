@@ -32,7 +32,7 @@
   <ul class="recent-milestones-list" data-recent-milestones-list hidden>
     {%- for item_number in (1..recent_milestones.milestones) %}
     <li class="recent-milestone-item draggable-card" data-drag-reveal data-recent-milestone-item hidden>
-      <span class="card-cpu" aria-hidden="true">{% octicon cpu height:32 %}</span>
+      <span class="card-cpu" aria-hidden="true" data-drag-surprise>{% octicon cpu height:32 %}</span>
       <div class="linked-card" data-drag-surface>
         <div class="recent-milestone-heading">
           <h3 class="recent-milestone-title">

@@ -63,7 +63,7 @@ class RepoGridTemplateTests(unittest.TestCase):
             self.assertIn('<div class="linked-card" data-drag-surface>', template)
             self.assertRegex(template, r'<span class="card-cpu" aria-hidden="true"(?: data-drag-surprise)?>\{% octicon cpu height:32 %\}</span>')
         self.assertEqual(repo_template.count("data-drag-surprise"), 1)
-        self.assertNotIn("data-drag-surprise", milestone_template)
+        self.assertEqual(milestone_template.count("data-drag-surprise"), 1)
 
         def rule(selector: str) -> str:
             start = styles.index(f"\n{selector} {{") + 1

@@ -265,7 +265,8 @@ html[data-github-icon-variant="logo"]
 
 .title-flight-plane {
   position: absolute;
-  // The stationary position also works without JavaScript.
+  // Reveal the plane only after its script initialises.
+  visibility: hidden;
   top: calc(100% - 14px);
   left: calc(85.355339% - 8.485281px);
   z-index: 2;
@@ -285,6 +286,7 @@ html[data-github-icon-variant="logo"]
 }
 
 .title-flight[data-flight-ready] > .title-flight-plane {
+  visibility: visible;
   top: 50%;
   left: 50%;
 }
@@ -352,6 +354,71 @@ html[data-github-icon-variant="logo"]
 .section-heading-meta {
   font-weight: normal;
   font-size: 0.8rem;
+}
+
+.repo-section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-block-end: $spacing-unit * 0.5;
+
+  > h2 {
+    min-width: 0;
+    margin: 0;
+  }
+
+  .section-heading-meta {
+    white-space: nowrap;
+  }
+}
+
+.repo-shuffle {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-inline-start: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--linked-card-radius);
+  background: transparent;
+  color: var(--minima-text-color);
+  visibility: hidden;
+  opacity: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: opacity 240ms ease-out;
+}
+
+.repo-shuffle.is-visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.repo-shuffle:hover,
+.repo-shuffle.is-highlighted {
+  border-color: var(--minima-link-base-color);
+  color: var(--minima-link-base-color);
+}
+
+.repo-shuffle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.repo-shuffle > .octicon {
+  width: 1.5rem;
+  height: 1.5rem;
+  transition: transform 400ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .repo-shuffle,
+  .repo-shuffle > .octicon {
+    transition: none;
+  }
 }
 
 .repo-list {

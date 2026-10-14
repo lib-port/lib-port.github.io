@@ -3,6 +3,7 @@
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const transform = ([x, y]) => `translate(${x}px, ${y}px)`;
+  const games = new WeakMap();
 
   function initDragReveal({
     documentRef = typeof document === "undefined" ? null : document,
@@ -11,22 +12,153 @@
   } = {}) {
     if (!documentRef || !windowRef?.PointerEvent) return null;
 
-    // Consuming the inert template keeps the choice fixed for this document.
+    // Retain the SVG sources and choice across controller reinitialisation.
     const templates = documentRef.querySelector("[data-drag-icons]");
-    const candidates = documentRef.querySelectorAll("[data-drag-surprise]");
-    if (templates && candidates.length) {
-      candidates[Math.floor(random() * candidates.length)].replaceChildren(
-        templates.content.children[random() < 0.1 ? 1 : 0].cloneNode(true)
-      );
+    let game = games.get(documentRef);
+    if (!game && templates) {
+      const candidates = [...documentRef.querySelectorAll("[data-drag-surprise]")];
+      const available = candidates.filter(candidate => !candidate.closest("[hidden]"));
+      if (available.length) {
+        game = {
+          candidates,
+          cpus: new Map(candidates.map(candidate => [candidate, candidate.children[0].cloneNode(true)])),
+          icons: [...templates.content.children],
+          selected: available[Math.floor(random() * available.length)],
+          discovered: false,
+          shuffleShown: false,
+          angle: 0,
+        };
+        game.selected.replaceChildren(game.icons[random() < 0.1 ? 1 : 0].cloneNode(true));
+        games.set(documentRef, game);
+      }
+    }
+    if (game && templates) {
       templates.remove();
     }
 
     const reducedMotion = windowRef.matchMedia?.("(prefers-reduced-motion: reduce)");
     const listeners = [];
+    const controllers = [];
+    const shakes = new Map();
+    const shuffleButton = documentRef.querySelector("[data-drag-shuffle]");
+    const syncIcon = shuffleButton?.querySelector("svg");
+    const canShuffle = Boolean(syncIcon && game);
+    let poolObserver;
+    let highlightTimer = null;
+
+    function availableCandidates() {
+      return game.candidates.filter(candidate => !candidate.closest("[hidden]"));
+    }
+
+    function clearShuffleHighlight() {
+      if (highlightTimer !== null) windowRef.clearTimeout(highlightTimer);
+      highlightTimer = null;
+      shuffleButton?.classList.remove("is-highlighted");
+    }
+
+    function updateShuffleButton() {
+      if (game.discovered && availableCandidates().length > 1) {
+        shuffleButton.classList.add("is-visible");
+        if (!game.shuffleShown) {
+          game.shuffleShown = true;
+          shuffleButton.classList.add("is-highlighted");
+          highlightTimer = windowRef.setTimeout(clearShuffleHighlight, 500);
+        }
+      } else {
+        shuffleButton.classList.remove("is-visible");
+        clearShuffleHighlight();
+      }
+    }
+
+    function listen(target, type, callback, options) {
+      target?.addEventListener(type, callback, options);
+      listeners.push(() => target?.removeEventListener(type, callback, options));
+    }
+
+    function stopShake(surface) {
+      const animation = shakes.get(surface);
+      if (!animation) return;
+      animation.onfinish = null;
+      animation.cancel();
+      shakes.delete(surface);
+    }
+
+    function stopShakes() {
+      for (const surface of shakes.keys()) stopShake(surface);
+    }
+
+    function stopEffects() {
+      stopShakes();
+      for (const target of [shuffleButton, syncIcon]) {
+        target?.getAnimations?.().forEach(animation => animation.finish());
+      }
+    }
+
+    function shake(surface, index) {
+      if (reducedMotion?.matches || documentRef.hidden || !surface.animate) return;
+      const neutral = { transform: transform([0, 0]) };
+      const direction = index % 2 ? -1 : 1;
+      const frames = Array.from({ length: 4 }, (_, step) => ({
+        transform: transform([
+          direction * (step % 2 ? -1 : 1) * (0.5 + random() * 1.5),
+          0,
+        ]),
+      }));
+      const animation = surface.animate([neutral, ...frames, neutral], {
+        duration: 320 + random() * 120, easing: "ease-in-out",
+      });
+      shakes.set(surface, animation);
+      animation.onfinish = () => stopShake(surface);
+    }
+
+    function discover(underlay, surface) {
+      if (!canShuffle || game.discovered || underlay !== game.selected) return;
+      const icon = underlay.children[0].getBoundingClientRect();
+      const cover = surface.getBoundingClientRect();
+      if (icon.width > 0 && icon.height > 0 && (
+        cover.right <= icon.left || cover.left >= icon.right ||
+        cover.bottom <= icon.top || cover.top >= icon.bottom
+      )) {
+        game.discovered = true;
+        // Class changes do not trip the card's hidden-state mutation observer.
+        updateShuffleButton();
+      }
+    }
+
+    if (canShuffle) {
+      syncIcon.style.transform = `rotate(${game.angle}deg)`;
+      updateShuffleButton();
+      poolObserver = windowRef.MutationObserver && new windowRef.MutationObserver(updateShuffleButton);
+      poolObserver?.observe(documentRef.body, {
+        subtree: true, attributes: true, attributeFilter: ["hidden"],
+      });
+      listen(shuffleButton, "click", event => {
+        if (event.defaultPrevented || !game.discovered) return;
+        const available = availableCandidates();
+        const alternatives = available.filter(candidate => candidate !== game.selected);
+        if (available.length < 2 || !alternatives.length) return;
+        stopShakes();
+        // Disconnect drag observers and hide every underlay before swapping SVGs.
+        controllers.forEach(controller => controller.reset());
+        game.selected.replaceChildren(game.cpus.get(game.selected).cloneNode(true));
+        const next = alternatives[Math.floor(random() * alternatives.length)];
+        game.selected = next;
+        next.replaceChildren(game.icons[random() < 0.1 ? 1 : 0].cloneNode(true));
+        game.angle += 180;
+        syncIcon.style.transform = `rotate(${game.angle}deg)`;
+        controllers.filter(controller => available.includes(controller.underlay))
+          .forEach((controller, index) => shake(controller.surface, index));
+      });
+      listen(documentRef, "visibilitychange", () => { if (documentRef.hidden) stopEffects(); });
+      for (const type of ["blur", "resize", "scroll"]) listen(windowRef, type, stopEffects);
+      listen(reducedMotion, "change", () => { if (reducedMotion.matches) stopEffects(); });
+    }
+
     const cleanups = [...documentRef.querySelectorAll("[data-drag-reveal]")].map(root => {
       const surface = root.querySelector("[data-drag-surface]");
       if (!surface?.setPointerCapture) return () => {};
       const handle = root.querySelector("[data-drag-handle]");
+      const underlay = root.querySelector("[data-drag-surprise]");
       let pointer = null;
       let animation = null;
       let observer;
@@ -87,15 +219,11 @@
         }
       }
 
-      function listen(target, type, callback, options) {
-        target?.addEventListener(type, callback, options);
-        listeners.push(() => target?.removeEventListener(type, callback, options));
-      }
-
       listen(surface, "pointerdown", event => {
         if (pointer || !event.isPrimary || event.button !== 0) return;
         suppressClick = false;
         if (handle && event.pointerType === "touch" && !handle.contains(event.target)) return;
+        stopShake(surface);
         bounds = root.getBoundingClientRect();
         const current = surface.getBoundingClientRect();
         position = [current.left - bounds.left, current.top - bounds.top];
@@ -143,6 +271,7 @@
         if (!pointer.dragged && !capture()) return;
         position = constrain([pointer.start[0] + dx, pointer.start[1] + dy]);
         surface.style.transform = transform(position);
+        discover(underlay, surface);
         event.preventDefault();
       });
 
@@ -171,6 +300,7 @@
       for (const type of ["blur", "resize", "scroll"]) listen(windowRef, type, reset);
       listen(reducedMotion, "change", () => { if (reducedMotion.matches && animation) park(); });
       root.setAttribute("data-drag-ready", "");
+      controllers.push({ surface, underlay, reset });
 
       return () => {
         reset();
@@ -182,6 +312,10 @@
       destroy() {
         cleanups.forEach(cleanup => cleanup());
         listeners.forEach(remove => remove());
+        poolObserver?.disconnect();
+        shuffleButton?.classList.remove("is-visible");
+        clearShuffleHighlight();
+        stopEffects();
       },
     };
   }

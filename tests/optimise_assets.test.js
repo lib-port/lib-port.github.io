@@ -13,7 +13,9 @@ const script = path.join(root, "scripts", "optimise_assets.mjs");
 const names = ["github_activity.js", "theme_toggle.js", "external_blog.js", "title_flight.js", "drag_reveal.js"];
 const bannerMarkup = '<div data-home-section="ascii_banner" hidden><ascii-art piece="random"></ascii-art>' +
   '<script type="module" src="/project/assets/js/ascii_banner.mjs"></script></div>';
-const gameMarkup = '<template data-drag-icons></template>' +
+const gameMarkup = '<div class="repo-section-heading"><h2>Notes and Projects</h2>' +
+  '<button class="repo-shuffle" data-drag-shuffle type="button"></button></div>' +
+  '<template data-drag-icons></template>' +
   '<script src="/project/assets/js/drag_reveal.js" defer></script>';
 const planeMarkup = '<span data-title-flight><span data-title-flight-plane></span>' +
   '<button data-title-flight-launch></button></span>' +
@@ -99,6 +101,8 @@ test("exercises the enabled game against its minified build", t => {
   const gameTests = testBuiltAssets(directory, "drag_reveal.test.js");
   assert.equal(gameTests.status, 0, gameTests.stdout + gameTests.stderr);
   assert.match(gameTests.stdout, /each eligible underlay occupies an equal interval/);
+  assert.match(gameTests.stdout, /milestones loaded after initialisation join both the shuffle/);
+  assert.match(gameTests.stdout, /rapid keyboard activations each shuffle/);
   assert.doesNotMatch(gameTests.stdout, /# SKIP/);
 });
 
@@ -223,6 +227,6 @@ for (const budget of ["activity", "combined", "stylesheet", "ascii"]) {
     }
     const result = optimise(directory);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "20 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
+    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "21 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
   });
 }

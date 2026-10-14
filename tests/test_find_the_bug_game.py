@@ -23,6 +23,9 @@ class FindTheBugGameBuildTests(unittest.TestCase):
                 destination = Path(directory) / "site"
                 for relative in (
                     "_plugins/find_the_bug_game_assets.rb",
+                    "_includes/repo_grid.html",
+                    "_includes/recent_milestones.html",
+                    "_includes/home_section_error.html",
                     "_includes/sub-footer.html",
                     str(GAME_ASSET),
                     "assets/js/theme_toggle.js",
@@ -31,27 +34,39 @@ class FindTheBugGameBuildTests(unittest.TestCase):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(ROOT / relative, target)
                 (source / "index.html").write_text(
-                    "---\n---\n{% include sub-footer.html %}", encoding="utf-8"
+                    "---\n---\n{% include repo_grid.html %}\n"
+                    "{% include recent_milestones.html %}\n{% include sub-footer.html %}",
+                    encoding="utf-8",
                 )
                 (source / "ignored.txt").write_text("Existing exclusion", encoding="utf-8")
                 original_asset = (source / GAME_ASSET).read_bytes()
                 states = (
-                    ({"find_the_bug_game": {"switch": True}}, True),
-                    ({"find_the_bug_game": {"switch": False}}, False),
-                    ({}, False),
-                    ({"find_the_bug_game": {}}, False),
-                    ({"find_the_bug_game": None}, False),
-                    ({"find_the_bug_game": {"switch": None}}, False),
-                    ({"find_the_bug_game": {"switch": "true"}}, False),
-                    ({"find_the_bug_game": {"switch": True}}, True),
+                    ({"find_the_bug_game": {"switch": True}}, True, True),
+                    ({"find_the_bug_game": {"switch": False}}, False, True),
+                    ({}, False, True),
+                    ({"find_the_bug_game": {}}, False, True),
+                    ({"find_the_bug_game": None}, False, True),
+                    ({"find_the_bug_game": {"switch": None}}, False, True),
+                    ({"find_the_bug_game": {"switch": "true"}}, False, True),
+                    ({"find_the_bug_game": {"switch": True}, "repo_grid": {"switch": False}}, True, False),
+                    ({"find_the_bug_game": {"switch": True}, "repo_grid": {"switch": True, "repo_list": ["missing"]}}, True, False),
+                    ({"find_the_bug_game": {"switch": True}, "github": {"public_repositories": []}}, True, False),
+                    ({"find_the_bug_game": {"switch": True}}, True, True),
                 )
-                for settings, enabled in states:
+                for settings, enabled, show_repos in states:
                     with self.subTest(settings=settings):
                         config_path = source / "_config.yml"
                         config_path.write_text(json.dumps({
                             "plugins": ["jekyll-octicons"],
                             "baseurl": "/project",
                             "exclude": ["ignored.txt"],
+                            "repo_grid": {"switch": True, "repo_list": ["example"]},
+                            "recent_milestones": {"switch": True, "milestones": 2},
+                            "github": {"public_repositories": [{
+                                "name": "example", "owner": {"login": "example"},
+                                "html_url": "https://github.com/example/example",
+                                "description": "Example repository", "default_branch": "main",
+                            }]},
                             **settings,
                         }), encoding="utf-8")
                         result = subprocess.run(
@@ -71,6 +86,14 @@ class FindTheBugGameBuildTests(unittest.TestCase):
                         self.assertEqual("<template data-drag-icons>" in html, enabled)
                         self.assertEqual("octicon-bug" in html, enabled)
                         self.assertEqual("octicon-squirrel" in html, enabled)
+                        self.assertEqual("data-drag-shuffle" in html, enabled and show_repos)
+                        self.assertEqual("octicon-sync" in html, enabled and show_repos)
+                        self.assertEqual('class="repo-section-heading"' in html, show_repos)
+                        if enabled and show_repos:
+                            self.assertIn('aria-label="Shuffle hidden bug or squirrel"', html)
+                            self.assertNotIn('class="repo-shuffle is-visible"', html)
+                        self.assertEqual(html.count('class="recent-milestone-item draggable-card"'), 2)
+                        self.assertEqual(html.count('class="card-cpu" aria-hidden="true" data-drag-surprise>'), 2 + int(show_repos))
                         self.assertTrue((destination / "assets/js/theme_toggle.js").is_file())
                         self.assertIn('src="/project/assets/js/theme_toggle.js" defer', html)
                         self.assertIn("data-theme-toggle", html)
