@@ -24,7 +24,7 @@ if (homepage !== null) {
 }
 
 const {
-  Events, fixture, assertParked, randomSequence, coordinates,
+  Events, fixture, assertParked, finishShakes, randomSequence, coordinates,
 } = require("./helpers/drag_fixture");
 
 dragTest("each eligible underlay occupies an equal interval of the random selection", () => {
@@ -434,7 +434,7 @@ const hidingPlaces = [
 ];
 for (const [name, options] of hidingPlaces) {
   for (const pointerType of ["mouse", "pen", "touch"]) {
-    dragTest(`${pointerType} find beneath the ${name} reshuffles only after release and landing`, () => {
+    dragTest(`${pointerType} find beneath the ${name} reshuffles only after release, landing and shaking`, () => {
       const f = gameFixture(options);
       const selected = creatureIndex(f);
       const item = f.roots[selected];
@@ -448,6 +448,8 @@ for (const [name, options] of hidingPlaces) {
       const spring = item.animations.at(-1);
       assert.equal(spring.options.duration, 400);
       spring.onfinish();
+      assert.equal(f.candidates[selected].children[0], creature, "landing starts feedback without replacing the creature");
+      finishShakes(f);
       assert.notEqual(creatureIndex(f), selected);
       assert.equal(item.cpu.name, "cpu");
       assert.equal(item.cpu.sourceSize, item.root.querySelector("[data-drag-handle]") ? 32 : 24);
@@ -475,6 +477,7 @@ for (const [dx, dy] of [[34, 0], [-34, 0], [0, 34], [0, -34]]) {
     assert.equal(f.cpu, selected);
     f.pointer("pointerup");
     f.complete();
+    finishShakes(f);
     assert.notEqual(creatureIndex(f), 0, "touching rectangle edges counts as fully uncovered");
     f.controller.destroy();
   });
@@ -494,6 +497,7 @@ for (const pointerType of ["mouse", "pen", "touch"]) {
     assert.equal(f.captures.size, 1);
     assert.notEqual(f.observers.at(-1).disconnected, true);
     f.pointer("pointerup"); f.complete();
+    finishShakes(f);
     assert.notEqual(creatureIndex(f), 0);
     assert.equal(f.observers.at(-1).disconnected, true, "observers disconnect before SVG replacement");
     f.controller.destroy();
@@ -509,7 +513,9 @@ for (const options of [{}, { reduced: true }, { animate: false }]) {
     assert.equal(f.cpu, selected, "moving back to the origin while held does not reshuffle");
     assert.equal(f.captures.size, 1);
     f.pointer("pointerup");
-    assert.notEqual(creatureIndex(f), 0, "release at the origin completes the find immediately");
+    if (!options.reduced && options.animate !== false) assert.equal(f.cpu, selected, "release at the origin still waits for shaking");
+    finishShakes(f);
+    assert.notEqual(creatureIndex(f), 0, "release at the origin completes the find after feedback");
     f.roots.forEach(assertParked);
     f.controller.destroy();
   });
@@ -590,6 +596,7 @@ dragTest("re-grabbing a found item's spring waits for the next release and landi
   f.pointer("pointerup", 220, 80);
   assert.equal(f.cpu, selected);
   f.complete();
+  finishShakes(f);
   assert.notEqual(creatureIndex(f), 0, "the original find survives re-grabbing");
   f.roots.forEach(assertParked);
   f.controller.destroy();
@@ -609,6 +616,8 @@ dragTest("reshuffling waits for other drags and returns without interrupting the
   other.pointer("pointerup", 60, 90, { pointerId: 2 });
   assert.equal(f.cpu, selected, "another returning item still defers the shuffle");
   other.complete();
+  assert.equal(f.cpu, selected, "all items landing starts shaking before replacement");
+  finishShakes(f);
   assert.notEqual(creatureIndex(f), 0);
   f.roots.forEach(assertParked);
   f.controller.destroy();
@@ -641,6 +650,7 @@ dragTest("a queued find can be re-grabbed while another item is moving", () => {
   other.pointer("pointerup", 60, 90, { pointerId: 2 }); other.complete();
   assert.equal(f.cpu, selected);
   f.pointer("pointerup", 300, 30, { pointerId: 3 });
+  finishShakes(f);
   assert.notEqual(creatureIndex(f), 0);
   f.controller.destroy();
 });
@@ -673,11 +683,15 @@ dragTest("loaded milestones participate in the initial pool while hidden cards a
 });
 
 dragTest("milestones loaded after initialisation join both the shuffle and independent shake pool", () => {
+  const rolls = [0, 0.5];
   const f = gameFixture({ candidateCount: 2, milestones: [{ hidden: true }, { hidden: true }, { ancestorHidden: true }],
-    random: randomPrefix(0, 0.5, 0.999999, 0.05) });
+    random: () => rolls.length ? rolls.shift() : 0.5 });
   f.drag();
   f.milestoneRoots[0].root.hidden = false;
   f.pointer("pointerup"); f.complete();
+  assert.equal(creatureIndex(f), 0, "newly loaded milestones shake before the next creature is set");
+  rolls.push(0.999999, 0.05);
+  finishShakes(f);
   assert.equal(creatureIndex(f), 2);
   assert.equal(f.milestoneRoots[0].cpu.name, "squirrel");
   assert.equal(f.milestoneRoots[0].animations.length, 1);
@@ -715,7 +729,6 @@ dragTest("one candidate stays put until another hiding place loads and a fresh f
 dragTest("shakes stay horizontal and independent and return every eligible surface to rest", () => {
   const f = gameFixture({ card: true, milestones: [{}, { hidden: true }] });
   findAndLand(f);
-  assert.equal(f.cpu.sourceSize, 32, "restoring a card CPU preserves its source size");
   const eligible = f.roots.filter(item => !item.root.hidden);
   const keyframes = eligible.map(item => item.animations.at(-1).keyframes);
   assert.notDeepEqual(keyframes[0], keyframes[1], "even identical random draws produce separate movements");
@@ -738,24 +751,158 @@ dragTest("shakes stay horizontal and independent and return every eligible surfa
     assert.equal(animation.cancelled, true);
     assertParked(item);
   });
+  assert.equal(f.cpu.sourceSize, 32, "restoring a card CPU preserves its source size");
   assert.equal(f.milestoneRoots[1].animations.length, 0);
   f.controller.destroy();
 });
 
-dragTest("completed finds reshuffle once after each landing and replace running feedback", () => {
+dragTest("completed finds reshuffle once after each shake sequence", () => {
   const f = gameFixture();
   f.drag(); f.pointer("pointerup");
   const land = f.animations[0].onfinish;
   land();
   const previous = creatureIndex(f);
   const firstShakes = f.roots.map(item => item.animations.at(-1));
+  const staleFinishes = firstShakes.map(animation => animation.onfinish);
   land();
   assert.equal(creatureIndex(f), previous, "a repeated landing callback cannot reshuffle again");
   assert.deepEqual(f.roots.map(item => item.animations.at(-1)), firstShakes);
-  findAndLand(f);
+  finishShakes(f);
   assert.notEqual(creatureIndex(f), previous);
   firstShakes.forEach(animation => assert.equal(animation.cancelled, true));
+  const next = creatureIndex(f);
+  findAndLand(f);
+  const nextShakes = f.roots.map(item => item.animations.at(-1));
+  staleFinishes.forEach(finish => finish());
+  assert.equal(creatureIndex(f), next, "a fresh find waits for its own feedback");
+  nextShakes.forEach(animation => assert.notEqual(animation.cancelled, true, "old callbacks cannot cancel new shakes"));
+  finishShakes(f);
+  assert.notEqual(creatureIndex(f), next);
   f.roots.forEach(assertParked);
+  f.controller.destroy();
+});
+
+for (const order of [[0, 1, 2], [2, 0, 1]]) {
+  for (const [initialRoll, nextRoll, expected] of [[0.05, 0.9, "bug"], [0.9, 0.05, "squirrel"]]) {
+    dragTest(`${expected} replacement waits for the last shake in order ${order}`, () => {
+      const rolls = [0, initialRoll];
+      let shakeRoll = 0;
+      const f = gameFixture({ random: () => rolls.length ? rolls.shift() : (shakeRoll++ % 9) / 10 });
+      const original = f.candidates.map(candidate => candidate.children[0]);
+      findAndLand(f);
+      const feedback = f.roots.map(item => item.animations.at(-1));
+      assert.equal(new Set(feedback.map(animation => animation.options.duration)).size, 3);
+      rolls.push(0.999999, nextRoll);
+      for (const index of order.slice(0, -1)) {
+        feedback[index].onfinish();
+        assert.deepEqual(f.candidates.map(candidate => candidate.children[0]), original, "no underlay changes during feedback");
+        assert.equal(rolls.length, 2, "selection randomness is drawn only after feedback");
+      }
+      feedback[order.at(-1)].onfinish();
+      assert.equal(rolls.length, 0);
+      assert.equal(creatureIndex(f), 2);
+      assert.equal(f.roots[2].cpu.name, expected);
+      assert.equal(f.cpu.name, "cpu");
+      f.controller.destroy();
+    });
+  }
+}
+
+for (const index of [0, 1]) {
+  for (const timing of ["last shake cancelled", "return before other shakes", "other shakes finish while held"]) {
+    dragTest(`dragging hiding place ${index} during feedback waits until settled: ${timing}`, () => {
+      const f = gameFixture();
+      const selected = f.cpu;
+      findAndLand(f);
+      const feedback = f.roots.map(item => item.animations.at(-1));
+      if (timing === "last shake cancelled") {
+        feedback.forEach((animation, current) => { if (current !== index) animation.onfinish(); });
+      }
+      const target = f.roots[index];
+      target.pointer("pointerdown");
+      assert.equal(feedback[index].cancelled, true);
+      assert.equal(f.cpu, selected, "cancelling the last shake in beforeStart cannot replace the creature");
+      target.pointer("pointermove", 200, 180);
+      if (timing === "other shakes finish while held") {
+        finishShakes(f);
+        assert.equal(f.cpu, selected, "finishing every shake still waits for a held item");
+      }
+      target.pointer("pointerup");
+      assert.equal(f.cpu, selected, "replacement still waits for the returning item");
+      target.complete();
+      if (timing === "return before other shakes") {
+        assert.equal(f.cpu, selected, "landing during feedback does not start another shake sequence");
+        assert.deepEqual(f.roots.map(item => item.animations.filter(animation => animation.options.fill !== "forwards").length), [1, 1, 1]);
+        finishShakes(f);
+      }
+      assert.notEqual(creatureIndex(f), 0);
+      f.roots.forEach(assertParked);
+      f.controller.destroy();
+    });
+  }
+}
+
+for (const type of ["pointercancel", "lostpointercapture", "layout", "hidden"]) {
+  dragTest(`${type} on the creature's hiding place discards replacement during feedback`, () => {
+    const f = gameFixture({ card: true });
+    const selected = f.cpu;
+    findAndLand(f);
+    const feedback = f.roots.map(item => item.animations.at(-1));
+    const staleFinishes = feedback.map(animation => animation.onfinish);
+    f.drag();
+    if (type === "layout" || type === "hidden") {
+      if (type === "hidden") f.root.hidden = true;
+      f.observers.at(-1).callback();
+    } else {
+      f.pointer(type, 300, 30, { target: f.link });
+      f.complete();
+    }
+    staleFinishes.forEach(finish => finish());
+    assert.equal(f.cpu, selected);
+    feedback.forEach(animation => assert.equal(animation.cancelled, true));
+    f.roots.forEach(assertParked);
+    f.controller.destroy();
+  });
+}
+
+dragTest("milestones that load or hide during shaking update the final selection pool", () => {
+  const rolls = [0, 0.5];
+  const f = gameFixture({ candidateCount: 1, milestones: [{}, { hidden: true }],
+    random: () => rolls.length ? rolls.shift() : 0.5 });
+  findAndLand(f);
+  f.milestoneRoots[0].root.hidden = true;
+  f.milestoneRoots[1].root.hidden = false;
+  rolls.push(0, 0.05);
+  finishShakes(f);
+  assert.equal(creatureIndex(f), 2);
+  assert.equal(f.milestoneRoots[1].cpu.name, "squirrel");
+  assert.equal(f.milestoneRoots[1].animations.length, 0, "a milestone loaded during feedback joins selection without restarting shakes");
+  f.controller.destroy();
+});
+
+for (const hiddenIndex of [0, 1]) {
+  dragTest(`hiding ${hiddenIndex === 0 ? "the creature" : "the only alternative"} during feedback retains the existing creature`, () => {
+    const f = gameFixture({ candidateCount: 2 });
+    const selected = f.cpu;
+    findAndLand(f);
+    f.roots[hiddenIndex].root.hidden = true;
+    finishShakes(f);
+    assert.equal(f.cpu, selected);
+    assert.equal(creatureIndex(f), 0);
+    f.controller.destroy();
+  });
+}
+
+dragTest("surfaces without animation support do not delay the remaining shakes", () => {
+  const f = gameFixture();
+  const selected = f.cpu;
+  f.roots[1].link.animate = undefined;
+  findAndLand(f);
+  assert.equal(f.roots[1].animations.length, 0);
+  f.complete();
+  assert.equal(f.cpu, selected, "one animated surface is still shaking");
+  f.roots[2].complete();
+  assert.notEqual(creatureIndex(f), 0);
   f.controller.destroy();
 });
 
@@ -774,27 +921,52 @@ dragTest("starting a drag cancels only that surface's shake before measuring its
   f.controller.destroy();
 });
 
-for (const type of ["blur", "resize", "scroll", "visibilitychange", "reduced motion", "destroy"]) {
+for (const type of ["blur", "resize", "scroll", "visibilitychange", "Escape", "destroy"]) {
   dragTest(`${type} clears running automatic shuffle feedback`, () => {
     const f = gameFixture();
     findAndLand(f);
     const feedback = f.roots.map(item => item.animations.at(-1));
+    const staleFinishes = feedback.map(animation => animation.onfinish);
     const selected = creatureIndex(f);
     if (type === "visibilitychange") {
       f.documentRef.hidden = true;
       f.documentRef.emit(type);
-    } else if (type === "reduced motion") {
-      f.motion.matches = true;
-      f.motion.emit("change");
-    } else if (type === "destroy") f.controller.destroy();
+    } else if (type === "Escape") f.documentRef.emit("keydown", { key: "Escape" });
+    else if (type === "destroy") f.controller.destroy();
     else f.windowRef.emit(type);
     feedback.forEach(animation => assert.equal(animation.cancelled, true));
+    staleFinishes.forEach(finish => finish());
     assert.equal(creatureIndex(f), selected);
     f.roots.forEach(assertParked);
     if (type !== "destroy") f.controller.destroy();
     for (const target of [f.windowRef, f.documentRef, f.motion, ...f.roots.map(item => item.link)]) {
       assert.ok([...target.listeners.values()].every(callbacks => callbacks.size === 0));
     }
+  });
+}
+
+for (const held of [false, true]) {
+  dragTest(`enabling reduced motion during feedback finishes replacement when items are at rest: held=${held}`, () => {
+    const f = gameFixture();
+    const selected = f.cpu;
+    findAndLand(f);
+    const feedback = f.roots.map(item => item.animations.at(-1));
+    const staleFinishes = feedback.map(animation => animation.onfinish);
+    const other = f.roots[1];
+    if (held) other.drag();
+    f.motion.matches = true;
+    f.motion.emit("change");
+    feedback.forEach(animation => assert.equal(animation.cancelled, true));
+    if (held) {
+      assert.equal(f.cpu, selected, "reduced motion does not replace a creature while an item is held");
+      other.pointer("pointerup");
+    }
+    assert.notEqual(creatureIndex(f), 0);
+    const replacement = f.candidates.map(candidate => candidate.children[0]);
+    staleFinishes.forEach(finish => finish());
+    assert.deepEqual(f.candidates.map(candidate => candidate.children[0]), replacement);
+    f.roots.forEach(assertParked);
+    f.controller.destroy();
   });
 }
 
@@ -811,23 +983,27 @@ dragTest("enabling reduced motion completes a released find immediately without 
   f.controller.destroy();
 });
 
-dragTest("reinitialisation preserves the creature but discards an unfinished discovery", () => {
-  const f = gameFixture({ random: randomSequence(0, 0.5) });
-  const selected = f.cpu;
-  f.drag(); f.pointer("pointerup");
-  f.controller.destroy();
-  const next = initDragReveal({ ...f, random: () => assert.fail("reinitialisation must not reroll") });
-  assert.equal(f.cpu, selected);
-  f.pointer("pointerdown", 300, 30);
-  f.pointer("pointermove", 306, 30);
-  f.pointer("pointerup"); f.complete();
-  assert.equal(f.cpu, selected, "a partial reveal after reinitialisation cannot reuse the old find");
-  next.destroy();
-});
+for (const stage of ["returning", "shaking"]) {
+  dragTest(`reinitialisation preserves the creature but discards a discovery while ${stage}`, () => {
+    const f = gameFixture();
+    const selected = f.cpu;
+    f.drag(); f.pointer("pointerup");
+    if (stage === "shaking") f.complete();
+    f.controller.destroy();
+    const next = initDragReveal({ ...f, random: () => assert.fail("reinitialisation must not reroll") });
+    assert.equal(f.cpu, selected);
+    f.pointer("pointerdown", 300, 30);
+    f.pointer("pointermove", 306, 30);
+    f.pointer("pointerup"); f.complete();
+    assert.equal(f.cpu, selected, "a partial reveal after reinitialisation cannot reuse the old find");
+    next.destroy();
+  });
+}
 
 dragTest("reinitialisation preserves the newly hidden creature after an automatic shuffle", () => {
   const f = gameFixture();
   findAndLand(f);
+  finishShakes(f);
   const selected = creatureIndex(f);
   const icon = f.candidates[selected].children[0];
   f.controller.destroy();

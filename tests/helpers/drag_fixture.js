@@ -201,6 +201,13 @@ function assertParked(f) {
   for (const property of ["left", "top", "width", "height"]) assert.equal(f.link.style[property], undefined);
 }
 
+function finishShakes(f) {
+  for (const item of f.roots) {
+    const animation = item.animations.at(-1);
+    if (animation && !animation.cancelled && animation.options.fill !== "forwards") animation.onfinish?.();
+  }
+}
+
 function randomSequence(...values) {
   return () => {
     assert.ok(values.length, "unexpected additional random draw");
@@ -238,6 +245,6 @@ function close(actual, expected, tolerance = 1e-6) {
 }
 
 module.exports = {
-  Events, fixture, assertParked, randomSequence, themeFixture, flick, advance, close,
+  Events, fixture, assertParked, finishShakes, randomSequence, themeFixture, flick, advance, close,
   coordinates, gameEnabled, ballEnabled, homepage, assetPath,
 };

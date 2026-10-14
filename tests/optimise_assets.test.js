@@ -106,7 +106,7 @@ test("exercises the enabled game against its minified build", t => {
   assert.equal(gameTests.status, 0, gameTests.stdout + gameTests.stderr);
   assert.match(gameTests.stdout, /each eligible underlay occupies an equal interval/);
   assert.match(gameTests.stdout, /milestones loaded after initialisation join both the shuffle/);
-  assert.match(gameTests.stdout, /completed finds reshuffle once after each landing/);
+  assert.match(gameTests.stdout, /completed finds reshuffle once after each shake sequence/);
   assert.doesNotMatch(gameTests.stdout, /# SKIP/);
   const ballTests = testBuiltAssets(directory, "light_dark_ball.test.js");
   assert.equal(ballTests.status, 0, ballTests.stdout + ballTests.stderr);

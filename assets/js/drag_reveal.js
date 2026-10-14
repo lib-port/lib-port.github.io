@@ -65,7 +65,11 @@
           duration: 640 + random() * 240, easing: "ease-in-out",
         });
         shakes.set(surface, animation);
-        animation.onfinish = () => stopShake(surface);
+        animation.onfinish = () => {
+          if (shakes.get(surface) !== animation) return;
+          stopShake(surface);
+          finishShuffle();
+        };
       }
 
       function discover(underlay, surface) {
@@ -78,28 +82,44 @@
         );
       }
 
-      function shuffleAfterLanding() {
-        if (destroyed || !game || !pendingShuffle || documentRef.hidden || controllers.some(controller => controller.isBusy())) return;
-        const previous = pendingShuffle;
-        // Consume the completed find before changing SVGs or starting feedback.
+      function finishShuffle() {
+        if (destroyed || !game || !pendingShuffle?.shaking || shakes.size || documentRef.hidden || controllers.some(controller => controller.isBusy())) return;
+        const previous = pendingShuffle.underlay;
+        // Consume the completed feedback before changing SVGs.
         pendingShuffle = null;
         if (previous !== game.selected || previous.closest("[hidden]")) return;
-        const available = availableCandidates();
-        const alternatives = available.filter(candidate => candidate !== previous);
+        const alternatives = availableCandidates().filter(candidate => candidate !== previous);
         if (!alternatives.length) return;
-        stopShakes();
         previous.replaceChildren(game.cpus.get(previous).cloneNode(true));
         game.selected = alternatives[Math.floor(random() * alternatives.length)];
         game.selected.replaceChildren(game.icons[random() < 0.1 ? 1 : 0].cloneNode(true));
+      }
+
+      function shuffleAfterLanding() {
+        if (destroyed || !game || !pendingShuffle || documentRef.hidden || controllers.some(controller => controller.isBusy())) return;
+        if (pendingShuffle.shaking) { finishShuffle(); return; }
+        const previous = pendingShuffle.underlay;
+        const available = availableCandidates();
+        if (previous !== game.selected || !available.includes(previous) || !available.some(candidate => candidate !== previous)) {
+          stopEffects();
+          return;
+        }
+        pendingShuffle.shaking = true;
         controllers.filter(controller => available.includes(controller.underlay))
           .forEach((controller, index) => shake(controller.surface, index));
+        finishShuffle();
       }
 
       if (game) {
         listen(documentRef, "visibilitychange", () => { if (documentRef.hidden) stopEffects(); });
         for (const type of ["blur", "resize", "scroll"]) listen(windowRef, type, stopEffects);
-        listen(reducedMotion, "change", () => { if (reducedMotion.matches) stopShakes(); });
-        listen(documentRef, "keydown", event => { if (event.key === "Escape") pendingShuffle = null; });
+        listen(reducedMotion, "change", () => {
+          if (reducedMotion.matches) {
+            stopShakes();
+            shuffleAfterLanding();
+          }
+        });
+        listen(documentRef, "keydown", event => { if (event.key === "Escape") stopEffects(); });
       }
 
       return {
@@ -108,25 +128,25 @@
           let released = false;
           return {
             beforeStart() {
-              if (pendingShuffle === underlay) {
+              if (pendingShuffle?.underlay === underlay && !pendingShuffle.shaking) {
                 found = true;
                 pendingShuffle = null;
               }
               released = false;
               stopShake(surface);
             },
-            onMove() { found ||= discover(underlay, surface); },
+            onMove() { if (!pendingShuffle?.shaking) found ||= discover(underlay, surface); },
             onRelease() { released = true; },
             onCancel() {
               found = false;
               released = false;
-              if (pendingShuffle === underlay) pendingShuffle = null;
+              if (pendingShuffle?.underlay === underlay) stopEffects();
             },
             onPark() {
               const completedFind = found && released && underlay === game?.selected;
               found = false;
               released = false;
-              if (completedFind) pendingShuffle = underlay;
+              if (completedFind && !pendingShuffle) pendingShuffle = { underlay, shaking: false };
               shuffleAfterLanding();
             },
           };

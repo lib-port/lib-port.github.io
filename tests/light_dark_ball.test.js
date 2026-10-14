@@ -6,7 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { clientAssetPath } = require("./client_assets");
 const {
-  Events, fixture, themeFixture, flick, advance, close, assertParked,
+  Events, fixture, themeFixture, flick, advance, close, assertParked, finishShakes,
   gameEnabled, ballEnabled, homepage, assetPath,
 } = require("./helpers/drag_fixture");
 const ballTest = (name, callback) => test(name, {
@@ -702,7 +702,7 @@ ballTest("theme flight uses visual viewport offsets and stays inside its visible
   f.controller.destroy();
 });
 
-ballGameTest("a thrown theme discovery reshuffles only after docking and waits for other moving surfaces", () => {
+ballGameTest("a thrown theme discovery reshuffles after docking, other surfaces landing and shaking", () => {
   const f = themeFixture({ candidateCount: 3, random: randomPrefix(0, 0.5) });
   const selected = f.cpu;
   flick(f);
@@ -714,6 +714,8 @@ ballGameTest("a thrown theme discovery reshuffles only after docking and waits f
   assert.equal(f.frames.size, 0);
   assert.equal(f.cpu, selected, "another held item delays the shuffle after docking");
   other.pointer("pointerup"); other.complete();
+  assert.equal(f.cpu, selected, "docking and landing start feedback before replacement");
+  finishShakes(f);
   assert.notEqual(f.cpu, selected);
   assert.notEqual(f.candidates.findIndex(candidate => candidate.children[0].name !== "cpu"), 0);
   f.roots.forEach(assertParked);

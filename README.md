@@ -162,8 +162,9 @@ stay outside the pool. Without JavaScript or drag support, the CPU fallback rema
 
 Fully uncover the bug or squirrel, release the item covering it, and let that
 item finish landing in its original position. The creature stays in place while
-the item is held or returning. Once it lands, the game automatically restores
-the old CPU and chooses a different available underlay with equal probability.
+the item is held, returning or shaking. Once every shake finishes and all items
+are at rest, the game automatically restores the old CPU and chooses a different
+available underlay with equal probability.
 Each shuffle independently chooses a bug 90% of the time or a squirrel 10% of
 the time; its new location stays hidden until dragged. There is no manual reset
 control. Partial reveals and revealing a CPU do not trigger a shuffle.
@@ -173,12 +174,15 @@ completed return. Cancelling a drag, pressing Escape or forcing a layout reset
 discards that find. If another item is moving, the shuffle waits until all items
 are at rest. The repository cards, GitHub icon, theme switcher and loaded
 milestone cards then shake with independent horizontal movements of 1.5–6 px
-over 640–880 ms.
+over 640–880 ms. Dragging during this feedback stops only that item's shake;
+the shuffle waits for the remaining shakes and for all items to return. The next
+hiding place is chosen from the underlays available when the shuffle completes.
 Milestone cards join the pool when they load and leave it when hidden. With only
 one available hiding place, the creature stays put until a later find and return
 can choose an alternative. The game also works without a repository section.
 Reduced-motion preferences and unavailable animation support return the released
-item immediately and reshuffle without shaking.
+item immediately and reshuffle without shaking. Enabling reduced motion during
+feedback stops the shakes and completes the shuffle once all items are at rest.
 
 When the switch is `false`, null or missing, the game and dragging of the GitHub
 icon, repository cards and Recent Tasks cards are disabled. The theme button
@@ -355,7 +359,8 @@ from its current position; another flick restarts the attraction at 0G.
 Ordinary clicks, taps, Enter and Space still switch themes. Escape parks a
 thrown button immediately; scrolling, resizing, hiding the tab or losing focus
 cancels the motion. Reduced-motion preferences skip the throw and park on
-release. A completed discovery reshuffles only after the button returns home.
+release. A completed discovery waits for the button to return home, all other
+items to land and the shake feedback to finish before reshuffling.
 
 When `light_dark_ball.switch` is `false`, null or missing, tennis-ball physics
 are disabled. If the game is enabled, all theme-button releases use the normal
