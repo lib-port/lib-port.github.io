@@ -372,55 +372,6 @@ html[data-github-icon-variant="logo"]
   }
 }
 
-.repo-shuffle {
-  display: inline-flex;
-  flex: 0 0 44px;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  margin-inline-start: auto;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--linked-card-radius);
-  background: transparent;
-  color: var(--minima-text-color);
-  visibility: hidden;
-  opacity: 0;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: opacity 240ms ease-out;
-}
-
-.repo-shuffle.is-visible {
-  visibility: visible;
-  opacity: 1;
-}
-
-.repo-shuffle:hover,
-.repo-shuffle.is-highlighted {
-  border-color: var(--minima-link-base-color);
-  color: var(--minima-link-base-color);
-}
-
-.repo-shuffle:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
-}
-
-.repo-shuffle > .octicon {
-  width: 1.5rem;
-  height: 1.5rem;
-  transition: transform 400ms ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .repo-shuffle,
-  .repo-shuffle > .octicon {
-    transition: none;
-  }
-}
-
 .repo-list {
   list-style: none;
   margin: 0;

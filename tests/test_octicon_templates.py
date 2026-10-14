@@ -31,8 +31,6 @@ class OcticonTemplateTests(unittest.TestCase):
                     "recent_milestones.html": 32,
                     "sub-footer.html": 24,
                 }.get(path.name, expected)
-            elif path.name == "repo_grid.html" and re.match(r"\{%\s*octicon\s+sync\b", tag):
-                expected = 24
             if not re.search(rf"\bheight\s*:\s*{expected}\b", tag):
                 wrong_source_size.append(
                     f"{path.relative_to(REPO_ROOT)}: expected {expected}px: {tag}"

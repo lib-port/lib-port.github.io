@@ -152,27 +152,28 @@ the theme switcher or a loaded milestone card is chosen at random. Each availabl
 underlay has an equal chance of being chosen: it becomes a bug 90% of the time
 and a squirrel 10% of the time. It keeps the same size and colour, and stays
 hidden until dragged.
-The choice stays fixed across repeated drags and theme changes until shuffled
+The choice stays fixed across partial reveals and theme changes until shuffled
 or the page reloads. All other underlays remain CPUs. Unloaded milestone cards
 stay outside the pool. Without JavaScript or drag support, the CPU fallback remains.
 
-Fully uncovering the bug or squirrel fades a Sync button into the right-hand
-side of the repository section heading. Its 1.5rem icon matches the GitHub mark.
-On its first appearance during each page visit, the icon and border use their
-hover colours for half a second. The highlight does not repeat if the control
-is hidden and shown again. It stays available for the rest of the page visit.
-Clicking it, or focusing it and pressing Enter or Space, restores
-the current creature to a CPU and chooses a different underlay with equal
-probability. Each shuffle independently chooses a bug 90% of the time or a
-squirrel 10% of the time; its new location remains hidden until dragged.
-Any moving cards or controls return to their resting positions before the
-shuffle. The repository cards, GitHub icon, theme switcher and loaded milestone
-cards each shake slightly with independent horizontal movements. Sync rotates
-clockwise by 180 degrees per click. Each click uses the currently visible cards,
-so milestone cards join the pool when they load and leave it when hidden.
-Reduced-motion preferences reveal Sync immediately and apply its final rotation
-without shaking or animation. The control requires a rendered repository section
-and at least two eligible underlays.
+Fully uncover the bug or squirrel, release the item covering it, and let that
+item finish landing in its original position. The creature stays in place while
+the item is held or returning. Once it lands, the game automatically restores
+the old CPU and chooses a different available underlay with equal probability.
+Each shuffle independently chooses a bug 90% of the time or a squirrel 10% of
+the time; its new location stays hidden until dragged. There is no manual reset
+control. Partial reveals and revealing a CPU do not trigger a shuffle.
+
+Re-grabbing a returning item delays the shuffle until its next release and
+completed return. Cancelling a drag, pressing Escape or forcing a layout reset
+discards that find. If another item is moving, the shuffle waits until all items
+are at rest. The repository cards, GitHub icon, theme switcher and loaded
+milestone cards then shake slightly with independent horizontal movements.
+Milestone cards join the pool when they load and leave it when hidden. With only
+one available hiding place, the creature stays put until a later find and return
+can choose an alternative. The game also works without a repository section.
+Reduced-motion preferences and unavailable animation support return the released
+item immediately and reshuffle without shaking.
 
 When the switch is `false`, null or missing, all custom dragging is disabled,
 including Recent Tasks cards. Links and theme switching continue to work.
@@ -187,16 +188,21 @@ preview after changing `_config.yml`.
 
 With `paper_plane.switch: true`, a 16px paper plane rests to the right of the
 homepage title at the rightmost point of its eight-second figure-of-eight.
-Hover over any part of the title with a mouse or pen to launch it. Touch users
-tap the resting plane; keyboard users focus its 44px control and press Enter or
-Space. Keyboard focus alone and an existing hover state during initialisation
-do not start it.
+Pause the mouse or pen over any part of the title for 250 ms to launch it.
+Moving within the title restarts that wait; passing across it without pausing
+leaves the plane parked. Touch users tap the resting plane; keyboard users focus
+its 44px control and press Enter or Space. Keyboard focus alone and an existing
+hover state during initialisation do not start it.
+
+Leaving the title, cancelling the pointer, scrolling, resizing the viewport,
+losing window focus, hiding the tab or changing reduced-motion preferences
+cancels a pending launch. A fresh title entry is needed to try again.
 
 It turns with the flight path and alternates between passing in front of and
-behind the lettering. Mouse and pen users keep it flying while over the title;
-moving away starts the return. Keyboard users move focus away from the control
-to return. Touch users touch elsewhere or scroll the page; those interactions
-continue normally. There is no stop indicator.
+behind the lettering. Once launched, mouse and pen users keep it flying while
+over the title; moving away starts the return. Keyboard users move focus away
+from the control to return. Touch users touch elsewhere or scroll the page;
+those interactions continue normally. There is no stop indicator.
 
 The return completes the remaining figure-of-eight at 2× normal speed, taking
 up to approximately four seconds, then parks the plane. Repeated activation

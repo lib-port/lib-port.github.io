@@ -60,9 +60,17 @@ function fixture({ reduced = false, initialHover = false, observeResize = true }
   const windowRef = new Events();
   windowRef.matchMedia = () => reducedMotion;
   let time = 0;
+  let timerTime = 0;
+  let nextTimer = 0;
   let nextFrame = 0;
   let observer;
   const frames = new Map();
+  const timers = new Map();
+  windowRef.setTimeout = (callback, delay) => {
+    timers.set(++nextTimer, { callback, deadline: timerTime + delay });
+    return nextTimer;
+  };
+  windowRef.clearTimeout = id => timers.delete(id);
   windowRef.requestAnimationFrame = callback => {
     frames.set(++nextFrame, callback);
     return nextFrame;
@@ -75,7 +83,18 @@ function fixture({ reduced = false, initialHover = false, observeResize = true }
   };
   const controller = initTitleFlight({ documentRef, windowRef });
   return {
-    root, launch, plane, bounds, documentRef, windowRef, reducedMotion, frames, controller,
+    root, launch, plane, bounds, documentRef, windowRef, reducedMotion, frames, timers, controller,
+    wait(elapsed) {
+      const until = timerTime + elapsed;
+      while (true) {
+        const next = [...timers.entries()].sort((a, b) => a[1].deadline - b[1].deadline)[0];
+        if (!next || next[1].deadline > until) break;
+        timerTime = next[1].deadline;
+        timers.delete(next[0]);
+        next[1].callback();
+      }
+      timerTime = until;
+    },
     tick(elapsed) {
       time += elapsed;
       const callbacks = [...frames.values()];
@@ -84,14 +103,20 @@ function fixture({ reduced = false, initialHover = false, observeResize = true }
     },
     activate(input = "mouse", legacy = false) {
       if (input === "mouse" || input === "pen") {
-        root.emit("pointerenter", { pointerType: input });
+        this.enter(input);
+        this.wait(250);
         return;
       }
       if (input !== "keyboard") documentRef.emit("pointerdown", { pointerType: input, target: launch });
       launch.emit("click", { detail: input === "keyboard" ? 0 : 1, pointerType: legacy ? undefined : input });
     },
-    enter(pointerType = "mouse") { root.emit("pointerenter", { pointerType }); },
-    leave(pointerType = "mouse") { root.emit("pointerleave", { pointerType }); },
+    enter(pointerType = "mouse", clientX = 40, clientY = 20, pointerId = 1) {
+      root.emit("pointerenter", { pointerType, clientX, clientY, pointerId });
+    },
+    move(clientX, clientY, pointerType = "mouse", pointerId = 1) {
+      root.emit("pointermove", { pointerType, clientX, clientY, pointerId });
+    },
+    leave(pointerType = "mouse") { root.emit("pointerleave", { pointerType, pointerId: 1 }); },
     focus() { launch.emit("focus"); },
     blur() { launch.emit("blur"); },
     resize(width, height) {
@@ -240,10 +265,143 @@ flightTest("focus, touch entry and an already-hovered title do not launch the pl
   const home = f.plane.style.transform;
   f.enter("touch");
   f.focus();
+  f.wait(1000);
   f.tick(1000);
   assert.equal(f.frames.size, 0);
   assert.equal(f.plane.style.transform, home);
   assert.equal(f.launch.hidden, false);
+});
+
+for (const input of ["mouse", "pen"]) {
+  flightTest(`${input} launches only after a 250 ms stationary pause`, () => {
+    const f = fixture();
+    const home = f.plane.style.transform;
+    f.enter(input);
+    assert.equal(f.timers.size, 1);
+    f.wait(249);
+    assert.equal(f.frames.size, 0);
+    assert.equal(f.plane.style.transform, home);
+    f.wait(1);
+    assert.equal(f.frames.size, 1);
+    assert.equal(f.timers.size, 0);
+    f.wait(1000);
+    assert.equal(f.frames.size, 1, "the pause launches just once");
+    f.controller.destroy();
+  });
+
+  flightTest(`${input} movement restarts the pause without launching while crossing the title`, () => {
+    const f = fixture();
+    f.enter(input);
+    for (let x = 41; x <= 45; x++) {
+      f.wait(100);
+      f.move(x, 20, input);
+      assert.equal(f.timers.size, 1);
+      assert.equal(f.frames.size, 0);
+    }
+    f.wait(249);
+    assert.equal(f.frames.size, 0);
+    f.wait(1);
+    assert.equal(f.frames.size, 1);
+    f.controller.destroy();
+  });
+}
+
+flightTest("unchanged coordinates and other pointers do not restart or cancel the pause", () => {
+  const f = fixture();
+  f.enter(); f.wait(200);
+  f.move(40, 20);
+  f.move(50, 20, "touch", 2);
+  f.move(50, 20, "mouse", 2);
+  f.root.emit("pointerleave", { pointerType: "mouse", pointerId: 2 });
+  f.root.emit("pointercancel", { pointerType: "mouse", pointerId: 2 });
+  f.wait(50);
+  assert.equal(f.frames.size, 1);
+  f.controller.destroy();
+});
+
+for (const action of ["leave", "pointercancel", "scroll", "resize", "title resize", "blur", "hidden", "reduced motion", "destroy"]) {
+  flightTest(`${action} cancels a pending pause and cannot launch from an expired callback`, () => {
+    const f = fixture();
+    f.enter(); f.wait(100);
+    const staleCallback = [...f.timers.values()][0].callback;
+    if (action === "leave") f.leave();
+    else if (action === "pointercancel") f.root.emit(action, { pointerType: "mouse", pointerId: 1 });
+    else if (action === "scroll") f.documentRef.emit(action);
+    else if (action === "title resize") f.resize(110, 144);
+    else if (action === "hidden") {
+      f.documentRef.hidden = true;
+      f.documentRef.emit("visibilitychange");
+      f.documentRef.hidden = false;
+      f.documentRef.emit("visibilitychange");
+    } else if (action === "reduced motion") {
+      f.reducedMotion.matches = true;
+      f.reducedMotion.emit("change");
+      f.reducedMotion.matches = false;
+      f.reducedMotion.emit("change");
+    } else if (action === "destroy") f.controller.destroy();
+    else f.windowRef.emit(action);
+    assert.equal(f.timers.size, 0);
+    staleCallback();
+    f.move(50, 20); f.wait(1000);
+    assert.equal(f.frames.size, 0, "movement alone cannot re-arm a cancelled hover");
+    if (action !== "destroy") {
+      f.enter();
+      staleCallback();
+      f.wait(249);
+      assert.equal(f.frames.size, 0);
+      f.wait(1);
+      assert.equal(f.frames.size, 1, "a fresh entry can launch after cancellation");
+      f.controller.destroy();
+    }
+    for (const target of [f.root, f.launch, f.documentRef, f.windowRef, f.reducedMotion]) {
+      assert.ok([...target.listeners.values()].every(callbacks => callbacks.size === 0));
+    }
+  });
+}
+
+for (const blocked of ["hidden", "reduced motion"]) {
+  flightTest(`${blocked} prevents a pending launch even before its change event arrives`, () => {
+    const f = fixture();
+    f.enter();
+    if (blocked === "hidden") f.documentRef.hidden = true;
+    else f.reducedMotion.matches = true;
+    f.wait(250);
+    assert.equal(f.frames.size, 0);
+    assert.equal(f.timers.size, 0);
+    f.controller.destroy();
+  });
+}
+
+flightTest("movement while flying does not start a new pause or request a return", () => {
+  const f = fixture();
+  f.activate(); f.tick(0); f.tick(1000);
+  f.move(50, 20);
+  f.wait(1000); f.tick(1000);
+  assertFlightPose(f, Math.PI);
+  assert.equal(f.timers.size, 0);
+  f.controller.destroy();
+});
+
+for (const input of ["touch", "keyboard"]) {
+  flightTest(`${input} activation launches immediately and consumes a pending mouse pause`, () => {
+    const f = fixture();
+    f.enter(); f.wait(100);
+    f.activate(input);
+    assert.equal(f.frames.size, 1);
+    assert.equal(f.timers.size, 0);
+    f.tick(0); f.tick(1000); f.wait(250);
+    f.leave(); f.tick(1000);
+    assertFlightPose(f, Math.PI);
+    f.controller.destroy();
+  });
+}
+
+flightTest("movement over a title already hovered during initialisation cannot arm a pause", () => {
+  const f = fixture({ initialHover: true });
+  f.move(50, 20); f.wait(1000);
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.timers.size, 0);
+  f.controller.destroy();
 });
 
 for (const input of ["mouse", "pen"]) {
@@ -256,7 +414,9 @@ for (const input of ["mouse", "pen"]) {
     assert.equal(f.frames.size, 0);
     assert.equal(f.plane.style.transform, home);
     f.enter(input);
-    assert.equal(f.frames.size, 1, "entering the title launches without a click");
+    assert.equal(f.frames.size, 0, "entering the title waits for a pause");
+    f.wait(250);
+    assert.equal(f.frames.size, 1, "pausing over the title launches without a click");
     f.controller.destroy();
   });
 }
@@ -304,9 +464,11 @@ for (const action of ["enter", "focus", "activate"]) {
     f.tick(1);
     assert.equal(f.plane.style.transform, home);
     assert.equal(f.frames.size, 0);
+    f.wait(1000); f.move(60, 20); f.wait(250);
+    assert.equal(f.frames.size, 0, "entry while returning cannot queue another launch");
     f.focus(); f.tick(1000);
     assert.equal(f.frames.size, 0);
-    f.enter(); f.tick(0); f.tick(1000);
+    f.enter(); f.wait(250); f.tick(0); f.tick(1000);
     assert.notEqual(f.plane.style.transform, home);
   });
 }
@@ -385,7 +547,8 @@ flightTest("reduced motion hides the launch control and needs a fresh activation
   f.focus();
   assert.equal(f.frames.size, 0);
   f.enter();
-  assert.equal(f.frames.size, 1, "a fresh title entry launches after reduced motion is disabled");
+  f.wait(250);
+  assert.equal(f.frames.size, 1, "a fresh title entry and pause launch after reduced motion is disabled");
   f.controller.destroy();
 });
 

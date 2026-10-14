@@ -24,9 +24,6 @@
           cpus: new Map(candidates.map(candidate => [candidate, candidate.children[0].cloneNode(true)])),
           icons: [...templates.content.children],
           selected: available[Math.floor(random() * available.length)],
-          discovered: false,
-          shuffleShown: false,
-          angle: 0,
         };
         game.selected.replaceChildren(game.icons[random() < 0.1 ? 1 : 0].cloneNode(true));
         games.set(documentRef, game);
@@ -40,34 +37,11 @@
     const listeners = [];
     const controllers = [];
     const shakes = new Map();
-    const shuffleButton = documentRef.querySelector("[data-drag-shuffle]");
-    const syncIcon = shuffleButton?.querySelector("svg");
-    const canShuffle = Boolean(syncIcon && game);
-    let poolObserver;
-    let highlightTimer = null;
+    let pendingShuffle = null;
+    let destroyed = false;
 
     function availableCandidates() {
       return game.candidates.filter(candidate => !candidate.closest("[hidden]"));
-    }
-
-    function clearShuffleHighlight() {
-      if (highlightTimer !== null) windowRef.clearTimeout(highlightTimer);
-      highlightTimer = null;
-      shuffleButton?.classList.remove("is-highlighted");
-    }
-
-    function updateShuffleButton() {
-      if (game.discovered && availableCandidates().length > 1) {
-        shuffleButton.classList.add("is-visible");
-        if (!game.shuffleShown) {
-          game.shuffleShown = true;
-          shuffleButton.classList.add("is-highlighted");
-          highlightTimer = windowRef.setTimeout(clearShuffleHighlight, 500);
-        }
-      } else {
-        shuffleButton.classList.remove("is-visible");
-        clearShuffleHighlight();
-      }
     }
 
     function listen(target, type, callback, options) {
@@ -88,10 +62,8 @@
     }
 
     function stopEffects() {
+      pendingShuffle = null;
       stopShakes();
-      for (const target of [shuffleButton, syncIcon]) {
-        target?.getAnimations?.().forEach(animation => animation.finish());
-      }
     }
 
     function shake(surface, index) {
@@ -112,46 +84,37 @@
     }
 
     function discover(underlay, surface) {
-      if (!canShuffle || game.discovered || underlay !== game.selected) return;
+      if (!game || underlay !== game.selected) return false;
       const icon = underlay.children[0].getBoundingClientRect();
       const cover = surface.getBoundingClientRect();
-      if (icon.width > 0 && icon.height > 0 && (
+      return icon.width > 0 && icon.height > 0 && (
         cover.right <= icon.left || cover.left >= icon.right ||
         cover.bottom <= icon.top || cover.top >= icon.bottom
-      )) {
-        game.discovered = true;
-        // Class changes do not trip the card's hidden-state mutation observer.
-        updateShuffleButton();
-      }
+      );
     }
 
-    if (canShuffle) {
-      syncIcon.style.transform = `rotate(${game.angle}deg)`;
-      updateShuffleButton();
-      poolObserver = windowRef.MutationObserver && new windowRef.MutationObserver(updateShuffleButton);
-      poolObserver?.observe(documentRef.body, {
-        subtree: true, attributes: true, attributeFilter: ["hidden"],
-      });
-      listen(shuffleButton, "click", event => {
-        if (event.defaultPrevented || !game.discovered) return;
-        const available = availableCandidates();
-        const alternatives = available.filter(candidate => candidate !== game.selected);
-        if (available.length < 2 || !alternatives.length) return;
-        stopShakes();
-        // Disconnect drag observers and hide every underlay before swapping SVGs.
-        controllers.forEach(controller => controller.reset());
-        game.selected.replaceChildren(game.cpus.get(game.selected).cloneNode(true));
-        const next = alternatives[Math.floor(random() * alternatives.length)];
-        game.selected = next;
-        next.replaceChildren(game.icons[random() < 0.1 ? 1 : 0].cloneNode(true));
-        game.angle += 180;
-        syncIcon.style.transform = `rotate(${game.angle}deg)`;
-        controllers.filter(controller => available.includes(controller.underlay))
-          .forEach((controller, index) => shake(controller.surface, index));
-      });
+    function shuffleAfterLanding() {
+      if (destroyed || !game || !pendingShuffle || documentRef.hidden || controllers.some(controller => controller.isBusy())) return;
+      const previous = pendingShuffle;
+      // Consume the completed find before changing SVGs or starting feedback.
+      pendingShuffle = null;
+      if (previous !== game.selected || previous.closest("[hidden]")) return;
+      const available = availableCandidates();
+      const alternatives = available.filter(candidate => candidate !== previous);
+      if (!alternatives.length) return;
+      stopShakes();
+      previous.replaceChildren(game.cpus.get(previous).cloneNode(true));
+      game.selected = alternatives[Math.floor(random() * alternatives.length)];
+      game.selected.replaceChildren(game.icons[random() < 0.1 ? 1 : 0].cloneNode(true));
+      controllers.filter(controller => available.includes(controller.underlay))
+        .forEach((controller, index) => shake(controller.surface, index));
+    }
+
+    if (game) {
       listen(documentRef, "visibilitychange", () => { if (documentRef.hidden) stopEffects(); });
       for (const type of ["blur", "resize", "scroll"]) listen(windowRef, type, stopEffects);
-      listen(reducedMotion, "change", () => { if (reducedMotion.matches) stopEffects(); });
+      listen(reducedMotion, "change", () => { if (reducedMotion.matches) stopShakes(); });
+      listen(documentRef, "keydown", event => { if (event.key === "Escape") pendingShuffle = null; });
     }
 
     const cleanups = [...documentRef.querySelectorAll("[data-drag-reveal]")].map(root => {
@@ -165,6 +128,8 @@
       let position = [0, 0];
       let bounds;
       let suppressClick = false;
+      let found = false;
+      let released = false;
 
       function constrain([x, y]) {
         // Cards may exceed the viewport; keep only the grabbed point inside it.
@@ -184,12 +149,17 @@
       }
 
       function park() {
+        const completedFind = found && released && underlay === game?.selected;
         cancelAnimation();
         position = [0, 0];
         observer?.disconnect();
         for (const property of ["transform", "left", "top", "width", "height"]) surface.style.removeProperty(property);
         root.style.removeProperty("height");
         root.removeAttribute("data-drag-active");
+        found = false;
+        released = false;
+        if (completedFind) pendingShuffle = underlay;
+        shuffleAfterLanding();
       }
 
       function finish(immediate = false) {
@@ -212,7 +182,14 @@
         animation.onfinish = park;
       }
 
+      function cancelFind() {
+        found = false;
+        released = false;
+        if (pendingShuffle === underlay) pendingShuffle = null;
+      }
+
       function reset() {
+        cancelFind();
         if (pointer || animation) {
           suppressClick = true;
           finish(true);
@@ -223,6 +200,11 @@
         if (pointer || !event.isPrimary || event.button !== 0) return;
         suppressClick = false;
         if (handle && event.pointerType === "touch" && !handle.contains(event.target)) return;
+        if (pendingShuffle === underlay) {
+          found = true;
+          pendingShuffle = null;
+        }
+        released = false;
         stopShake(surface);
         bounds = root.getBoundingClientRect();
         const current = surface.getBoundingClientRect();
@@ -271,14 +253,18 @@
         if (!pointer.dragged && !capture()) return;
         position = constrain([pointer.start[0] + dx, pointer.start[1] + dy]);
         surface.style.transform = transform(position);
-        discover(underlay, surface);
+        found ||= discover(underlay, surface);
         event.preventDefault();
       });
 
       for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
         listen(windowRef, type, event => {
           // Touch transfers implicit capture from the title handle to the card.
-          if (event.pointerId === pointer?.id && (type !== "lostpointercapture" || event.target === surface)) finish();
+          if (event.pointerId === pointer?.id && (type !== "lostpointercapture" || event.target === surface)) {
+            released = type === "pointerup";
+            if (!released) cancelFind();
+            finish();
+          }
         });
       }
       listen(surface, "dragstart", event => event.preventDefault());
@@ -293,6 +279,7 @@
         if (event.key === "Escape" && (pointer || animation)) {
           event.preventDefault();
           suppressClick = true;
+          cancelFind();
           finish();
         }
       });
@@ -300,7 +287,7 @@
       for (const type of ["blur", "resize", "scroll"]) listen(windowRef, type, reset);
       listen(reducedMotion, "change", () => { if (reducedMotion.matches && animation) park(); });
       root.setAttribute("data-drag-ready", "");
-      controllers.push({ surface, underlay, reset });
+      controllers.push({ surface, underlay, isBusy: () => Boolean(pointer || animation) });
 
       return () => {
         reset();
@@ -310,12 +297,10 @@
 
     return {
       destroy() {
+        destroyed = true;
+        stopEffects();
         cleanups.forEach(cleanup => cleanup());
         listeners.forEach(remove => remove());
-        poolObserver?.disconnect();
-        shuffleButton?.classList.remove("is-visible");
-        clearShuffleHighlight();
-        stopEffects();
       },
     };
   }

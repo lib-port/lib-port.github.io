@@ -4,6 +4,7 @@
   const IDLE = 0, FLYING = 1, FINISHING = 2;
   const LAP_MS = 8000;
   const FINISH_SPEED = 2;
+  const HOVER_PAUSE_MS = 250;
   const START_PHASE = Math.PI / 2;
   const FULL_TURN = 2 * Math.PI;
 
@@ -38,6 +39,8 @@
     let pointerType;
     let frame = null;
     let previousTime = null;
+    let hover = null;
+    let hoverTimer = null;
     let destroyed = false;
 
     function render() {
@@ -49,6 +52,7 @@
     function measure() {
       if (destroyed) return;
       const bounds = text.getBoundingClientRect();
+      if (geometry && (bounds.width !== geometry.width || bounds.height !== geometry.height)) cancelHover();
       geometry = { width: bounds.width, height: bounds.height };
       render();
     }
@@ -57,6 +61,25 @@
       if (frame !== null) windowRef.cancelAnimationFrame(frame);
       frame = null;
       previousTime = null;
+    }
+
+    function cancelHover() {
+      if (hoverTimer !== null) windowRef.clearTimeout(hoverTimer);
+      hoverTimer = null;
+      hover = null;
+    }
+
+    function waitForPause(event) {
+      if (destroyed || state !== IDLE || documentRef.hidden || reducedMotion.matches) return;
+      cancelHover();
+      const pending = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY };
+      hover = pending;
+      hoverTimer = windowRef.setTimeout(() => {
+        if (hover !== pending) return;
+        hoverTimer = null;
+        hover = null;
+        start(pending.type);
+      }, HOVER_PAUSE_MS);
     }
 
     function schedule() {
@@ -89,6 +112,7 @@
 
     function sync() {
       if (destroyed) return;
+      if (documentRef.hidden || reducedMotion.matches) cancelHover();
       if (reducedMotion.matches) {
         state = IDLE;
         lapElapsed = 0;
@@ -101,7 +125,8 @@
     }
 
     function start(inputType) {
-      if (state !== IDLE || reducedMotion.matches || documentRef.hidden) return;
+      if (destroyed || state !== IDLE || reducedMotion.matches || documentRef.hidden) return;
+      cancelHover();
       input = inputType;
       state = FLYING;
       sync();
@@ -121,7 +146,14 @@
     measure();
     root.setAttribute("data-flight-ready", "");
     listen(root, "pointerenter", event => {
-      if (event.pointerType === "mouse" || event.pointerType === "pen") start(event.pointerType);
+      if (event.pointerType === "mouse" || event.pointerType === "pen") waitForPause(event);
+    });
+    listen(root, "pointermove", event => {
+      if (hover && event.pointerId === hover.id && event.pointerType === hover.type &&
+          (event.clientX !== hover.x || event.clientY !== hover.y)) waitForPause(event);
+    });
+    listen(root, "pointercancel", event => {
+      if (event.pointerId === hover?.id) cancelHover();
     });
     // Keep native touch, Enter/Space and assistive activation on the button.
     listen(launch, "click", event => {
@@ -129,6 +161,7 @@
       if (inputType === "touch" || inputType === "keyboard") start(inputType);
     });
     listen(root, "pointerleave", event => {
+      if (event.pointerId === hover?.id) cancelHover();
       if (event.pointerType !== "touch" && event.pointerType === input) finish();
     });
     listen(launch, "blur", () => { if (input === "keyboard") finish(); });
@@ -138,18 +171,23 @@
       pointerType = event.pointerType;
       if (pointerType === "touch" && !launch.contains(event.target)) finish();
     }, passive);
-    listen(documentRef, "scroll", () => { if (input === "touch") finish(); }, passive);
-    listen(reducedMotion, "change", sync);
-    listen(documentRef, "visibilitychange", sync);
+    listen(documentRef, "scroll", () => {
+      cancelHover();
+      if (input === "touch") finish();
+    }, passive);
+    listen(windowRef, "blur", cancelHover);
+    listen(reducedMotion, "change", () => { cancelHover(); sync(); });
+    listen(documentRef, "visibilitychange", () => { cancelHover(); sync(); });
     const observer = windowRef.ResizeObserver ? new windowRef.ResizeObserver(measure) : null;
     if (observer) observer.observe(text);
-    else listen(windowRef, "resize", measure);
+    listen(windowRef, "resize", () => { cancelHover(); if (!observer) measure(); });
     documentRef.fonts?.ready?.then(measure);
     sync();
 
     return {
       destroy() {
         destroyed = true;
+        cancelHover();
         cancelFrame();
         observer?.disconnect();
         listeners.forEach(remove => remove());

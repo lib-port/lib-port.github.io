@@ -14,7 +14,7 @@ const names = ["github_activity.js", "theme_toggle.js", "external_blog.js", "tit
 const bannerMarkup = '<div data-home-section="ascii_banner" hidden><ascii-art piece="random"></ascii-art>' +
   '<script type="module" src="/project/assets/js/ascii_banner.mjs"></script></div>';
 const gameMarkup = '<div class="repo-section-heading"><h2>Notes and Projects</h2>' +
-  '<button class="repo-shuffle" data-drag-shuffle type="button"></button></div>' +
+  '</div>' +
   '<template data-drag-icons></template>' +
   '<script src="/project/assets/js/drag_reveal.js" defer></script>';
 const planeMarkup = '<span data-title-flight><span data-title-flight-plane></span>' +
@@ -102,7 +102,7 @@ test("exercises the enabled game against its minified build", t => {
   assert.equal(gameTests.status, 0, gameTests.stdout + gameTests.stderr);
   assert.match(gameTests.stdout, /each eligible underlay occupies an equal interval/);
   assert.match(gameTests.stdout, /milestones loaded after initialisation join both the shuffle/);
-  assert.match(gameTests.stdout, /rapid keyboard activations each shuffle/);
+  assert.match(gameTests.stdout, /completed finds reshuffle once after each landing/);
   assert.doesNotMatch(gameTests.stdout, /# SKIP/);
 });
 
