@@ -100,7 +100,7 @@
       const direction = index % 2 ? -1 : 1;
       const frames = Array.from({ length: 4 }, (_, step) => ({
         transform: transform([
-          direction * (step % 2 ? -1 : 1) * (0.5 + random() * 1.5),
+          direction * (step % 2 ? -1 : 1) * (0.75 + random() * 2.25),
           0,
         ]),
       }));

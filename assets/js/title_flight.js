@@ -4,7 +4,7 @@
   const IDLE = 0, FLYING = 1, FINISHING = 2;
   const LAP_MS = 8000;
   const FINISH_SPEED = 2;
-  const START_PHASE = Math.PI / 4;
+  const START_PHASE = Math.PI / 2;
   const FULL_TURN = 2 * Math.PI;
 
   function flightPose(phase, { width, height }) {
@@ -100,6 +100,13 @@
       else schedule();
     }
 
+    function start(inputType) {
+      if (state !== IDLE || reducedMotion.matches || documentRef.hidden) return;
+      input = inputType;
+      state = FLYING;
+      sync();
+    }
+
     function finish() {
       if (state !== FLYING || documentRef.hidden) return;
       state = lapElapsed === 0 ? IDLE : FINISHING;
@@ -113,12 +120,13 @@
 
     measure();
     root.setAttribute("data-flight-ready", "");
-    // Native button clicks include Enter/Space and assistive activation.
+    listen(root, "pointerenter", event => {
+      if (event.pointerType === "mouse" || event.pointerType === "pen") start(event.pointerType);
+    });
+    // Keep native touch, Enter/Space and assistive activation on the button.
     listen(launch, "click", event => {
-      if (state !== IDLE || reducedMotion.matches || documentRef.hidden) return;
-      input = event.detail === 0 ? "keyboard" : event.pointerType || pointerType || "mouse";
-      state = FLYING;
-      sync();
+      const inputType = event.detail === 0 ? "keyboard" : event.pointerType || pointerType;
+      if (inputType === "touch" || inputType === "keyboard") start(inputType);
     });
     listen(root, "pointerleave", event => {
       if (event.pointerType !== "touch" && event.pointerType === input) finish();

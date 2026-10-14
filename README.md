@@ -185,11 +185,12 @@ preview after changing `_config.yml`.
 
 ### Title animation
 
-With `paper_plane.switch: true`, a 16px paper plane follows an eight-second
-figure-of-eight around the homepage title after clicking or tapping the resting
-plane, or focusing its control and pressing Enter or Space. The control has a
-44px interaction area. Hovering, keyboard focus alone and page-load pointer
-position do not start it.
+With `paper_plane.switch: true`, a 16px paper plane rests to the right of the
+homepage title at the rightmost point of its eight-second figure-of-eight.
+Hover over any part of the title with a mouse or pen to launch it. Touch users
+tap the resting plane; keyboard users focus its 44px control and press Enter or
+Space. Keyboard focus alone and an existing hover state during initialisation
+do not start it.
 
 It turns with the flight path and alternates between passing in front of and
 behind the lettering. Mouse and pen users keep it flying while over the title;
@@ -200,9 +201,11 @@ continue normally. There is no stop indicator.
 The return completes the remaining figure-of-eight at 2× normal speed, taking
 up to approximately four seconds, then parks the plane. Repeated activation
 while flying or returning is ignored. Hovering back cannot restart a return;
-another explicit activation is needed after the plane has parked.
+a fresh title entry, tap or keyboard activation is needed after the plane parks.
 
 The plane follows the active theme's link colour and adapts to wrapped titles.
+On wrapped titles, its resting point stays centred vertically on the whole
+title block, at the rightmost point of the same path.
 Without JavaScript, the plane and its launch control stay hidden. With JavaScript
 enabled, reduced-motion preferences keep the plane stationary and hide its launch
 control. Switching away from the browser tab suspends the animation.

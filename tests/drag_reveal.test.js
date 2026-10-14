@@ -790,13 +790,13 @@ dragTest("shakes stay horizontal and independent and return every eligible surfa
     assert.deepEqual(coordinates(animation.keyframes[0].transform), [0, 0]);
     animation.keyframes.forEach(frame => {
       const [x, y] = coordinates(frame.transform);
-      assert.ok(Math.abs(x) <= 2);
+      assert.ok(Math.abs(x) <= 3);
       assert.equal(y, 0, "shakes never move vertically");
       assert.doesNotMatch(frame.transform, /rotate\(/, "shakes never rock or rotate");
     });
     animation.keyframes.slice(1, -1).forEach(frame => {
       const [x] = coordinates(frame.transform);
-      assert.ok(Math.abs(x) >= 0.5, "intermediate frames retain horizontal movement");
+      assert.ok(Math.abs(x) >= 0.75, "intermediate frames retain horizontal movement");
     });
     entry.complete();
     assert.equal(animation.cancelled, true);

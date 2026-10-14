@@ -83,6 +83,10 @@ function fixture({ reduced = false, initialHover = false, observeResize = true }
       callbacks.forEach(callback => callback(time));
     },
     activate(input = "mouse", legacy = false) {
+      if (input === "mouse" || input === "pen") {
+        root.emit("pointerenter", { pointerType: input });
+        return;
+      }
       if (input !== "keyboard") documentRef.emit("pointerdown", { pointerType: input, target: launch });
       launch.emit("click", { detail: input === "keyboard" ? 0 : 1, pointerType: legacy ? undefined : input });
     },
@@ -159,6 +163,9 @@ flightTest("the nose follows the flight tangent and the full plane fits its rese
 flightTest("flies an eight-second loop and finishes the remaining path at twice the speed", () => {
   const f = fixture();
   const home = renderedPosition(f.plane);
+  close(home.x, f.bounds.width / 2 + 24);
+  close(home.y, 0);
+  assertFlightPose(f, Math.PI / 2);
   assert.equal(f.frames.size, 0);
   assert.equal(f.launch.hidden, false);
   assert.equal(f.root.attributes.has("tabindex"), false);
@@ -172,12 +179,12 @@ flightTest("flies an eight-second loop and finishes the remaining path at twice 
   f.tick(3000);
   f.leave();
   f.tick(1000);
-  assertFlightPose(f, 3 * Math.PI / 2);
-  f.tick(1000);
+  assertFlightPose(f, 7 * Math.PI / 4);
+  f.tick(500);
   assertFlightPose(f, 2 * Math.PI);
   assert.equal(f.frames.size, 1, "crossing the title is not the end of the loop");
-  f.tick(250);
-  assertFlightPose(f, 17 * Math.PI / 8);
+  f.tick(750);
+  assertFlightPose(f, 19 * Math.PI / 8);
   f.tick(249);
   assert.equal(f.frames.size, 1);
   f.tick(1);
@@ -228,10 +235,10 @@ flightTest("leaving at rest does not start an extra loop", () => {
   }
 });
 
-flightTest("hover, focus and an already-hovered title never launch the plane", () => {
+flightTest("focus, touch entry and an already-hovered title do not launch the plane", () => {
   const f = fixture({ initialHover: true });
   const home = f.plane.style.transform;
-  for (const input of ["mouse", "pen", "touch"]) f.enter(input);
+  f.enter("touch");
   f.focus();
   f.tick(1000);
   assert.equal(f.frames.size, 0);
@@ -239,30 +246,45 @@ flightTest("hover, focus and an already-hovered title never launch the plane", (
   assert.equal(f.launch.hidden, false);
 });
 
+for (const input of ["mouse", "pen"]) {
+  flightTest(`${input} clicks without title entry do not launch the plane`, () => {
+    const f = fixture();
+    const home = f.plane.style.transform;
+    f.documentRef.emit("pointerdown", { pointerType: input, target: f.launch });
+    f.launch.emit("click", { detail: 1, pointerType: input });
+    f.tick(1000);
+    assert.equal(f.frames.size, 0);
+    assert.equal(f.plane.style.transform, home);
+    f.enter(input);
+    assert.equal(f.frames.size, 1, "entering the title launches without a click");
+    f.controller.destroy();
+  });
+}
+
 for (const input of ["mouse", "pen", "keyboard"]) {
-  flightTest(`${input} explicitly launches and its departure requests the faster return`, () => {
+  flightTest(`${input} ${input === "keyboard" ? "activation" : "title hover"} launches and its departure requests the faster return`, () => {
     const f = fixture();
     f.focus();
     f.activate(input);
     f.tick(0);
     f.tick(2000);
-    assertFlightPose(f, 3 * Math.PI / 4);
+    assertFlightPose(f, Math.PI);
     assert.equal(f.launch.attributes.get("aria-disabled"), "true");
     if (input === "keyboard") {
       f.leave(); // Mouse movement does not end a keyboard-launched flight.
       f.tick(1000);
-      assertFlightPose(f, Math.PI);
+      assertFlightPose(f, 5 * Math.PI / 4);
       f.blur();
     } else {
       f.blur(); // Pointer focus does not latch or end a pointer-launched flight.
       f.tick(1000);
-      assertFlightPose(f, Math.PI);
+      assertFlightPose(f, 5 * Math.PI / 4);
       f.leave(input);
     }
     f.tick(2499);
     assert.equal(f.frames.size, 1);
     f.tick(1);
-    assertFlightPose(f, Math.PI / 4);
+    assertFlightPose(f, Math.PI / 2);
     assert.equal(f.frames.size, 0);
     assert.equal(f.launch.hidden, false);
     assert.equal(f.launch.attributes.get("aria-disabled"), "false");
@@ -282,9 +304,9 @@ for (const action of ["enter", "focus", "activate"]) {
     f.tick(1);
     assert.equal(f.plane.style.transform, home);
     assert.equal(f.frames.size, 0);
-    f.enter(); f.focus(); f.tick(1000);
+    f.focus(); f.tick(1000);
     assert.equal(f.frames.size, 0);
-    f.activate(); f.tick(0); f.tick(1000);
+    f.enter(); f.tick(0); f.tick(1000);
     assert.notEqual(f.plane.style.transform, home);
   });
 }
@@ -293,7 +315,7 @@ flightTest("repeated activations during flight do not change its clock or input 
   const f = fixture();
   f.activate(); f.tick(0); f.tick(2000);
   f.activate("touch"); f.activate("keyboard"); f.tick(1000);
-  assertFlightPose(f, Math.PI);
+  assertFlightPose(f, 5 * Math.PI / 4);
   f.leave(); f.tick(2500);
   assert.equal(f.frames.size, 0);
 });
@@ -305,10 +327,10 @@ for (const legacy of [false, true]) {
       f.activate("touch", legacy);
       f.leave("touch"); f.blur();
       f.tick(0); f.tick(9000);
-      assertFlightPose(f, Math.PI / 2);
+      assertFlightPose(f, 3 * Math.PI / 4);
       f.documentRef.emit("pointerdown", { pointerType: "touch", target: f.launch });
       f.tick(1000);
-      assertFlightPose(f, 3 * Math.PI / 4);
+      assertFlightPose(f, Math.PI);
       const event = {
         pointerType: "touch", target: f.root,
         preventDefault() { assert.fail("outside interactions must remain native"); },
@@ -319,7 +341,7 @@ for (const legacy of [false, true]) {
       assert.equal(f.frames.size, 1);
       f.tick(1);
       assert.equal(f.frames.size, 0);
-      assertFlightPose(f, Math.PI / 4);
+      assertFlightPose(f, Math.PI / 2);
     });
   }
 }
@@ -360,8 +382,11 @@ flightTest("reduced motion hides the launch control and needs a fresh activation
   assert.equal(f.launch.hidden, true);
   f.reducedMotion.matches = false;
   f.reducedMotion.emit("change");
-  f.focus(); f.enter();
+  f.focus();
   assert.equal(f.frames.size, 0);
+  f.enter();
+  assert.equal(f.frames.size, 1, "a fresh title entry launches after reduced motion is disabled");
+  f.controller.destroy();
 });
 
 flightTest("an active frame parks when reduced motion changes before its event is delivered", () => {
@@ -415,7 +440,7 @@ flightTest("hidden pages suspend both flight and loop completion without advanci
   assert.equal(f.frames.size, 1);
   f.tick(1);
   assert.equal(f.frames.size, 0);
-  assertFlightPose(f, Math.PI / 4);
+  assertFlightPose(f, Math.PI / 2);
 });
 
 for (const observeResize of [true, false]) {
@@ -425,7 +450,8 @@ for (const observeResize of [true, false]) {
     f.resize(110, 144);
     const resized = renderedPosition(f.plane);
     assert.ok(resized.x < home.x);
-    assert.ok(resized.y > home.y);
+    close(resized.x, f.bounds.width / 2 + 24);
+    close(resized.y, 0);
     assert.equal(f.frames.size, 0);
     f.activate();
     f.tick(0);
@@ -433,7 +459,7 @@ for (const observeResize of [true, false]) {
     f.leave();
     f.tick(1000);
     f.resize(350, 48);
-    assertFlightPose(f, 3 * Math.PI / 2);
+    assertFlightPose(f, 7 * Math.PI / 4);
     f.tick(1499);
     assert.equal(f.frames.size, 1);
     f.tick(1);
