@@ -25,7 +25,7 @@ class SiteConfigValidationTests(unittest.TestCase):
     def test_valid_config(self) -> None:
         config_path = self.write_config(
             """
-            github-icon:
+            github_icon:
               switch: true
               link: repos
               style: icon
@@ -89,12 +89,66 @@ class SiteConfigValidationTests(unittest.TestCase):
 
         self.assertIn(str(config_path), str(raised.exception))
 
+    def test_old_hyphenated_names_do_not_enable_features(self) -> None:
+        for name in ("find_the_bug_game", "github_icon", "paper_plane", "ascii_banner"):
+            old_name = name.replace("_", "-")
+            for new_section in ("", f"{name}: {{switch: false}}"):
+                with self.subTest(name=name, new_section=new_section):
+                    config_path = self.write_config(
+                        f"{old_name}: {{switch: true, link: repos, module: random}}\n{new_section}"
+                    )
+                    self.assertFalse(getattr(validate_site_config(config_path), name).enabled)
+
+    def test_paper_plane_switch_controls_the_effect(self) -> None:
+        for text, enabled in (
+            ("", False),
+            ("paper_plane: {}", False),
+            ("paper_plane: {switch: false}", False),
+            ("paper_plane: {switch: true}", True),
+        ):
+            with self.subTest(text=text):
+                config = validate_site_config(self.write_config(text))
+                self.assertEqual(config.paper_plane.enabled, enabled)
+
+    def test_find_the_bug_game_switch_controls_the_effect(self) -> None:
+        for text, enabled in (
+            ("", False),
+            ("find_the_bug_game:", False),
+            ("find_the_bug_game: {}", False),
+            ("find_the_bug_game: {switch: null}", False),
+            ("find_the_bug_game: {switch: false}", False),
+            ("find_the_bug_game: {switch: true}", True),
+            ("finid_the_bug_game: {switch: true}", False),
+        ):
+            with self.subTest(text=text):
+                config = validate_site_config(self.write_config(text))
+                self.assertEqual(config.find_the_bug_game.enabled, enabled)
+
+    def test_find_the_bug_game_rejects_invalid_configuration(self) -> None:
+        for value in ('"true"', '"false"', "1", "0", "[]", "{}"):
+            with self.subTest(switch=value):
+                config_path = self.write_config(f"find_the_bug_game: {{switch: {value}}}")
+                with self.assertRaisesRegex(ConfigValidationError, "find_the_bug_game.switch must be a YAML boolean"):
+                    validate_site_config(config_path)
+        for value in ("true", '"false"', "1", "[]"):
+            with self.subTest(section=value):
+                config_path = self.write_config(f"find_the_bug_game: {value}")
+                with self.assertRaisesRegex(ConfigValidationError, "find_the_bug_game must be a mapping"):
+                    validate_site_config(config_path)
+
+    def test_paper_plane_switch_rejects_non_boolean_values(self) -> None:
+        for value in ('"true"', '"false"', "1", "[]", "{}"):
+            with self.subTest(value=value):
+                config_path = self.write_config(f"paper_plane: {{switch: {value}}}")
+                with self.assertRaisesRegex(ConfigValidationError, "paper_plane.switch"):
+                    validate_site_config(config_path)
+
     def test_github_icon_accepts_profile_and_repos_destinations(self) -> None:
         for link in ("profile", "repos"):
             with self.subTest(link=link):
                 config_path = self.write_config(
                     f"""
-                    github-icon:
+                    github_icon:
                       switch: true
                       link: {link}
                     """
@@ -111,7 +165,7 @@ class SiteConfigValidationTests(unittest.TestCase):
             with self.subTest(style=style):
                 config_path = self.write_config(
                     f"""
-                    github-icon:
+                    github_icon:
                       switch: true
                       link: profile
                       style: {style}
@@ -126,14 +180,14 @@ class SiteConfigValidationTests(unittest.TestCase):
         configurations = (
             "",
             """
-            github-icon:
+            github_icon:
               link:
                 - ignored
               style:
                 - ignored
             """,
             """
-            github-icon:
+            github_icon:
               switch: false
               link:
                 - ignored
@@ -156,7 +210,7 @@ class SiteConfigValidationTests(unittest.TestCase):
             with self.subTest(raw_switch=raw_switch):
                 config_path = self.write_config(
                     f"""
-                    github-icon:
+                    github_icon:
                       switch: {raw_switch}
                       link: repos
                     """
@@ -164,7 +218,7 @@ class SiteConfigValidationTests(unittest.TestCase):
 
                 with self.assertRaisesRegex(
                     ConfigValidationError,
-                    r"github-icon\.switch must be a YAML boolean",
+                    r"github_icon\.switch must be a YAML boolean",
                 ):
                     validate_site_config(config_path)
 
@@ -183,7 +237,7 @@ class SiteConfigValidationTests(unittest.TestCase):
             with self.subTest(link_config=link_config):
                 config_path = self.write_config(
                     f"""
-                    github-icon:
+                    github_icon:
                       switch: true
                       {link_config}
                     """
@@ -191,7 +245,7 @@ class SiteConfigValidationTests(unittest.TestCase):
 
                 with self.assertRaisesRegex(
                     ConfigValidationError,
-                    r"github-icon\.link must be exactly 'profile' or 'repos'",
+                    r"github_icon\.link must be exactly 'profile' or 'repos'",
                 ):
                     validate_site_config(config_path)
 
@@ -208,7 +262,7 @@ class SiteConfigValidationTests(unittest.TestCase):
             with self.subTest(style_config=style_config):
                 config_path = self.write_config(
                     f"""
-                    github-icon:
+                    github_icon:
                       switch: true
                       link: repos
                       {style_config}
@@ -217,7 +271,7 @@ class SiteConfigValidationTests(unittest.TestCase):
 
                 with self.assertRaisesRegex(
                     ConfigValidationError,
-                    r"github-icon\.style must be exactly "
+                    r"github_icon\.style must be exactly "
                     r"'auto', 'text', or 'icon'",
                 ):
                     validate_site_config(config_path)
@@ -225,14 +279,14 @@ class SiteConfigValidationTests(unittest.TestCase):
     def test_github_icon_must_be_a_mapping(self) -> None:
         config_path = self.write_config(
             """
-            github-icon:
+            github_icon:
               - repos
             """
         )
 
         with self.assertRaisesRegex(
             ConfigValidationError,
-            r"github-icon must be a mapping",
+            r"github_icon must be a mapping",
         ):
             validate_site_config(config_path)
 

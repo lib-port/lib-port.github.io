@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -24,7 +25,7 @@ end
 
 module TestFilters
   def relative_url(input)
-    input
+    "/project#{input}"
   end
 end
 
@@ -54,7 +55,7 @@ class HeaderTemplateTests(unittest.TestCase):
             },
         }
         if github_icon is not None:
-            site["github-icon"] = github_icon
+            site["github_icon"] = github_icon
 
         result = subprocess.run(
             ["bundle", "exec", "ruby", "-e", LIQUID_RENDERER, str(HEADER_PATH)],
@@ -65,6 +66,44 @@ class HeaderTemplateTests(unittest.TestCase):
             text=True,
         )
         return result.stdout
+
+    def test_shared_drag_layer_covers_every_icon_style(self) -> None:
+        for style in ("auto", "text", "icon"):
+            with self.subTest(style=style):
+                rendered = self.render_header(
+                    owner_url="https://github.com/example",
+                    owner_name="example",
+                    github_icon={"switch": True, "link": "profile", "style": style},
+                )
+                self.assertIn('class="github-icon-drag" data-github-drag', rendered)
+                self.assertIn('class="github-icon-cpu" aria-hidden="true"', rendered)
+                self.assertEqual(rendered.count('data-drag-surprise'), 1)
+                self.assertEqual(rendered.count('class="octicon octicon-cpu"'), 1)
+                self.assertRegex(rendered, r'<svg[^>]*height="24"[^>]*octicon-cpu')
+                self.assertIn('draggable="false"', rendered)
+                self.assertIn('data-drag-reveal', rendered)
+                self.assertIn('data-drag-surface', rendered)
+                self.assertNotIn('drag_reveal.js', rendered)
+                self.assertNotIn("data-drag-ready", rendered)
+                self.assertLess(rendered.index('class="github-icon-cpu"'), rendered.index('class="github-icon-link'))
+
+    def test_footer_loads_shared_drag_script_once_without_github_icon_configuration(self) -> None:
+        result = subprocess.run(
+            ["bundle", "exec", "ruby", "-e", LIQUID_RENDERER, str(REPO_ROOT / "_includes" / "sub-footer.html")],
+            cwd=REPO_ROOT,
+            input=json.dumps({"site": {
+                "github_icon": {"switch": False},
+                "find_the_bug_game": {"switch": True},
+            }}),
+            capture_output=True, check=True, text=True,
+        )
+        self.assertEqual(result.stdout.count('<script src="/project/assets/js/drag_reveal.js" defer></script>'), 1)
+        templates = re.findall(r'<template data-drag-icons>([\s\S]*?)</template>', result.stdout)
+        self.assertEqual(len(templates), 1)
+        self.assertEqual(
+            re.findall(r'class="octicon octicon-([^"]+)"', templates[0]),
+            ["bug", "squirrel"],
+        )
 
     def test_profile_destination_uses_owner_url_and_default_text_style(self) -> None:
         rendered = self.render_header(
@@ -152,6 +191,10 @@ class HeaderTemplateTests(unittest.TestCase):
                 self.assertNotIn("octicon-logo-github", rendered)
                 self.assertNotIn("octicon-mark-github", rendered)
                 self.assertNotIn("site-header-actions--with-github-icon", rendered)
+                self.assertNotIn("data-github-drag", rendered)
+                self.assertNotIn("octicon-cpu", rendered)
+                self.assertNotIn("data-drag-surprise", rendered)
+                self.assertNotIn("drag_reveal.js", rendered)
 
     def test_invalid_enabled_link_is_safely_omitted(self) -> None:
         for link in (None, "", "PROFILE", "projects", "issues", ["repos"]):
@@ -164,6 +207,7 @@ class HeaderTemplateTests(unittest.TestCase):
 
                 self.assertNotIn("github-icon-link", rendered)
                 self.assertNotIn('href="?tab=repositories"', rendered)
+                self.assertNotIn("drag_reveal.js", rendered)
 
     def test_invalid_enabled_style_is_safely_omitted(self) -> None:
         rendered = self.render_header(
@@ -175,6 +219,7 @@ class HeaderTemplateTests(unittest.TestCase):
         self.assertNotIn("github-icon-link", rendered)
         self.assertNotIn("octicon-logo-github", rendered)
         self.assertNotIn("octicon-mark-github", rendered)
+        self.assertNotIn("drag_reveal.js", rendered)
 
     def test_enabled_icon_is_omitted_without_owner_metadata(self) -> None:
         rendered = self.render_header(
@@ -186,6 +231,7 @@ class HeaderTemplateTests(unittest.TestCase):
         self.assertNotIn("github-icon-link", rendered)
         self.assertNotIn("octicon-logo-github", rendered)
         self.assertNotIn('href="?tab=repositories"', rendered)
+        self.assertNotIn("drag_reveal.js", rendered)
 
     def test_page_navigation_precedes_the_github_icon(self) -> None:
         rendered = self.render_header(
@@ -200,10 +246,10 @@ class HeaderTemplateTests(unittest.TestCase):
             rendered.index('class="github-icon-link'),
         )
 
-    def test_template_reads_the_hyphenated_configuration_key(self) -> None:
+    def test_template_reads_the_underscore_configuration_key(self) -> None:
         template = HEADER_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('site["github-icon"]', template)
+        self.assertIn('site["github_icon"]', template)
 
     def test_auto_icon_bootstrap_precedes_the_stylesheet(self) -> None:
         head = HEAD_PATH.read_text(encoding="utf-8")
@@ -219,7 +265,9 @@ class HeaderTemplateTests(unittest.TestCase):
         styles = STYLES_PATH.read_text(encoding="utf-8")
 
         def rule(selector: str) -> str:
-            start = styles.index(f"{selector} {{")
+            match = re.search(rf"(?m)^[ \t]*{re.escape(selector)} \{{", styles)
+            self.assertIsNotNone(match, selector)
+            start = match.start()
             end = styles.index("}", start)
             return styles[start:end]
 

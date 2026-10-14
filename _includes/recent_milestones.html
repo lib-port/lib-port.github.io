@@ -31,62 +31,67 @@
 
   <ul class="recent-milestones-list" data-recent-milestones-list hidden>
     {%- for item_number in (1..recent_milestones.milestones) %}
-    <li class="recent-milestone-item linked-card" data-recent-milestone-item hidden>
-      <div class="recent-milestone-heading">
-        <h3 class="recent-milestone-title">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon milestone height:16 %}</span>
-          <a class="linked-card-primary-link" data-recent-milestone-title></a>
-        </h3>
-        <span class="recent-milestone-repo linked-card-foreground">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon repo height:16 %}</span>
-          <a data-recent-milestone-repo>
-            <span data-recent-milestone-repo-name></span>
-          </a>
-        </span>
-      </div>
+    <li class="recent-milestone-item draggable-card" data-drag-reveal data-recent-milestone-item hidden>
+      <span class="card-cpu" aria-hidden="true">{% octicon cpu height:32 %}</span>
+      <div class="linked-card" data-drag-surface>
+        <div class="recent-milestone-heading">
+          <h3 class="recent-milestone-title">
+            <a class="linked-card-primary-link" data-recent-milestone-title>
+              <span class="recent-milestone-icon" data-drag-handle aria-hidden="true">{% octicon milestone height:16 %}</span>
+              <span data-recent-milestone-title-text></span>
+            </a>
+          </h3>
+          <span class="recent-milestone-repo linked-card-foreground">
+            <span class="recent-milestone-icon" aria-hidden="true">{% octicon repo height:16 %}</span>
+            <a data-recent-milestone-repo>
+              <span data-recent-milestone-repo-name></span>
+            </a>
+          </span>
+        </div>
 
-      <p class="recent-milestone-description" data-recent-milestone-description></p>
+        <p class="recent-milestone-description" data-recent-milestone-description></p>
 
-      <ul class="recent-milestone-details" aria-label="Milestone metadata">
-        <li class="recent-milestone-detail" data-recent-milestone-due-detail>
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon goal height:16 %}</span>
-          <span data-recent-milestone-due></span>
-        </li>
-        <li class="recent-milestone-detail">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon tasklist height:16 %}</span>
-          <span data-recent-milestone-closed-total></span>
-          <span>issues closed</span>
-        </li>
-        <li class="recent-milestone-detail">
-          <span class="recent-milestone-icon" aria-hidden="true">{% octicon graph height:16 %}</span>
-          <span><span class="recent-milestone-percentage" data-recent-milestone-percentage></span> complete</span>
-        </li>
-      </ul>
-
-      <div class="recent-milestone-progress-section">
-        <span
-          class="recent-milestone-progress"
-          data-recent-milestone-progress
-          role="progressbar"
-          aria-valuemin="0"
-          aria-valuemax="100"
-        >
-          <span class="recent-milestone-progress-value" data-recent-milestone-progress-value></span>
-        </span>
-        <ul class="recent-milestone-latest-issue" aria-label="Latest closed issue">
-          <li class="recent-milestone-latest-issue-detail">
-            <span class="recent-milestone-icon" aria-hidden="true">{% octicon issue-closed height:16 %}</span>
-            <span data-recent-milestone-latest-closed-issue></span>
+        <ul class="recent-milestone-details" aria-label="Milestone metadata">
+          <li class="recent-milestone-detail" data-recent-milestone-due-detail>
+            <span class="recent-milestone-icon" aria-hidden="true">{% octicon goal height:16 %}</span>
+            <span data-recent-milestone-due></span>
           </li>
-          <li
-            class="recent-milestone-latest-issue-detail recent-milestone-latest-issue-label-detail"
-            data-recent-milestone-latest-closed-issue-label-detail
-            hidden
-          >
-            <span class="recent-milestone-icon" aria-hidden="true">{% octicon tag height:16 %}</span>
-            <span data-recent-milestone-latest-closed-issue-labels></span>
+          <li class="recent-milestone-detail">
+            <span class="recent-milestone-icon" aria-hidden="true">{% octicon tasklist height:16 %}</span>
+            <span data-recent-milestone-closed-total></span>
+            <span>issues closed</span>
+          </li>
+          <li class="recent-milestone-detail">
+            <span class="recent-milestone-icon" aria-hidden="true">{% octicon compose height:16 %}</span>
+            <span><span class="recent-milestone-percentage" data-recent-milestone-percentage></span> complete</span>
           </li>
         </ul>
+
+        <div class="recent-milestone-progress-section">
+          <span
+            class="recent-milestone-progress"
+            data-recent-milestone-progress
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <span class="recent-milestone-progress-value" data-recent-milestone-progress-value></span>
+          </span>
+          <ul class="recent-milestone-latest-issue" aria-label="Latest closed issue">
+            <li class="recent-milestone-latest-issue-detail">
+              <span class="recent-milestone-icon" aria-hidden="true">{% octicon issue-closed height:16 %}</span>
+              <span data-recent-milestone-latest-closed-issue></span>
+            </li>
+            <li
+              class="recent-milestone-latest-issue-detail recent-milestone-latest-issue-label-detail"
+              data-recent-milestone-latest-closed-issue-label-detail
+              hidden
+            >
+              <span class="recent-milestone-icon" aria-hidden="true">{% octicon tag height:16 %}</span>
+              <span data-recent-milestone-latest-closed-issue-labels></span>
+            </li>
+          </ul>
+        </div>
       </div>
     </li>
     {%- endfor %}

@@ -12,27 +12,28 @@ STYLES_PATH = REPO_ROOT / "_sass" / "minima" / "custom-styles.scss"
 
 
 class RepoGridTemplateTests(unittest.TestCase):
-    def test_repo_title_has_decorative_repo_icon_before_link(self) -> None:
+    def test_repo_title_keeps_its_decorative_drag_handle_inside_the_link(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
         repo_icon = (
-            '<span class="repo-icon" aria-hidden="true">{% octicon repo height:16 %}</span>'
+            '<span class="repo-icon" data-drag-handle aria-hidden="true">{% octicon repo height:16 %}</span>'
         )
         repo_link = (
             '<a class="repo-link linked-card-primary-link" '
-            'href="{{ repo.html_url | escape }}">{{ repo.name | escape }}</a>'
+            'href="{{ repo.html_url | escape }}">'
         )
 
         self.assertIn(repo_icon, template)
         self.assertIn(repo_link, template)
-        self.assertLess(template.index(repo_icon), template.index(repo_link))
+        self.assertLess(template.index(repo_link), template.index(repo_icon))
+        self.assertLess(template.index(repo_icon), template.index('<span>{{ repo.name | escape }}</span>'))
 
     def test_repo_and_milestone_title_icons_are_muted(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")
         selector = (
-            ".repo-title > .repo-icon,\n"
-            ".recent-milestone-title > .recent-milestone-icon"
+            ".repo-title .repo-icon,\n"
+            ".recent-milestone-title .recent-milestone-icon"
         )
-        start = styles.index(f"{selector} {{")
+        start = styles.index(f"\n{selector} {{") + 1
         rule = styles[start : styles.index("\n}", start)]
 
         self.assertIn("opacity: 0.8;", rule)
@@ -44,22 +45,28 @@ class RepoGridTemplateTests(unittest.TestCase):
         milestone_template = MILESTONE_TEMPLATE_PATH.read_text(encoding="utf-8")
         styles = STYLES_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('class="repo-card linked-card"', repo_template)
+        self.assertIn('class="repo-card draggable-card"', repo_template)
         self.assertIn(
             'class="repo-link linked-card-primary-link"',
             repo_template,
         )
         self.assertIn(
-            'class="recent-milestone-item linked-card"',
+            'class="recent-milestone-item draggable-card"',
             milestone_template,
         )
         self.assertIn(
             'class="linked-card-primary-link" data-recent-milestone-title',
             milestone_template,
         )
+        for template in (repo_template, milestone_template):
+            self.assertIn('data-drag-reveal', template)
+            self.assertIn('<div class="linked-card" data-drag-surface>', template)
+            self.assertRegex(template, r'<span class="card-cpu" aria-hidden="true"(?: data-drag-surprise)?>\{% octicon cpu height:32 %\}</span>')
+        self.assertEqual(repo_template.count("data-drag-surprise"), 1)
+        self.assertNotIn("data-drag-surprise", milestone_template)
 
         def rule(selector: str) -> str:
-            start = styles.index(f"{selector} {{")
+            start = styles.index(f"\n{selector} {{") + 1
             end = styles.index("\n}", start)
             return styles[start:end]
 

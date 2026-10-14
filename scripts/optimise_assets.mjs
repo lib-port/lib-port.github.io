@@ -9,6 +9,35 @@ if (siteDirectory === resolve(fileURLToPath(new URL("..", import.meta.url)))) {
   throw new Error("Optimise generated assets in a build directory; keep source files readable.");
 }
 const scripts = ["github_activity.js", "theme_toggle.js", "external_blog.js"];
+const [homepage, planeAsset, gameAsset] = await Promise.all([
+  readFile(join(siteDirectory, "index.html"), "utf8"),
+  stat(join(siteDirectory, "assets", "js", "title_flight.js")).catch(error => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }),
+  stat(join(siteDirectory, "assets", "js", "drag_reveal.js")).catch(error => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }),
+]);
+const planeEnabled = /<script\b[^>]*\bsrc="[^"]*\/assets\/js\/title_flight\.js"/.test(homepage);
+if (planeEnabled !== Boolean(planeAsset) || (planeAsset && !planeAsset.isFile())) {
+  throw new Error("Paper plane asset inclusion mismatch: title_flight.js must match the generated homepage script reference.");
+}
+if (planeEnabled) {
+  scripts.push("title_flight.js");
+} else {
+  console.log("Paper plane: skipped (plane asset excluded)");
+}
+const gameEnabled = /<script\b[^>]*\bsrc="[^"]*\/assets\/js\/drag_reveal\.js"/.test(homepage);
+if (gameEnabled !== Boolean(gameAsset) || (gameAsset && !gameAsset.isFile())) {
+  throw new Error("Game asset inclusion mismatch: drag_reveal.js must match the generated homepage script reference.");
+}
+if (gameEnabled) {
+  scripts.push("drag_reveal.js");
+} else {
+  console.log("Find the bug game: skipped (game asset excluded)");
+}
 const gzipSize = (content) => gzipSync(content, { level: 9 }).length;
 let totalJavaScript = 0;
 
@@ -17,7 +46,7 @@ for (const name of scripts) {
   const source = await readFile(path, "utf8");
   const result = await minify(source, {
     ecma: 2020,
-    compress: { unsafe: false },
+    compress: { unsafe: false, passes: 2 },
     mangle: true,
     format: { comments: "some" },
   });

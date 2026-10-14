@@ -104,7 +104,8 @@
       return true;
     };
 
-    const handleClick = () => {
+    const handleClick = (event) => {
+      if (event.defaultPrevented) return;
       explicitTheme = currentTheme === DARK_THEME ? LIGHT_THEME : DARK_THEME;
       if (setTheme(explicitTheme)) {
         writeStoredTheme(resolvedStorage, explicitTheme);

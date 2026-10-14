@@ -1,12 +1,23 @@
-<button
-  class="theme-toggle"
-  type="button"
-  data-theme-toggle
-  aria-label="Switch to dark mode"
-  title="Switch to dark mode"
-  hidden
->
-  <span class="theme-toggle-icon" data-theme-icon="dark" aria-hidden="true">{% octicon moon height:16 %}</span>
-  <span class="theme-toggle-icon" data-theme-icon="light" aria-hidden="true" hidden>{% octicon sun height:16 %}</span>
-</button>
+<div class="theme-toggle-drag" data-drag-reveal>
+  <span class="theme-toggle-cpu" aria-hidden="true" data-drag-surprise>{% octicon cpu height:24 %}</span>
+  <button
+    class="theme-toggle"
+    type="button"
+    data-theme-toggle
+    data-drag-surface
+    aria-label="Switch to dark mode"
+    title="Switch to dark mode"
+    hidden
+  >
+    <span class="theme-toggle-icon" data-theme-icon="dark" aria-hidden="true">{% octicon moon height:16 %}</span>
+    <span class="theme-toggle-icon" data-theme-icon="light" aria-hidden="true" hidden>{% octicon sun height:16 %}</span>
+  </button>
+</div>
 <script src="{{ '/assets/js/theme_toggle.js' | relative_url }}" defer></script>
+{%- if site["find_the_bug_game"].switch == true %}
+<template data-drag-icons>
+  {% octicon bug height:16 %}
+  {% octicon squirrel height:16 %}
+</template>
+<script src="{{ '/assets/js/drag_reveal.js' | relative_url }}" defer></script>
+{%- endif %}

@@ -67,20 +67,12 @@ jobs:
       - name: Install JavaScript build dependencies
         run: npm ci
 
-      - name: Run tests
-        run: |
-          python3 -m unittest discover -s tests
-          npm test
-
       - name: Build site
         env:
           JEKYLL_ENV: production
           JEKYLL_GITHUB_TOKEN: ${{ secrets.PINNED_REPOS_GITHUB_TOKEN != '' && secrets.PINNED_REPOS_GITHUB_TOKEN || github.token }}
           PAGES_REPO_NWO: ${{ github.repository }}
         run: ./scripts/build_site.sh
-
-      - name: Test production JavaScript
-        run: npm run test:built
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

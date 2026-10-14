@@ -26,10 +26,20 @@ class ConfigValidationError(ValueError):
 
 
 @dataclass(frozen=True)
+class FindTheBugGameConfig:
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class GitHubIconConfig:
     enabled: bool
     link: str
     style: str
+
+
+@dataclass(frozen=True)
+class PaperPlaneConfig:
+    enabled: bool
 
 
 @dataclass(frozen=True)
@@ -73,7 +83,9 @@ class ExternalBlogConfig:
 
 @dataclass(frozen=True)
 class SiteConfig:
+    find_the_bug_game: FindTheBugGameConfig
     github_icon: GitHubIconConfig
+    paper_plane: PaperPlaneConfig
     intro: IntroConfig
     ascii_banner: AsciiBannerConfig
     repo_grid: RepoGridConfig
@@ -106,7 +118,9 @@ def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     repo_grid = validate_repo_grid(raw, config_path)
 
     return SiteConfig(
+        find_the_bug_game=validate_find_the_bug_game(raw, config_path),
         github_icon=validate_github_icon(raw, config_path),
+        paper_plane=validate_paper_plane(raw, config_path),
         intro=validate_intro(raw, config_path),
         ascii_banner=validate_ascii_banner(raw, config_path),
         repo_grid=repo_grid,
@@ -117,29 +131,43 @@ def validate_site_config(config_path: Path = CONFIG_PATH) -> SiteConfig:
     )
 
 
+def validate_find_the_bug_game(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> FindTheBugGameConfig:
+    section = _get_section_mapping(raw_config, "find_the_bug_game", config_path)
+    return FindTheBugGameConfig(enabled=_get_switch(section, "find_the_bug_game", config_path))
+
+
 def validate_github_icon(
     raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
 ) -> GitHubIconConfig:
-    section = _get_section_mapping(raw_config, "github-icon", config_path)
-    enabled = _get_switch(section, "github-icon", config_path)
+    section = _get_section_mapping(raw_config, "github_icon", config_path)
+    enabled = _get_switch(section, "github_icon", config_path)
     if not enabled:
         return GitHubIconConfig(enabled=False, link="", style="")
 
     raw_link = section.get("link")
     if not isinstance(raw_link, str) or raw_link not in GITHUB_ICON_LINKS:
         raise ConfigValidationError(
-            f"{config_path}: github-icon.switch is true, but "
-            "github-icon.link must be exactly 'profile' or 'repos'"
+            f"{config_path}: github_icon.switch is true, but "
+            "github_icon.link must be exactly 'profile' or 'repos'"
         )
 
     raw_style = section.get("style", "text")
     if not isinstance(raw_style, str) or raw_style not in GITHUB_ICON_STYLES:
         raise ConfigValidationError(
-            f"{config_path}: github-icon.switch is true, but "
-            "github-icon.style must be exactly 'auto', 'text', or 'icon'"
+            f"{config_path}: github_icon.switch is true, but "
+            "github_icon.style must be exactly 'auto', 'text', or 'icon'"
         )
 
     return GitHubIconConfig(enabled=True, link=raw_link, style=raw_style)
+
+
+def validate_paper_plane(
+    raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
+) -> PaperPlaneConfig:
+    section = _get_section_mapping(raw_config, "paper_plane", config_path)
+    return PaperPlaneConfig(enabled=_get_switch(section, "paper_plane", config_path))
 
 
 def validate_intro(
@@ -157,12 +185,12 @@ def validate_intro(
 def validate_ascii_banner(
     raw_config: dict[str, Any], config_path: Path = CONFIG_PATH
 ) -> AsciiBannerConfig:
-    section = _get_section_mapping(raw_config, "ascii-banner", config_path)
-    enabled = _get_switch(section, "ascii-banner", config_path)
+    section = _get_section_mapping(raw_config, "ascii_banner", config_path)
+    enabled = _get_switch(section, "ascii_banner", config_path)
     if not enabled:
         return AsciiBannerConfig(enabled=False, module="")
 
-    module = _require_non_blank_string(section, "ascii-banner", "module", config_path)
+    module = _require_non_blank_string(section, "ascii_banner", "module", config_path)
     catalogue = REPO_ROOT / "assets" / "js" / "ascii-rest" / "manifest.json"
     try:
         scenes = json.loads(catalogue.read_text(encoding="utf-8"))["scenes"]
@@ -173,13 +201,13 @@ def validate_ascii_banner(
             not (catalogue.parent / "pieces" / f"{scene}.js").is_file() for scene in scenes
         ):
             raise ConfigValidationError(
-                f"{config_path}: ascii-banner.module 'random' requires a non-empty "
+                f"{config_path}: ascii_banner.module 'random' requires a non-empty "
                 "catalogue of locally available scenes"
             )
         return AsciiBannerConfig(enabled=True, module=module)
     if module not in scenes or not (catalogue.parent / "pieces" / f"{module}.js").is_file():
         raise ConfigValidationError(
-            f"{config_path}: ascii-banner.module must name a locally available scene; "
+            f"{config_path}: ascii_banner.module must name a locally available scene; "
             f"choose 'random' or one of: {', '.join(scenes)}"
         )
     return AsciiBannerConfig(enabled=True, module=module)

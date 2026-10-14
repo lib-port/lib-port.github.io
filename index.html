@@ -7,13 +7,29 @@ hide_site_title: true
 {%- if site.repo_grid.switch or site.recent_milestones.switch or site.recent_commits.switch -%}
   {%- assign github_activity_enabled = true -%}
 {%- endif -%}
-<header class="post-header"><h1 class="post-title">{{ site.title | escape }}</h1></header>
+{%- assign paper_plane = site["paper_plane"] -%}
+<header class="post-header">
+  <h1 class="post-title">
+    {%- if paper_plane.switch == true %}
+    <span class="title-flight" data-title-flight>
+      <span class="title-flight-text" data-title-flight-text>{{ site.title | escape }}</span>
+      <span class="title-flight-plane" data-title-flight-plane aria-hidden="true">{% octicon paper-airplane height:16 %}</span>
+      <button class="title-flight-launch" data-title-flight-launch type="button" aria-label="Fly paper plane" hidden></button>
+    </span>
+    {%- else %}
+    {{ site.title | escape }}
+    {%- endif %}
+  </h1>
+</header>
+{%- if paper_plane.switch == true %}
+<script src="{{ '/assets/js/title_flight.js' | relative_url }}" defer></script>
+{%- endif %}
 {%- for section_key in site.keys -%}
   {%- capture home_section -%}
     {%- case section_key -%}
       {%- when "intro" -%}
         {%- include intro.html -%}
-      {%- when "ascii-banner" -%}
+      {%- when "ascii_banner" -%}
         {%- include ascii_banner.html -%}
       {%- when "repo_grid" -%}
         {%- include repo_grid.html -%}
@@ -32,7 +48,7 @@ hide_site_title: true
   data-home-section="{{ section_key | escape }}"
   {%- if section_key == "recent_commits" %} hidden
   {%- elsif section_key == "recent_milestones" %} hidden
-  {%- elsif section_key == "ascii-banner" %} hidden{% endif -%}
+  {%- elsif section_key == "ascii_banner" %} hidden{% endif -%}
 >
 <hr class="section-divider">
 {{ home_section }}

@@ -514,6 +514,7 @@
 
   function renderMilestone(item, milestone, owner) {
     const title = item.querySelector?.("[data-recent-milestone-title]");
+    const titleText = item.querySelector?.("[data-recent-milestone-title-text]");
     const repoLink = item.querySelector?.("[data-recent-milestone-repo]");
     const repoName = item.querySelector?.("[data-recent-milestone-repo-name]");
     const description = item.querySelector?.(
@@ -545,6 +546,7 @@
 
     if (
       !title ||
+      !titleText ||
       !repoLink ||
       !repoName ||
       !description ||
@@ -568,7 +570,7 @@
       totalIssues
     );
 
-    title.textContent = milestone.title;
+    titleText.textContent = milestone.title;
     title.href = buildMilestoneUrl(owner, milestone.repository, milestone.number);
     repoLink.href = buildRepositoryUrl(owner, milestone.repository);
     repoName.textContent = milestone.repository;

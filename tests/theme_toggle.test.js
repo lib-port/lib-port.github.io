@@ -263,6 +263,37 @@ test("a click toggles and persists an explicit preference", () => {
   assert.equal(fixture.darkIcon.hidden, true);
 });
 
+for (const systemDark of [false, true]) {
+  test(`a cancelled click preserves the ${systemDark ? "dark" : "light"} theme and system preference`, () => {
+    const fixture = makeFixture({ systemDark });
+    const controller = initThemeToggle(fixture);
+    const theme = controller.getTheme();
+    const writes = [];
+    const setItem = fixture.storage.setItem.bind(fixture.storage);
+    fixture.storage.setItem = (key, value) => {
+      writes.push([key, value]);
+      setItem(key, value);
+    };
+
+    fixture.button.dispatch("click", { defaultPrevented: true, detail: 1 });
+
+    assert.equal(controller.getTheme(), theme);
+    assert.equal(fixture.root.dataset.theme, theme);
+    assert.equal(fixture.lightIcon.hidden, !systemDark);
+    assert.equal(fixture.darkIcon.hidden, systemDark);
+    assert.deepEqual(writes, []);
+    assert.equal(fixture.storage.getItem(THEME_STORAGE_KEY), null);
+
+    fixture.mediaQuery.emit(!systemDark);
+    assert.notEqual(controller.getTheme(), theme);
+
+    fixture.button.dispatch("click", { defaultPrevented: false, detail: 0 });
+    assert.equal(controller.getTheme(), theme);
+    assert.deepEqual(writes, [[THEME_STORAGE_KEY, theme]]);
+    assert.equal(fixture.storage.getItem(THEME_STORAGE_KEY), theme);
+  });
+}
+
 test("system changes apply only until the visitor chooses a theme", () => {
   const fixture = makeFixture();
   const controller = initThemeToggle(fixture);

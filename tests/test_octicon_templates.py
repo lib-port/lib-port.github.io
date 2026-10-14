@@ -22,12 +22,19 @@ class OcticonTemplateTests(unittest.TestCase):
             )
 
         self.assertTrue(octicon_tags, "No Octicon tags were found")
-        wrong_source_size = [
-            f"{path.relative_to(REPO_ROOT)}: expected {expected}px: {tag}"
-            for path, tag in octicon_tags
-            for expected in (24 if path.name == "header.html" else 16,)
-            if not re.search(rf"\bheight\s*:\s*{expected}\b", tag)
-        ]
+        wrong_source_size = []
+        for path, tag in octicon_tags:
+            expected = 24 if path.name == "header.html" else 16
+            if re.match(r"\{%\s*octicon\s+cpu\b", tag):
+                expected = {
+                    "repo_grid.html": 32,
+                    "recent_milestones.html": 32,
+                    "sub-footer.html": 24,
+                }.get(path.name, expected)
+            if not re.search(rf"\bheight\s*:\s*{expected}\b", tag):
+                wrong_source_size.append(
+                    f"{path.relative_to(REPO_ROOT)}: expected {expected}px: {tag}"
+                )
         self.assertEqual([], wrong_source_size)
 
 

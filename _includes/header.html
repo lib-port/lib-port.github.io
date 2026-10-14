@@ -7,7 +7,7 @@
     {%- unless page.hide_site_title %}
       <a class="site-title" rel="author" href="{{ '/' | relative_url }}">{{ site.title | escape }}</a>
     {%- endunless %}
-    {%- assign github_icon = site["github-icon"] -%}
+    {%- assign github_icon = site["github_icon"] -%}
     {%- assign github_icon_url = "" -%}
     {%- assign github_icon_label = "" -%}
     {%- assign github_icon_style = github_icon.style -%}
@@ -51,19 +51,24 @@
         </nav>
       {%- endunless %}
       {%- if github_icon_is_visible %}
-        <a
-          class="github-icon-link github-icon-link--{{ github_icon_style }}"
-          href="{{ github_icon_url | escape }}"
-          aria-label="{{ github_icon_label | escape }}"
-        >{%- case github_icon_style -%}
-          {%- when "icon" -%}
-            {% octicon mark-github height:24 %}
-          {%- when "auto" -%}
-            <span class="github-icon-variant github-icon-variant--mark" data-github-icon-variant="mark" aria-hidden="true">{% octicon mark-github height:24 %}</span>
-            <span class="github-icon-variant github-icon-variant--logo" data-github-icon-variant="logo" aria-hidden="true">{% octicon logo-github height:24 %}</span>
-          {%- else -%}
-            {% octicon logo-github height:24 %}
-          {%- endcase -%}</a>
+        <span class="github-icon-drag" data-github-drag data-drag-reveal>
+          <span class="github-icon-cpu" aria-hidden="true" data-drag-surprise>{% octicon cpu height:24 %}</span>
+          <a
+            class="github-icon-link github-icon-link--{{ github_icon_style }}"
+            href="{{ github_icon_url | escape }}"
+            aria-label="{{ github_icon_label | escape }}"
+            draggable="false"
+            data-drag-surface
+          >{%- case github_icon_style -%}
+            {%- when "icon" -%}
+              {% octicon mark-github height:24 %}
+            {%- when "auto" -%}
+              <span class="github-icon-variant github-icon-variant--mark" data-github-icon-variant="mark" aria-hidden="true">{% octicon mark-github height:24 %}</span>
+              <span class="github-icon-variant github-icon-variant--logo" data-github-icon-variant="logo" aria-hidden="true">{% octicon logo-github height:24 %}</span>
+            {%- else -%}
+              {% octicon logo-github height:24 %}
+            {%- endcase -%}</a>
+        </span>
       {%- endif -%}
     </div>
   </div>

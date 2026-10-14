@@ -10,7 +10,14 @@ const test = require("node:test");
 
 const root = path.join(__dirname, "..");
 const script = path.join(root, "scripts", "optimise_assets.mjs");
-const names = ["github_activity.js", "theme_toggle.js", "external_blog.js"];
+const names = ["github_activity.js", "theme_toggle.js", "external_blog.js", "title_flight.js", "drag_reveal.js"];
+const bannerMarkup = '<div data-home-section="ascii_banner" hidden><ascii-art piece="random"></ascii-art>' +
+  '<script type="module" src="/project/assets/js/ascii_banner.mjs"></script></div>';
+const gameMarkup = '<template data-drag-icons></template>' +
+  '<script src="/project/assets/js/drag_reveal.js" defer></script>';
+const planeMarkup = '<span data-title-flight><span data-title-flight-plane></span>' +
+  '<button data-title-flight-launch></button></span>' +
+  '<script src="/project/assets/js/title_flight.js" defer></script>';
 const noise = Array.from({ length: 1024 }, (_, index) =>
   createHash("sha256").update(String(index)).digest("hex")
 ).join("");
@@ -20,9 +27,7 @@ function makeBuild(t) {
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   fs.mkdirSync(path.join(directory, "assets", "js"), { recursive: true });
   fs.mkdirSync(path.join(directory, "assets", "css"));
-  fs.writeFileSync(path.join(directory, "index.html"),
-    '<div data-home-section="ascii-banner" hidden><ascii-art piece="random"></ascii-art>' +
-    '<script type="module" src="/project/assets/js/ascii_banner.mjs"></script></div>');
+  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + gameMarkup + planeMarkup);
   for (const name of names) {
     fs.writeFileSync(path.join(directory, "assets", "js", name),
       "/*! Example licence */\nwindow.example = function (value) { return value + 1; };\n");
@@ -39,11 +44,11 @@ function optimise(directory, optimiser = script) {
   return spawnSync(process.execPath, [optimiser, directory], { encoding: "utf8" });
 }
 
-function testBannerBuild(directory) {
+function testBuiltAssets(directory, suite) {
   const env = { ...process.env, CLIENT_ASSET_DIRECTORY: path.join(directory, "assets", "js") };
   // Run a separate suite; inheriting the parent's context makes Node skip it.
   delete env.NODE_TEST_CONTEXT;
-  return spawnSync(process.execPath, ["--test", "--test-reporter=tap", path.join(__dirname, "ascii_banner.test.js")], {
+  return spawnSync(process.execPath, ["--test", "--test-reporter=tap", path.join(__dirname, suite)], {
     env,
     encoding: "utf8",
     timeout: 20_000,
@@ -64,7 +69,7 @@ test("minifies generated JavaScript, retains licence comments and reports gzip s
   assert.match(scene, /MIT licence/);
   assert.match(scene, /export/);
   assert.match(result.stdout, /ASCII JavaScript catalogue: \d+ bytes gzipped/);
-  const bannerTests = testBannerBuild(directory);
+  const bannerTests = testBuiltAssets(directory, "ascii_banner.test.js");
   assert.equal(bannerTests.status, 0, bannerTests.stdout + bannerTests.stderr);
   assert.match(bannerTests.stdout, /produces valid local frames and palette indices/);
   assert.doesNotMatch(bannerTests.stdout, /# SKIP/);
@@ -75,13 +80,105 @@ test("optimises a build with the ASCII banner excluded", t => {
   for (const name of ["ascii_banner.mjs", "ascii-rest"]) {
     fs.rmSync(path.join(directory, "assets", "js", name), { recursive: true });
   }
-  fs.writeFileSync(path.join(directory, "index.html"), "<p>Banner disabled</p>");
+  fs.writeFileSync(path.join(directory, "index.html"), gameMarkup + planeMarkup);
   const result = optimise(directory);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /ASCII JavaScript catalogue: skipped/);
   assert.match(result.stdout, /JavaScript total: \d+ bytes; stylesheet: \d+ bytes gzipped/);
-  const bannerTests = testBannerBuild(directory);
+  const bannerTests = testBuiltAssets(directory, "ascii_banner.test.js");
   assert.equal(bannerTests.status, 0, bannerTests.stdout + bannerTests.stderr);
+});
+
+test("exercises the enabled game against its minified build", t => {
+  const directory = makeBuild(t);
+  fs.copyFileSync(path.join(root, "assets", "js", "drag_reveal.js"),
+    path.join(directory, "assets", "js", "drag_reveal.js"));
+  const result = optimise(directory);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /drag_reveal\.js: \d+ bytes gzipped/);
+  const gameTests = testBuiltAssets(directory, "drag_reveal.test.js");
+  assert.equal(gameTests.status, 0, gameTests.stdout + gameTests.stderr);
+  assert.match(gameTests.stdout, /each eligible underlay occupies an equal interval/);
+  assert.doesNotMatch(gameTests.stdout, /# SKIP/);
+});
+
+test("optimises a build with the game excluded and verifies its absence", t => {
+  const directory = makeBuild(t);
+  fs.rmSync(path.join(directory, "assets", "js", "drag_reveal.js"));
+  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + planeMarkup);
+  const result = optimise(directory);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Find the bug game: skipped/);
+  assert.doesNotMatch(result.stdout, /drag_reveal\.js: \d+ bytes gzipped/);
+  const gameTests = testBuiltAssets(directory, "drag_reveal.test.js");
+  assert.equal(gameTests.status, 0, gameTests.stdout + gameTests.stderr);
+  assert.match(gameTests.stdout, /ok \d+ - built game assets agree with the game markup/);
+  assert.match(gameTests.stdout, /# SKIP The built homepage disables/);
+});
+
+for (const mismatch of ["missing referenced game asset", "leftover disabled game asset"]) {
+  test(`rejects a ${mismatch}`, t => {
+    const directory = makeBuild(t);
+    if (mismatch === "missing referenced game asset") {
+      fs.rmSync(path.join(directory, "assets", "js", "drag_reveal.js"));
+    } else {
+      fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + planeMarkup);
+    }
+    const result = optimise(directory);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Game asset inclusion mismatch/);
+  });
+}
+
+test("exercises the enabled paper plane against its minified build", t => {
+  const directory = makeBuild(t);
+  fs.copyFileSync(path.join(root, "assets", "js", "title_flight.js"),
+    path.join(directory, "assets", "js", "title_flight.js"));
+  const result = optimise(directory);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /title_flight\.js: \d+ bytes gzipped/);
+  const planeTests = testBuiltAssets(directory, "title_flight.test.js");
+  assert.equal(planeTests.status, 0, planeTests.stdout + planeTests.stderr);
+  assert.match(planeTests.stdout, /flies an eight-second loop and finishes the remaining path at twice the speed/);
+  assert.doesNotMatch(planeTests.stdout, /# SKIP/);
+});
+
+test("optimises a build with the paper plane excluded and verifies its absence", t => {
+  const directory = makeBuild(t);
+  fs.rmSync(path.join(directory, "assets", "js", "title_flight.js"));
+  fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + gameMarkup);
+  const result = optimise(directory);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Paper plane: skipped/);
+  assert.doesNotMatch(result.stdout, /title_flight\.js: \d+ bytes gzipped/);
+  const planeTests = testBuiltAssets(directory, "title_flight.test.js");
+  assert.equal(planeTests.status, 0, planeTests.stdout + planeTests.stderr);
+  assert.match(planeTests.stdout, /ok \d+ - built paper plane assets agree with the plane markup/);
+  assert.match(planeTests.stdout, /# SKIP The built homepage disables/);
+});
+
+for (const mismatch of ["missing referenced paper plane asset", "leftover disabled paper plane asset", "non-file paper plane asset"]) {
+  test(`rejects a ${mismatch}`, t => {
+    const directory = makeBuild(t);
+    const asset = path.join(directory, "assets", "js", "title_flight.js");
+    if (mismatch === "leftover disabled paper plane asset") {
+      fs.writeFileSync(path.join(directory, "index.html"), bannerMarkup + gameMarkup);
+    } else {
+      fs.rmSync(asset);
+      if (mismatch === "non-file paper plane asset") fs.mkdirSync(asset);
+    }
+    const result = optimise(directory);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Paper plane asset inclusion mismatch/);
+  });
+}
+
+test("still rejects a missing required script", t => {
+  const directory = makeBuild(t);
+  fs.rmSync(path.join(directory, "assets", "js", "theme_toggle.js"));
+  const result = optimise(directory);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /theme_toggle\.js/);
 });
 
 for (const missing of ["ascii_banner.mjs", "ascii-rest"]) {

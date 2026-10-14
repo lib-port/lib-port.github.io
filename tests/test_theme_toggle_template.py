@@ -30,7 +30,16 @@ class ThemeToggleTemplateTests(unittest.TestCase):
         self.assertIn("{% octicon moon height:16 %}", template)
         self.assertIn('data-theme-icon="light" aria-hidden="true" hidden', template)
         self.assertIn("{% octicon sun height:16 %}", template)
+        self.assertIn('<div class="theme-toggle-drag" data-drag-reveal>', template)
+        self.assertRegex(template, r"<button\s[^>]*data-theme-toggle[^>]*data-drag-surface[^>]*hidden")
+        self.assertIn(
+            '<span class="theme-toggle-cpu" aria-hidden="true" data-drag-surprise>{% octicon cpu height:24 %}</span>',
+            template,
+        )
+        self.assertNotIn("data-drag-handle", template)
         self.assertRegex(template, r"theme_toggle\.js[^>]*defer")
+        self.assertEqual(template.count("/assets/js/drag_reveal.js"), 1)
+        self.assertRegex(template, r"drag_reveal\.js[^>]*defer")
 
     def test_styles_cover_forced_themes_and_switcher_states(self) -> None:
         styles = STYLES_PATH.read_text(encoding="utf-8")

@@ -39,17 +39,23 @@ title: Library + Portfolio
 # Start of landing page settings
 ##################################
 
-github-icon:
+find_the_bug_game:
+  switch: true
+
+github_icon:
   switch: true
   link: repos # {profile|repos}
   style: auto # {auto|text|icon}
+
+paper_plane:
+  switch: true
 
 intro:
   switch: false
   text: Course notes and projects
 
 # ASCII art by github.com/bas3line
-ascii-banner:
+ascii_banner:
   switch: false
   module: random
 

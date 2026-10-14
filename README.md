@@ -22,6 +22,7 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 - Client-side blog posts with seven-day local caching
 - Configurable owner-aware GitHub profile or repositories link in the header
 - Responsive light and dark themes with a persistent visitor-controlled switcher
+- A tiny paper plane that weaves around the homepage title after an explicit click, tap or keyboard activation
 - Explicit loading and failure states for client-side GitHub activity
 - SEO metadata, a sitemap, and GitHub-flavored Markdown extensions
 - Automated deployment to GitHub Pages
@@ -48,16 +49,22 @@ A configurable Jekyll landing page for presenting selected GitHub repositories, 
 ```yaml
 title: Your Name
 
-github-icon:
+find_the_bug_game:
+  switch: true
+
+github_icon:
   switch: true
   link: repos
   style: auto
+
+paper_plane:
+  switch: true
 
 intro:
   switch: true
   text: Course notes, projects, and essays.
 
-ascii-banner:
+ascii_banner:
   switch: true
   module: misty-forest
 
@@ -88,19 +95,21 @@ description: A short description shown in site metadata and the footer.
 
 Replace the example feed and archive URLs with the URLs for your blog.
 
-The top-level order of `intro`, `ascii-banner`, `repo_grid`, `recent_milestones`, `recent_commits`, and `external_blog` determines their order on the homepage.
+The top-level order of `intro`, `ascii_banner`, `repo_grid`, `recent_milestones`, `recent_commits`, and `external_blog` determines their order on the homepage. Setting names use underscores; older hyphenated names are not recognised.
 
 | Setting | Requirement |
 | --- | --- |
 | `title` | Site title used by the theme and metadata. |
 | `description` | Site description used by metadata and the footer. |
-| `github-icon.switch` | YAML boolean controlling whether the rightmost header icon is shown. The default is `false` when the switch or section is missing. |
-| `github-icon.link` | Required when enabled and must be exactly `profile` or `repos`. `profile` uses the owner profile URL; `repos` adds `?tab=repositories` to it. There is no enabled default. |
-| `github-icon.style` | Optional when enabled and must be exactly `auto`, `text`, or `icon`. `auto` shows the GitHub mark without JavaScript and on detected desktop Linux systems, otherwise it shows the GitHub wordmark. `text` always shows the wordmark and is the default; `icon` always shows the mark. |
+| `find_the_bug_game.switch` | YAML boolean enabling dragging and the hidden bug/squirrel game. A false, null or missing switch excludes the game script from previews and production builds. |
+| `github_icon.switch` | YAML boolean controlling whether the rightmost header icon is shown. The default is `false` when the switch or section is missing. |
+| `github_icon.link` | Required when enabled and must be exactly `profile` or `repos`. `profile` uses the owner profile URL; `repos` adds `?tab=repositories` to it. There is no enabled default. |
+| `github_icon.style` | Optional when enabled and must be exactly `auto`, `text`, or `icon`. `auto` shows the GitHub mark without JavaScript and on detected desktop Linux systems, otherwise it shows the GitHub wordmark. `text` always shows the wordmark and is the default; `icon` always shows the mark. |
+| `paper_plane.switch` | YAML boolean enabling the decorative homepage title animation. A false, null or missing switch omits the plane and excludes its script from previews and production builds. |
 | `intro.switch` | YAML boolean controlling whether the introduction is shown. |
 | `intro.text` | Required, non-blank text when the introduction is enabled. |
-| `ascii-banner.switch` | YAML boolean controlling whether the ASCII banner is enabled. A missing or disabled switch or section omits banner markup and all ASCII assets from local previews and production builds. |
-| `ascii-banner.module` | Required when enabled; must name one of the locally available scenes listed below, or be exactly `random` to choose a scene on each page load. |
+| `ascii_banner.switch` | YAML boolean controlling whether the ASCII banner is enabled. A missing or disabled switch or section omits banner markup and all ASCII assets from local previews and production builds. |
+| `ascii_banner.module` | Required when enabled; must name one of the locally available scenes listed below, or be exactly `random` to choose a scene on each page load. |
 | `repo_grid.switch` | YAML boolean controlling whether repository cards are shown. |
 | `repo_grid.repo_list` | Required, non-empty list of case-insensitively unique repository names when the repository grid is enabled. Repositories must belong to the account hosting the site. The list supplies repository cards. |
 | `recent_milestones.switch` | YAML boolean controlling whether recent GitHub milestones are loaded. |
@@ -113,7 +122,7 @@ The top-level order of `intro`, `ascii-banner`, `repo_grid`, `recent_milestones`
 | `external_blog.archive_url` | Required absolute HTTP(S) blog archive URL used by the fallback and “View all posts” links. |
 | `external_blog.post_limit` | Required integer from 1 through 10 when external posts are enabled. |
 
-Use unquoted `true` and `false` values for switches. Disabled sections ignore their inner settings, including `github-icon.link` and `github-icon.style`. When all three GitHub activity sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
+Use unquoted `true` and `false` values for switches. Disabled sections ignore their inner settings, including `github_icon.link` and `github_icon.style`. When all three GitHub activity sections are disabled, the generated page contains neither GitHub activity configuration nor its client script. Individually disabled milestone and commit sections add no controller work.
 
 `recent_milestones.repo_list` selects milestone repositories independently of `repo_grid.repo_list`. Repository cards can be hidden with `repo_grid.switch: false` while milestone activity remains enabled. There is no fallback to the repository grid list.
 
@@ -121,9 +130,74 @@ Blog publication dates, milestone due dates, and absolute repository update date
 
 The GitHub link opens in the current tab and remains the rightmost header action. In `auto` mode, the mark is the progressive fallback when JavaScript is unavailable; an early platform check retains it for desktop Linux and selects the wordmark elsewhere. Its destination comes from the account that owns the Pages repository: `jekyll-github-metadata` resolves that owner during deployment or from the Git `origin` during local development, which keeps forks portable. The link is omitted if owner metadata is unavailable. Add future header links before it in [`_includes/header.html`](./_includes/header.html) to retain this ordering.
 
+### Find the bug game
+
+With `find_the_bug_game.switch: true`, the GitHub icon can be dragged with a
+mouse, pen or touch to reveal a CPU beneath it. Releasing it returns it to its
+original position with a short spring bounce;
+grabbing it during the return continues the drag. Ordinary clicks, taps and
+keyboard activation still open GitHub. Escape cancels a drag, and reduced-motion
+preferences make the return immediate. Without JavaScript, it remains an ordinary
+link.
+
+Repository and milestone cards can also be dragged with a mouse or pen. On touch
+screens, drag their title icon; the rest of the card remains available for
+scrolling. Moving a card reveals a CPU in its original space, at twice the
+rendered size of the title icon. Cards spring back on release, with the same
+Escape and reduced-motion behaviour as the GitHub icon. Their primary and
+metadata links still support ordinary clicks, taps and keyboard activation.
+
+On each full page load, one CPU beneath the GitHub icon, a repository card or
+the theme switcher is chosen at random. Each individual underlay has an equal
+chance of being chosen: it becomes a bug 90% of the time and a squirrel 10% of
+the time. It keeps the same size and colour, and stays hidden until dragged.
+The choice lasts until the next page load, including across repeated drags and
+theme changes. All other underlays remain CPUs; Recent Tasks milestone cards
+are excluded. Without JavaScript or drag support, the CPU fallback remains.
+
+When the switch is `false`, null or missing, all custom dragging is disabled,
+including Recent Tasks cards. Links and theme switching continue to work.
+Jekyll excludes `assets/js/drag_reveal.js` from its output and omits the game's
+script reference and bug/squirrel SVG template. The script is neither optimised
+nor deployed, and rebuilding removes a copy left by an earlier enabled build.
+Its source remains in the repository; shared styles and layout wrappers remain
+part of the site. Re-enabling the game includes the script again. Restart the
+preview after changing `_config.yml`.
+
+### Title animation
+
+With `paper_plane.switch: true`, a 16px paper plane follows an eight-second
+figure-of-eight around the homepage title after clicking or tapping the resting
+plane, or focusing its control and pressing Enter or Space. The control has a
+44px interaction area. Hovering, keyboard focus alone and page-load pointer
+position do not start it.
+
+It turns with the flight path and alternates between passing in front of and
+behind the lettering. Mouse and pen users keep it flying while over the title;
+moving away starts the return. Keyboard users move focus away from the control
+to return. Touch users touch elsewhere or scroll the page; those interactions
+continue normally. There is no stop indicator.
+
+The return completes the remaining figure-of-eight at 2× normal speed, taking
+up to approximately four seconds, then parks the plane. Repeated activation
+while flying or returning is ignored. Hovering back cannot restart a return;
+another explicit activation is needed after the plane has parked.
+
+The plane follows the active theme's link colour and adapts to wrapped titles.
+Reduced-motion preferences and pages without JavaScript keep it stationary and
+hide its launch control. Switching away from the browser tab suspends the animation.
+
+When the switch is `false`, null or missing, the homepage keeps its plain title.
+Jekyll excludes `assets/js/title_flight.js` from its output and omits the plane,
+launch control and script reference. The script is neither optimised nor
+deployed, and rebuilding removes a copy left by an earlier enabled build.
+Its source remains in the repository, and its styles remain in the shared
+stylesheet. Re-enabling the feature includes the script again. Restart the
+preview after changing `_config.yml`.
+
 ### ASCII banner
 
-When `ascii-banner.switch` is `false`, or the switch or section is missing,
+When `ascii_banner.switch` is `false`, or the switch or section is missing,
 Jekyll excludes `assets/js/ascii_banner.mjs` and the entire
 `assets/js/ascii-rest/` directory from its output. The loader, scenes, renderer,
 font and supporting files are neither optimised nor deployed. Rebuilding also
@@ -134,14 +208,14 @@ preview after changing `_config.yml`.
 
 The banner uses locally hosted scene modules, a renderer and a fallback font from
 [ascii.rest by Shubham (@bas3line)](https://github.com/bas3line/ascii). It loads
-only the scene selected by `ascii-banner.module`; it makes no requests to
+only the scene selected by `ascii_banner.module`; it makes no requests to
 ascii.rest. The banner and its section divider stay hidden without JavaScript
 or if its local component or scene cannot load. They appear after successful
 scene initialisation. Animations pause off-screen and while the tab is hidden;
 reduced-motion preferences show a still frame. The canvas scales to the content
 width and retains the scene's aspect ratio.
 
-Set `ascii-banner.module` to `random` to choose one of the local scenes with
+Set `ascii_banner.module` to `random` to choose one of the local scenes with
 equal probability when the page initialises. The selection lasts for that page;
 opening or reloading the page makes a fresh choice, which may repeat the previous
 scene. Only the chosen scene is loaded, and the banner and divider retain the
@@ -216,6 +290,12 @@ Successful responses are cached in the visitor's `localStorage` for seven days, 
 
 The page initially follows the visitor's operating-system light or dark preference. A fixed button in the bottom-right corner uses moon and sun GitHub Octicons to show the theme available on activation. Once selected, the explicit `light` or `dark` preference is stored in `localStorage` and reused across visits and open tabs.
 
+With `find_the_bug_game.switch: true`, drag the theme button with a mouse, pen
+or touch to reveal a stationary CPU Octicon at 1.5rem, matching the icon beneath
+the GitHub link. It springs back on release without changing the theme.
+Ordinary clicks, taps, Enter and Space still switch themes;
+Escape and reduced-motion preferences behave as they do for the GitHub icon.
+
 The theme is selected before the main stylesheet loads to avoid a mismatched-colour flash. If JavaScript or browser storage is unavailable, Minima's automatic colour scheme remains the fallback; storage failures do not prevent switching for the current page.
 
 ## Local development
@@ -252,6 +332,12 @@ installing or updating them; it prefers `JEKYLL_GITHUB_TOKEN` and otherwise
 reads the active `github.com` credential from the GitHub CLI without printing
 the token.
 
+If GitHub returns a server error during the initial build, the preview retries
+up to twice. If all three attempts fail and the selected destination contains
+an existing build, it starts the preview from that build and warns that recent
+edits may be missing. Without an existing build, it reports the failure and exits.
+Restart `./preview.sh` to attempt a fresh build after GitHub recovers.
+
 ### Validate and build
 
 ```bash
@@ -259,7 +345,7 @@ python3 scripts/validate_site_config.py
 JEKYLL_ENV=production ./scripts/build_site.sh
 ```
 
-The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 20 KiB for the activity, theme and blog scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled banners exclude all ASCII assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
+The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 20 KiB for the activity, theme, blog, title animation and shared drag scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled banners exclude all ASCII assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
 
 ### Run tests
 
@@ -273,7 +359,9 @@ The built-asset tests require the production build above. They check that ASCII
 assets match the generated banner markup, running banner behaviour tests when
 enabled and checking asset absence when disabled. The optimiser tests also run
 the banner suite against an enabled, minified fixture so it remains covered
-regardless of the repository's banner setting.
+regardless of the repository's banner setting. The paper plane tests follow
+the same pattern: disabled builds verify that the script and markup are absent,
+while source tests and an enabled, minified fixture exercise the animation.
 
 Validation on 1 October 2026 passed 80 Python tests and 196 JavaScript tests against both readable sources and minified assets. Development CSS source maps remain available, and production output excludes maps, npm dependencies and build tooling.
 
@@ -318,10 +406,10 @@ The GitHub Actions workflow deploys pushes to `main` that can affect the publish
 During deployment, the workflow:
 
 1. installs the locked Ruby and npm dependencies and required Python package
-2. runs the Python and source JavaScript tests
-3. validates `_config.yml` and builds production assets with authenticated GitHub metadata
-4. runs the JavaScript tests against the minified production assets
-5. uploads and deploys `_site` to GitHub Pages
+2. validates `_config.yml` and builds production assets with authenticated GitHub metadata
+3. uploads and deploys `_site` to GitHub Pages
+
+Tests in `tests/` remain available to run locally; the deployment workflow does not run them or depend on their results.
 
 ## GitLab mirror
 
@@ -343,7 +431,7 @@ Mirroring uses an SSH deploy-key pair. Store the private key in the GitHub repos
 | External posts are stale | The browser cache lasts seven days. Clear the site's `localStorage` to force an immediate RSS2JSON refresh. |
 | Only “View Posts (external site)” appears | Confirm JavaScript is enabled and the browser can reach `api.rss2json.com`; the link is the intentional fallback. |
 | The theme no longer follows the system | Clear the site's `lib-port:theme:v1` local-storage entry to remove the explicit light or dark preference. |
-| The header GitHub icon is missing | Confirm `github-icon.switch` is `true`, its `link` and `style` values are supported, and GitHub owner metadata is available during the build. |
+| The header GitHub icon is missing | Confirm `github_icon.switch` is `true`, its `link` and `style` values are supported, and GitHub owner metadata is available during the build. |
 | The GitLab mirror is stale | Check the latest `Mirror main to GitLab` run. Confirm `GITLAB_MIRROR_SSH_KEY` contains the private deploy key, its public counterpart remains enabled on the GitLab project with read-write access, and protected `main` allows that deploy key to push. If rewritten history must be mirrored, also confirm that the branch allows force pushes. Manually dispatch the workflow after correcting the problem. |
 | The build cannot download Minima | Confirm the environment can reach GitHub and `codeload.github.com`, then rerun the build. |
 | Configuration validation fails | Use YAML booleans for switches and provide every field required by an enabled section. |

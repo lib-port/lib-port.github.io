@@ -12,7 +12,7 @@ const loader = () => import(pathToFileURL(asset("ascii_banner.mjs")));
 const homepage = process.env.CLIENT_ASSET_DIRECTORY
   ? fs.readFileSync(path.resolve(process.env.CLIENT_ASSET_DIRECTORY, "..", "..", "index.html"), "utf8")
   : null;
-const bannerEnabled = homepage === null || /data-home-section="ascii-banner"/.test(homepage);
+const bannerEnabled = homepage === null || /data-home-section="ascii_banner"/.test(homepage);
 const manifest = bannerEnabled
   ? JSON.parse(fs.readFileSync(asset("ascii-rest/manifest.json"), "utf8"))
   : { scenes: [] };
@@ -43,7 +43,9 @@ function fixture(piece = "misty-forest") {
     hidden: true,
     querySelector: selector => selector === "ascii-art" || art.ready ? art : null,
   };
-  const document = { querySelectorAll: () => [section] };
+  const document = {
+    querySelectorAll: selector => selector === '[data-home-section="ascii_banner"]' ? [section] : [],
+  };
   return { art, section, document };
 }
 

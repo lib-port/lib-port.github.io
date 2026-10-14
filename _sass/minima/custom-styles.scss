@@ -72,7 +72,57 @@ html[data-theme="dark"] {
   float: none;
 }
 
+.github-icon-drag {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  isolation: isolate;
+}
+
+.github-icon-cpu,
+.card-cpu,
+.theme-toggle-cpu {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  visibility: hidden;
+  color: var(--minima-text-color);
+  pointer-events: none;
+}
+
+.github-icon-cpu > .octicon,
+.theme-toggle-cpu > .octicon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+[data-drag-reveal][data-drag-active] {
+  z-index: 21;
+
+  > .github-icon-cpu,
+  > .card-cpu,
+  > .theme-toggle-cpu {
+    visibility: visible;
+  }
+}
+
+.github-icon-drag[data-drag-ready] > .github-icon-link,
+.theme-toggle-drag[data-drag-ready] > .theme-toggle {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.github-icon-drag[data-dragging] > .github-icon-link,
+.theme-toggle-drag[data-dragging] > .theme-toggle {
+  cursor: grabbing;
+}
+
 .github-icon-link {
+  position: relative;
+  z-index: 1;
   box-sizing: border-box;
   display: inline-flex;
   flex: 0 0 auto;
@@ -173,6 +223,79 @@ html[data-github-icon-variant="logo"]
   }
 }
 
+.title-flight {
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 26px 36px;
+  isolation: isolate;
+  vertical-align: top;
+}
+
+.title-flight-launch {
+  position: absolute;
+  top: calc(100% - 14px);
+  left: calc(85.355339% - 8.485281px);
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translate(-50%, -50%);
+}
+
+.title-flight-launch:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+.title-flight-launch:focus-visible {
+  outline: 2px solid var(--minima-link-base-color);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+.title-flight-text {
+  position: relative;
+  z-index: 1;
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.title-flight-plane {
+  position: absolute;
+  // The stationary position also works without JavaScript.
+  top: calc(100% - 14px);
+  left: calc(85.355339% - 8.485281px);
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  color: var(--minima-link-base-color);
+  line-height: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.title-flight-plane > .octicon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.title-flight[data-flight-ready] > .title-flight-plane {
+  top: 50%;
+  left: 50%;
+}
+
+@media print {
+  .title-flight-plane,
+  .title-flight-launch {
+    display: none;
+  }
+}
+
 .home-intro {
   text-align: center;
 }
@@ -240,6 +363,49 @@ html[data-github-icon-variant="logo"]
   grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
 }
 
+.draggable-card {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-width: 0;
+}
+
+.draggable-card[data-drag-active] > .linked-card {
+  position: fixed;
+  z-index: 1;
+}
+
+.draggable-card[data-drag-ready] > .linked-card {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.draggable-card[data-drag-ready] [data-drag-handle] {
+  position: relative;
+  z-index: 2;
+  touch-action: none;
+  cursor: grab;
+
+  // The decorative icon is also a generous touch target inside the title link.
+  &::before {
+    content: "";
+    position: absolute;
+    min-width: 44px;
+    min-height: 44px;
+    width: 100%;
+    height: 100%;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+}
+
+.draggable-card[data-dragging] > .linked-card,
+.draggable-card[data-dragging] > .linked-card * {
+  cursor: grabbing;
+}
+
 .linked-card {
   --linked-card-accent: var(--minima-link-base-color);
   --linked-card-background: color-mix(
@@ -250,6 +416,9 @@ html[data-github-icon-variant="logo"]
 
   position: relative;
   isolation: isolate;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
   padding: 1rem;
   border: 1px solid color-mix(in srgb, var(--minima-text-color) 12%, transparent);
   border-radius: var(--linked-card-radius);
@@ -289,9 +458,17 @@ html[data-github-icon-variant="logo"]
   line-height: 1.2;
 }
 
-.repo-title > .repo-icon,
-.recent-milestone-title > .recent-milestone-icon {
+.repo-title .repo-icon,
+.recent-milestone-title .recent-milestone-icon {
   opacity: 0.8;
+  color: var(--minima-text-color);
+}
+
+.linked-card-primary-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  min-width: 0;
 }
 
 .linked-card-primary-link:is(:link, :visited) {
@@ -696,11 +873,19 @@ html[data-github-icon-variant="logo"]
   vertical-align: 0;
 }
 
-.theme-toggle {
+.theme-toggle-drag {
   position: fixed;
   inset-inline-end: calc(1rem + env(safe-area-inset-right, 0px));
   inset-block-end: calc(1rem + env(safe-area-inset-bottom, 0px));
   z-index: 20;
+  display: inline-flex;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.theme-toggle {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -713,6 +898,7 @@ html[data-github-icon-variant="logo"]
   background: var(--minima-background-color);
   color: var(--minima-text-color);
   cursor: pointer;
+  pointer-events: auto;
   touch-action: manipulation;
   transition:
     background-color 120ms ease,
@@ -752,11 +938,15 @@ html[data-github-icon-variant="logo"]
   display: none;
 }
 
-.theme-toggle-icon > .octicon {
+.theme-toggle-icon > .octicon,
+.theme-toggle-cpu > .octicon {
   display: block;
+  vertical-align: 0;
+}
+
+.theme-toggle-icon > .octicon {
   width: 1.125rem;
   height: 1.125rem;
-  vertical-align: 0;
 }
 
 @media screen and (max-width: 40rem) {
@@ -772,7 +962,7 @@ html[data-github-icon-variant="logo"]
 }
 
 @media print {
-  .theme-toggle {
+  .theme-toggle-drag {
     display: none;
   }
 }

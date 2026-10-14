@@ -6,7 +6,7 @@ export async function initAsciiBanners(
   logger = console,
   random = Math.random
 ) {
-  const sections = Array.from(documentImpl.querySelectorAll('[data-home-section="ascii-banner"]'));
+  const sections = Array.from(documentImpl.querySelectorAll('[data-home-section="ascii_banner"]'));
   if (!sections.length) return;
 
   for (const section of sections) {

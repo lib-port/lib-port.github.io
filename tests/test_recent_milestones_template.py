@@ -57,14 +57,14 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
             template,
         )
         self.assertIn('<ul class="recent-milestones-list"', template)
-        self.assertIn('<li class="recent-milestone-item linked-card"', template)
+        self.assertIn('<li class="recent-milestone-item draggable-card"', template)
         self.assertIn("data-recent-milestone-title", template)
         self.assertIn("data-recent-milestone-repo", template)
         self.assertIn("data-recent-milestone-due-detail", template)
         self.assertIn("{% octicon repo height:16 %}", template)
         self.assertIn("{% octicon goal height:16 %}", template)
         self.assertIn("{% octicon tasklist height:16 %}", template)
-        self.assertIn("{% octicon graph height:16 %}", template)
+        self.assertIn("{% octicon compose height:16 %}", template)
         self.assertIn("{% octicon issue-closed height:16 %}", template)
         self.assertIn("{% octicon tag height:16 %}", template)
         self.assertIn('role="progressbar"', template)
@@ -120,7 +120,7 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         due = metadata_markup.index("<span data-recent-milestone-due></span>")
         closed_icon = metadata_markup.index("{% octicon tasklist height:16 %}")
         closed_total = metadata_markup.index("data-recent-milestone-closed-total")
-        percentage_icon = metadata_markup.index("{% octicon graph height:16 %}")
+        percentage_icon = metadata_markup.index("{% octicon compose height:16 %}")
         percentage = metadata_markup.index("data-recent-milestone-percentage")
         progress = template.index("data-recent-milestone-progress\n")
         latest_issue_icon = template.index("{% octicon issue-closed height:16 %}")
@@ -215,24 +215,25 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         self.assertIn(".recent-completed-milestones[hidden]", styles)
         self.assertIn(".recent-completed-milestone-link,", styles)
 
-    def test_milestone_title_has_decorative_milestone_icon_before_link(self) -> None:
+    def test_milestone_title_preserves_its_drag_handle_when_text_is_updated(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
         milestone_icon = (
-            '<span class="recent-milestone-icon" aria-hidden="true">'
+            '<span class="recent-milestone-icon" data-drag-handle aria-hidden="true">'
             "{% octicon milestone height:16 %}</span>"
         )
         milestone_link = (
             '<a class="linked-card-primary-link" '
-            "data-recent-milestone-title></a>"
+            "data-recent-milestone-title>"
         )
 
         self.assertIn(milestone_icon, template)
         self.assertIn(milestone_link, template)
-        self.assertLess(template.index(milestone_icon), template.index(milestone_link))
+        self.assertLess(template.index(milestone_link), template.index(milestone_icon))
+        self.assertLess(template.index(milestone_icon), template.index('<span data-recent-milestone-title-text></span>'))
 
         styles = STYLES_PATH.read_text(encoding="utf-8")
         title_icon_rule = styles.split(
-            ".recent-milestone-title > .recent-milestone-icon {", 1
+            ".recent-milestone-title .recent-milestone-icon {", 1
         )[1].split("\n}", 1)[0]
         self.assertIn("opacity: 0.8;", title_icon_rule)
 
@@ -276,7 +277,7 @@ class RecentMilestonesTemplateTests(unittest.TestCase):
         styles = STYLES_PATH.read_text(encoding="utf-8")
 
         def rule(selector: str) -> str:
-            start = styles.index(f"{selector} {{")
+            start = styles.index(f"\n{selector} {{") + 1
             end = styles.index("\n}", start)
             return styles[start:end]
 

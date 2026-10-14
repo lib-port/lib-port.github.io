@@ -49,7 +49,7 @@ class AsciiBannerBuildTests(unittest.TestCase):
             "config": [],
             "source": str(self.source),
             "destination": str(self.destination),
-            "plugins": [],
+            "plugins": ["jekyll-octicons"],
             "disable_disk_cache": True,
             "exclude": ["excluded.txt"],
             "baseurl": "/project",
@@ -80,23 +80,23 @@ class AsciiBannerBuildTests(unittest.TestCase):
         for environment in ("development", "production"):
             for settings in (
                 {},
-                {"ascii-banner": None},
-                {"ascii-banner": {"module": []}},
-                {"ascii-banner": {"switch": None}},
-                {"ascii-banner": {"switch": False, "module": []}},
+                {"ascii_banner": None},
+                {"ascii_banner": {"module": []}},
+                {"ascii_banner": {"switch": None}},
+                {"ascii_banner": {"switch": False, "module": []}},
             ):
                 with self.subTest(environment=environment, settings=settings):
                     homepage = self.build(settings, environment)
                     self.assert_assets(False)
                     self.assertNotIn("ascii-art", homepage)
                     self.assertNotIn("ascii_banner.mjs", homepage)
-                    self.assertNotIn('data-home-section="ascii-banner"', homepage)
+                    self.assertNotIn('data-home-section="ascii_banner"', homepage)
 
     def test_enabled_banner_keeps_the_complete_catalogue(self):
         for environment in ("development", "production"):
             for module in ("misty-forest", "random"):
                 with self.subTest(environment=environment, module=module):
-                    homepage = self.build({"ascii-banner": {"switch": True, "module": module}}, environment)
+                    homepage = self.build({"ascii_banner": {"switch": True, "module": module}}, environment)
                     self.assert_assets(True)
                     self.assertIn(f'<ascii-art piece="{module}">', homepage)
                     self.assertIn('src="/project/assets/js/ascii_banner.mjs"', homepage)
@@ -105,7 +105,7 @@ class AsciiBannerBuildTests(unittest.TestCase):
         for environment in ("development", "production"):
             for enabled in (True, False, True):
                 with self.subTest(environment=environment, enabled=enabled):
-                    self.build({"ascii-banner": {"switch": enabled, "module": "random"}}, environment)
+                    self.build({"ascii_banner": {"switch": enabled, "module": "random"}}, environment)
                     self.assert_assets(enabled)
 
 

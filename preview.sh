@@ -45,4 +45,4 @@ if [[ -z "${JEKYLL_GITHUB_TOKEN:-}" ]]; then
   fi
 fi
 
-exec bundle exec jekyll serve --livereload --open-url "$@"
+exec bundle exec ruby scripts/preview_site.rb serve --livereload --open-url "$@"

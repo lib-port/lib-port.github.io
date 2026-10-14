@@ -119,6 +119,7 @@ function makeItem() {
   item.setAttribute("hidden", "");
   const selectors = [
     "[data-recent-milestone-title]",
+    "[data-recent-milestone-title-text]",
     "[data-recent-milestone-repo]",
     "[data-recent-milestone-repo-name]",
     "[data-recent-milestone-description]",
@@ -591,7 +592,8 @@ test("renders the GitHub-style milestone fields and safe text values", () => {
     "[data-recent-milestone-latest-closed-issue-labels]"
   );
 
-  assert.equal(title.textContent, "<strong>Current</strong>");
+  assert.equal(items[0].querySelector("[data-recent-milestone-title-text]").textContent, "<strong>Current</strong>");
+  assert.equal(title.textContent, "", "the anchor and its decorative drag handle are retained");
   assert.match(title.href, /\/tech-lib\/milestone\/1$/);
   assert.equal(repoName.textContent, "tech-lib");
   assert.equal(dueDetail.hidden, false);
@@ -1224,7 +1226,7 @@ test("loads repositories concurrently and waits for the final ranking", async ()
   assert.equal(loading.hidden, false);
   resolveAlpha(makeResponse({ payload: [makeApiIssue({ title: "Alpha" })] }));
   assert.equal(await pending, true);
-  assert.equal(items[0].querySelector("[data-recent-milestone-title]").textContent, "Alpha");
+  assert.equal(items[0].querySelector("[data-recent-milestone-title-text]").textContent, "Alpha");
 });
 
 test("renders best-effort results when a concurrent repository request fails", async () => {
@@ -1248,7 +1250,7 @@ test("renders best-effort results when a concurrent repository request fails", a
 
   assert.equal(loaded, true);
   assert.equal(
-    items[0].querySelector("[data-recent-milestone-title]").textContent,
+    items[0].querySelector("[data-recent-milestone-title-text]").textContent,
     "Beta"
   );
   assert.equal(
@@ -1295,7 +1297,7 @@ for (const scenario of [
     assert.equal(view.container.hasAttribute("aria-busy"), false);
     assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW);
     if (scenario.payload?.length) {
-      assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Refreshed");
+      assert.equal(view.items[0].querySelector("[data-recent-milestone-title-text]").textContent, "Refreshed");
     }
   });
 }
@@ -1316,7 +1318,7 @@ test("retains a failed repository's stale card alongside refreshed results", asy
       : makeResponse({ payload: [makeApiIssue({ title: "Refreshed Beta", closedAt: "2026-08-24T09:00:00Z", updatedAt: "2026-08-24T09:30:00Z" })] }),
     storage, now: NOW, logger: silentLogger,
   }), true);
-  assert.deepEqual(view.items.map(item => item.querySelector("[data-recent-milestone-title]").textContent), ["Refreshed Beta", "Cached Alpha"]);
+  assert.deepEqual(view.items.map(item => item.querySelector("[data-recent-milestone-title-text]").textContent), ["Refreshed Beta", "Cached Alpha"]);
   assert.equal(JSON.parse(storage.getItem(storageKey)).fetchedAt, NOW - CACHE_TTL_MS);
 });
 
@@ -1511,7 +1513,7 @@ test("both milestone loaders share four request slots and retain final rankings"
   assert.deepEqual(await pending, [true, true]);
   assert.equal(peak, 4);
   assert.equal(responses.length, 16);
-  assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, repositories[0]);
+  assert.equal(view.items[0].querySelector("[data-recent-milestone-title-text]").textContent, repositories[0]);
   assert.deepEqual(completed.items.map(item => item.querySelector("[data-recent-completed-milestone-link]").textContent), repositories.slice(0, 2));
 });
 
@@ -1571,7 +1573,7 @@ test("displays caches before a browser lock and handles storage events without r
   const snapshots = [storage.getItem(cardKey), storage.getItem(completedKey)];
   storageEvent(cardKey, snapshots[0]);
   storageEvent(completedKey, snapshots[1]);
-  assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Other tab");
+  assert.equal(view.items[0].querySelector("[data-recent-milestone-title-text]").textContent, "Other tab");
   assert.equal(completed.items[0].querySelector("[data-recent-completed-milestone-link]").textContent, "Other tab");
   assert.equal(lockRequests, 1);
   assert.equal(fetches, 0);
@@ -1584,7 +1586,7 @@ test("displays caches before a browser lock and handles storage events without r
   releaseLock();
   assert.equal(await lockedTask, true);
   assert.equal(fetches, 0);
-  assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Fresh from other tab");
+  assert.equal(view.items[0].querySelector("[data-recent-milestone-title-text]").textContent, "Fresh from other tab");
   assert.equal(completed.items[0].querySelector("[data-recent-completed-milestone-link]").textContent, "Fresh from other tab");
 });
 
@@ -1670,7 +1672,7 @@ test("migrates v4 issue caches as stale data and retains candidates beyond page 
   }), true);
   assert.equal(calls, 1, "old failure records do not block the migrated cache's refresh");
   assert.equal(storage.getItem(legacyFailure), null);
-  assert.equal(view.items[0].querySelector("[data-recent-milestone-title]").textContent, "Page 3");
+  assert.equal(view.items[0].querySelector("[data-recent-milestone-title-text]").textContent, "Page 3");
 });
 
 test("a detailed milestone deadline preserves cached results without failure backoff", async () => {
