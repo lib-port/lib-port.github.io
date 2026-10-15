@@ -302,6 +302,6 @@ for (const budget of ["activity", "combined", "stylesheet", "ascii"]) {
     }
     const result = optimise(directory);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "24 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
+    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "27 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
   });
 }

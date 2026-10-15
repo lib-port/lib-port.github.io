@@ -10,6 +10,15 @@
   const RESTITUTION = 0.74;
   const FRICTION = 0.12;
   const EPSILON = 1e-10;
+  const IMPACT_STRENGTH = 0.5;
+  // With constant ball mass, normal momentum is proportional to speed (m/s).
+  const IMPACT_REFERENCE_SPEED = 1;
+  const IMPACT_RISE = 80;
+  const IMPACT_FADE = 800;
+  const IMPACT_PROPERTY = "--ball-impact-highlight";
+  const VORTEX_ANGLE = "--ball-vortex-angle";
+  const GLOW_PROPERTY = "--ball-vortex-glow";
+  const GLOW_FADE = 150;
   const homeAttraction = time => 0.25 * GRAVITY * Math.max(0, time);
 
   // The solver uses metres and seconds; only rendering uses CSS pixels.
@@ -67,7 +76,7 @@
     ).map(time => Math.max(0, time)));
   }
 
-  function advanceBall(ball, time, duration) {
+  function advanceBall(ball, time, duration, onImpact) {
     const { position, velocity, limits } = ball;
     if (captured(ball)) return true;
     damp(position, velocity, duration, time);
@@ -114,6 +123,7 @@
             Math.abs(velocity[tangent]) - FRICTION * (1 + RESTITUTION) * Math.abs(incoming));
         }
         if (axis === 1 && side === 1 && Math.abs(velocity[1]) < 0.05 && nextAcceleration[1] >= 0) velocity[1] = 0;
+        onImpact(time + elapsed, Math.abs(incoming));
       }
       if (captured(ball)) return true;
       remaining -= elapsed;
@@ -128,10 +138,108 @@
     return context => ({
       attach(state) {
         const { documentRef, windowRef, reducedMotion } = context;
-        const { surface, park, reset } = state;
+        const { root, surface, park, reset } = state;
         if (!surface.hasAttribute("data-theme-toggle")) return null;
         let flight = null;
         let samples = [];
+        let pulses = [];
+        let frame = null;
+        let vortexStartedAt = null;
+        let glowFade = null;
+
+        function announceVortex(phase, event = {}) {
+          if (vortexStartedAt === null) return;
+          windowRef.dispatchEvent(new windowRef.CustomEvent("libport:ball-vortex", {
+            detail: { phase, root, startedAt: vortexStartedAt, pointerId: event.pointerId,
+              pointerType: event.pointerType, clientX: event.clientX, clientY: event.clientY },
+          }));
+        }
+
+        function scheduleFrame() {
+          if (frame !== null) windowRef.cancelAnimationFrame(frame);
+          frame = null;
+          if (context.destroyed || (!flight && !pulses.length && vortexStartedAt === null && !glowFade)) return;
+          const current = windowRef.requestAnimationFrame(time => {
+            if (context.destroyed || frame !== current) return;
+            frame = null;
+            tick(time);
+          });
+          frame = current;
+        }
+
+        function clearHighlight() {
+          pulses = [];
+          surface.style.removeProperty(IMPACT_PROPERTY);
+          if (!flight) scheduleFrame();
+        }
+
+        function clearVortex(fadeGlow = false) {
+          const time = windowRef.performance?.now?.();
+          if (!fadeGlow) glowFade = null;
+          else if (vortexStartedAt !== null) {
+            glowFade = Number.isFinite(time) ? { time, opacity: glowOpacity(time) } : null;
+          }
+          announceVortex(fadeGlow ? "home" : "cancel");
+          vortexStartedAt = null;
+          root.removeAttribute("data-ball-vortex");
+          root.style.removeProperty(VORTEX_ANGLE);
+          renderGlow(time);
+        }
+
+        function glowOpacity(time) {
+          return 0.3 * clamp((time - vortexStartedAt) / 6000, 0, 1);
+        }
+
+        function renderGlow(time) {
+          const opacity = vortexStartedAt !== null ? glowOpacity(time)
+            : glowFade ? glowFade.opacity * clamp(1 - (time - glowFade.time) / GLOW_FADE, 0, 1) : 0;
+          if (opacity > EPSILON) {
+            root.setAttribute("data-ball-glow", "");
+            root.style.setProperty(GLOW_PROPERTY, String(opacity));
+          } else {
+            glowFade = null;
+            root.removeAttribute("data-ball-glow");
+            root.style.removeProperty(GLOW_PROPERTY);
+          }
+        }
+
+        function renderVortex(time) {
+          if (vortexStartedAt === null) return;
+          const elapsed = Math.max(0, (time - vortexStartedAt) / 1000);
+          // Integrate 0.5 turns/s² up to 1.5 turns/s, preserving phase across catches.
+          const turns = elapsed <= 3 ? elapsed * elapsed / 4 : 2.25 + 1.5 * (elapsed - 3);
+          root.style.setProperty(VORTEX_ANGLE, `${(turns % 1) * 360}deg`);
+        }
+
+        // Preserve collision times within a frame, including simultaneous corner hits.
+        function recordImpact(time, speed) {
+          pulses.push([flight.startedAt + time * 1000, IMPACT_STRENGTH * speed / IMPACT_REFERENCE_SPEED]);
+        }
+
+        function tick(time) {
+          if (documentRef.hidden || !Number.isFinite(time)) { reset(); return; }
+          if (reducedMotion?.matches) { clearVortex(); clearHighlight(); park(); return; }
+          if (flight) tickFlight(flight, time);
+          renderVortex(time);
+          renderGlow(time);
+          let strength = 0;
+          pulses = pulses.filter(([impact, amount]) => {
+            const age = Math.max(0, time - impact);
+            strength += amount * clamp(Math.min(age / IMPACT_RISE,
+              (IMPACT_RISE + IMPACT_FADE - age) / IMPACT_FADE), 0, 1);
+            return age < IMPACT_RISE + IMPACT_FADE;
+          });
+          if (pulses.length) surface.style.setProperty(IMPACT_PROPERTY, `${100 * Math.min(1, strength)}%`);
+          else surface.style.removeProperty(IMPACT_PROPERTY);
+          scheduleFrame();
+        }
+
+        context.listen(documentRef, "keydown", event => {
+          if (event.key === "Escape") { clearVortex(); clearHighlight(); }
+        });
+        context.listen(reducedMotion, "change", () => {
+          if (reducedMotion.matches) { clearVortex(); clearHighlight(); }
+        });
 
         function recordMotion(event) {
           const position = state.position;
@@ -156,15 +264,11 @@
         }
 
         function cancelFlight() {
-          if (flight && flight.frame !== null) windowRef.cancelAnimationFrame(flight.frame);
           flight = null;
+          scheduleFrame();
         }
 
         function tickFlight(current, time) {
-          if (context.destroyed || flight !== current) return;
-          current.frame = null;
-          if (documentRef.hidden || !Number.isFinite(time)) { reset(); return; }
-          if (reducedMotion?.matches) { park(); return; }
           current.accumulator = Math.min(0.1, current.accumulator + clamp((time - current.previousTime) / 1000, 0, 0.1));
           current.previousTime = Math.max(time, current.previousTime);
           let steps = 0;
@@ -177,7 +281,7 @@
             const acceleration = Math.hypot(...gravity(current.position, elapsed));
             const duration = Math.min(interval, travel / (Math.hypot(...current.velocity) + Math.sqrt(acceleration * travel)));
             if (!Number.isFinite(duration) || duration <= EPSILON) { reset(); return; }
-            if (advanceBall(current, elapsed, duration)) {
+            if (advanceBall(current, elapsed, duration, recordImpact)) {
               park();
               return;
             }
@@ -187,7 +291,6 @@
           }
           state.position = current.position.map(value => value * current.scale);
           state.render();
-          current.frame = windowRef.requestAnimationFrame(time => tickFlight(current, time));
         }
 
         function throwBall(velocity) {
@@ -212,10 +315,18 @@
             velocity: velocity.map(value => value / scale),
             limits: limits.map(sides => sides.map(value => value / scale)), scale,
             captureArmed: false,
-            startedAt: releaseTime, accumulator: 0, remaining: 0, previousTime: releaseTime, frame: null,
+            startedAt: releaseTime, accumulator: 0, remaining: 0, previousTime: releaseTime,
           };
-          const current = flight;
-          current.frame = windowRef.requestAnimationFrame(time => tickFlight(current, time));
+          const fresh = vortexStartedAt === null;
+          if (fresh) {
+            vortexStartedAt = releaseTime;
+            glowFade = null;
+          }
+          root.setAttribute("data-ball-vortex", "");
+          renderVortex(releaseTime);
+          renderGlow(releaseTime);
+          scheduleFrame();
+          if (fresh) announceVortex("start");
           return true;
         }
 
@@ -225,10 +336,11 @@
             cancel: cancelFlight,
             start: () => throwBall(releaseVelocity()),
           },
-          onStart(event) { samples = []; recordMotion(event); },
+          onStart(event) { samples = []; recordMotion(event); announceVortex("grab", event); },
           onMove: recordMotion,
-          onRelease: recordMotion,
-          onCancel() { samples = []; },
+          onRelease(event) { recordMotion(event); announceVortex("release", event); },
+          onCancel() { samples = []; clearVortex(); clearHighlight(); },
+          onPark() { clearVortex(true); scheduleFrame(); },
         };
       },
     });

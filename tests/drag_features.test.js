@@ -21,6 +21,7 @@ for (const game of [false, true]) {
       assert.equal(f.link.listeners.get("pointerdown")?.size || 0, Number(game || ball));
       flick(f);
       assert.equal(f.frames.size, Number(ball));
+      assert.equal(f.root.hasAttribute("data-ball-vortex"), ball);
       assert.equal(f.animations.length, Number(game && !ball));
       if (game && !ball) {
         assert.equal(f.animations[0].options.duration, 400);

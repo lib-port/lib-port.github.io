@@ -65,8 +65,8 @@ for (const name of scripts) {
   console.log(`${name}: ${size} bytes gzipped`);
 }
 
-if (totalJavaScript > 24 * 1024) {
-  throw new Error(`JavaScript exceeds the 24 KiB combined gzip budget: ${totalJavaScript} bytes`);
+if (totalJavaScript > 27 * 1024) {
+  throw new Error(`JavaScript exceeds the 27 KiB combined gzip budget: ${totalJavaScript} bytes`);
 }
 const asciiDirectory = join(siteDirectory, "assets", "js", "ascii-rest");
 const asciiLoaderPath = join(siteDirectory, "assets", "js", "ascii_banner.mjs");

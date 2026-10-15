@@ -288,6 +288,19 @@ html[data-github-icon-variant="logo"]
   left: 50%;
 }
 
+.title-flight[data-plane-detached] > .title-flight-plane,
+.title-flight[data-plane-swallowed] > .title-flight-plane {
+  visibility: hidden;
+}
+
+.title-flight-plane[data-plane-overlay] {
+  position: fixed;
+  visibility: visible;
+  top: 0;
+  left: 0;
+  z-index: 19;
+}
+
 @media print {
   .title-flight-plane,
   .title-flight-launch {
@@ -898,6 +911,50 @@ html[data-github-icon-variant="logo"]
   pointer-events: none;
 }
 
+.theme-toggle-drag[data-ball-glow]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 4px 2px var(--minima-link-base-color);
+  opacity: var(--ball-vortex-glow, 0);
+  pointer-events: none;
+}
+
+.theme-toggle-drag[data-ball-vortex] > .theme-toggle-cpu {
+  color: var(--minima-background-color);
+
+  > .octicon {
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+  }
+
+  // Rotate the artwork within its original SVG bounds for the discovery game.
+  > .octicon > path {
+    transform-box: view-box;
+    transform-origin: center;
+    transform: rotate(var(--ball-vortex-angle, 0deg));
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: var(--minima-heading-color);
+    pointer-events: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+}
+
 .theme-toggle {
   position: relative;
   z-index: 1;
@@ -908,6 +965,11 @@ html[data-github-icon-variant="logo"]
   height: 2.75rem;
   padding: 0;
   border: 1px solid currentColor;
+  border-color: color-mix(
+    in srgb,
+    currentColor,
+    var(--minima-link-base-color) var(--ball-impact-highlight, 0%)
+  );
   border-radius: 50%;
   appearance: none;
   background: var(--minima-background-color);
@@ -971,6 +1033,22 @@ html[data-github-icon-variant="logo"]
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .theme-toggle-drag[data-ball-glow]::before {
+    display: none;
+  }
+
+  .theme-toggle-drag[data-ball-vortex] > .theme-toggle-cpu {
+    color: var(--minima-text-color);
+
+    &::after {
+      display: none;
+    }
+
+    > .octicon > path {
+      transform: none;
+    }
+  }
+
   .theme-toggle {
     transition: none;
   }

@@ -28,6 +28,7 @@ class Events {
     this.listeners.get(type).add(callback);
   }
   removeEventListener(type, callback) { this.listeners.get(type)?.delete(callback); }
+  dispatchEvent(event) { this.emit(event.type, event); return true; }
   setAttribute(name, value) { this.attributes.set(name, value); }
   removeAttribute(name) { this.attributes.delete(name); }
   hasAttribute(name) { return this.attributes.has(name); }
@@ -73,8 +74,14 @@ function makeUnderlay(bounds, size) {
 }
 
 function fixture({ reduced = false, width = 92, animate = true, frameAnimation = true, pointerEvents = true, card = false, left = 250, top = 8, height = 44, candidateCount = 0, templates = true, random = Math.random, milestones = [], theme = false, themeIndex, visualViewport, game = gameEnabled, ball = ballEnabled } = {}) {
-  const style = () => ({ removeProperty(name) { delete this[name]; } });
+  const style = () => ({
+    setProperty(name, value) { this[name] = value; },
+    removeProperty(name) { delete this[name]; },
+  });
   const windowRef = new Events();
+  windowRef.CustomEvent = class {
+    constructor(type, options) { this.type = type; this.detail = options.detail; }
+  };
   let time = 0;
   windowRef.performance = { now: () => time };
   let nextFrame = 0;
@@ -196,6 +203,8 @@ function assertParked(f) {
   assert.deepEqual(f.position(), [0, 0]);
   assert.equal(f.root.hasAttribute("data-drag-active"), false);
   assert.equal(f.root.hasAttribute("data-dragging"), false);
+  assert.equal(f.root.hasAttribute("data-ball-vortex"), false);
+  assert.equal(f.root.style["--ball-vortex-angle"], undefined);
   assert.equal(f.captures.size, 0);
   assert.equal(f.root.style.height, undefined);
   for (const property of ["left", "top", "width", "height"]) assert.equal(f.link.style[property], undefined);

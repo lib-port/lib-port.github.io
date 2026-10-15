@@ -93,6 +93,7 @@ ballTest("a ball bouncing just below home snaps back before attraction exceeds d
   assert.equal(f.frames.size, 1);
   f.tick(1000 / 120);
   assertParked(f);
+  advance(f, 880);
   assert.equal(f.frames.size, 0);
   assert.equal(f.animations.length, 0, "the magnet snaps without a settling animation");
   f.controller.destroy();
@@ -103,16 +104,17 @@ ballTest("a ball returning along the floor snaps home without waiting four secon
   flick(f, { dx: -80, dy: 16 });
   let previous;
   let frames = 0;
-  while (f.frames.size && frames < 120) {
+  while (f.root.hasAttribute("data-drag-active") && frames < 120) {
     previous = f.position();
     f.tick(1000 / 120);
     frames++;
   }
   assertParked(f);
-  assert.equal(f.frames.size, 0);
   close(previous[1], 16, 0.001);
   assert.ok(previous[0] < -44 / 2, "capture happens before the ball reaches the space directly below home");
   assert.ok(frames / 120 < 1, "the floor return completes while attraction is still below 0.25G");
+  advance(f, 880);
+  assert.equal(f.frames.size, 0, "the remaining highlight finishes after magnetic capture");
   f.controller.destroy();
 });
 
@@ -129,13 +131,14 @@ for (const [speed, escapes] of [[320, false], [1000, true]]) {
     assert.ok(f.position()[0] > 0, "a tangential release can start moving outwards");
     assert.equal(f.frames.size, 1);
     let maximumDistance = Math.hypot(...f.position());
-    for (let frame = 1; frame < 120 && f.frames.size; frame++) {
+    for (let frame = 1; frame < 120 && f.root.hasAttribute("data-drag-active"); frame++) {
       f.tick(1000 / 120);
       maximumDistance = Math.max(maximumDistance, Math.hypot(...f.position()));
     }
     assert.equal(maximumDistance > 44, escapes, "slow launches can turn back within the zone and fast launches can escape");
     assertParked(f);
-    assert.equal(f.frames.size, 0, "a nearby floor return is captured within a second");
+    advance(f, 880);
+    assert.equal(f.frames.size, 0, "the remaining highlight finishes after magnetic capture");
     f.controller.destroy();
   });
 }
@@ -161,6 +164,7 @@ ballTest("a fast return snaps home even when a rendered frame would cross the wh
   assert.equal(f.frames.size, 1);
   f.tick(100);
   assertParked(f);
+  advance(f, 150);
   assert.equal(f.frames.size, 0);
   assert.equal(f.animations.length, 0);
   f.controller.destroy();
@@ -177,6 +181,7 @@ ballTest("magnetic capture uses centre distance rather than a square around home
   assert.equal(f.frames.size, 1);
   advance(f, 100);
   assertParked(f);
+  advance(f, 150);
   assert.equal(f.frames.size, 0);
   f.controller.destroy();
 });
@@ -187,12 +192,13 @@ for (const diameter of [44, 88]) {
       const f = themeFixture({ left: 50 * diameter, top: 20 * diameter, width: diameter, height: diameter });
       Object.assign(f.documentRef.documentElement, { clientWidth: 100 * diameter, clientHeight: 21 * diameter });
       flick(f, { dx: -2 * diameter, dy: 0, firstFrameDelay: delay });
-      for (let frame = 0; frame < 600 && f.frames.size; frame++) {
+      for (let frame = 0; frame < 600 && f.root.hasAttribute("data-drag-active"); frame++) {
         assert.ok(f.position()[0] < -diameter, "an armed return parks on entry into the one-diameter zone");
         f.tick(1000 / 120);
         close(f.position()[1], 0);
       }
       assertParked(f);
+      advance(f, 150);
       assert.equal(f.frames.size, 0);
       assert.equal(f.animations.length, 0);
       f.controller.destroy();
@@ -206,6 +212,7 @@ for (const diameter of [44, 88]) {
       throwTowardsHome(f, { dx: -distance });
       f.tick(1000 / 120);
       assertParked(f);
+      advance(f, 150);
       assert.equal(f.frames.size, 0);
       f.controller.destroy();
     });
@@ -220,6 +227,7 @@ for (const diameter of [44, 88]) {
     assert.equal(f.frames.size, 1);
     advance(f, 100);
     assertParked(f);
+    advance(f, 150);
     assert.equal(f.frames.size, 0);
     f.controller.destroy();
   });
@@ -540,6 +548,7 @@ ballTest("a delayed first theme frame captures the returning ball during the cap
   const f = themeFixture();
   flick(f, { firstFrameDelay: 40000 });
   assertParked(f);
+  advance(f, 150);
   assert.equal(f.frames.size, 0);
   assert.equal(f.animations.length, 0);
   f.controller.destroy();
@@ -629,7 +638,7 @@ ballTest("catching a theme throw preserves its position and discards its old vel
   const y = f.bounds.top + before[1] + 22;
   f.pointer("pointerdown", x, y);
   f.position().forEach((value, axis) => close(value, before[axis]));
-  assert.equal(f.frames.size, 0);
+  assert.equal(f.frames.size, 1, "the caught ball keeps its vortex animation");
   f.wait(40);
   f.pointer("pointermove", x + 40, y);
   f.pointer("pointerup", x + 40, y);
@@ -736,3 +745,539 @@ ballTest("reduced motion skips theme throws and catches preference changes befor
   f.controller.destroy();
 });
 
+const impactProperty = "--ball-impact-highlight";
+const highlight = f => parseFloat(f.link.style[impactProperty] || "0");
+const tickUntil = (f, time) => f.tick(time - f.windowRef.performance.now());
+
+function impactFixture(t, options = {}) {
+  const f = themeFixture({ left: 1000, top: 1000, game: false, ...options });
+  Object.assign(f.documentRef.documentElement, { clientWidth: 4000, clientHeight: 4000 });
+  t.after(() => f.controller.destroy());
+  return f;
+}
+
+function releaseAtEdge(f, { axis = 0, side = 1, speed = 1, tangent = 0, corner = false, preparation = 120, duration = 40 } = {}) {
+  const scale = f.bounds.width / 0.067;
+  const centre = [f.bounds.left + f.bounds.width / 2, f.bounds.top + f.bounds.height / 2];
+  const limit = index => side
+    ? [f.documentRef.documentElement.clientWidth, f.documentRef.documentElement.clientHeight][index] -
+      [f.bounds.right, f.bounds.bottom][index]
+    : -[f.bounds.left, f.bounds.top][index];
+  const position = [0, 0];
+  const velocity = [0, 0];
+  position[axis] = limit(axis);
+  velocity[axis] = (side ? 1 : -1) * speed * scale;
+  if (corner) {
+    position[1 - axis] = limit(1 - axis);
+    velocity[1 - axis] = (side ? 1 : -1) * speed * scale;
+  } else velocity[1 - axis] = tangent * scale;
+  const current = f.position();
+  if (f.root.hasAttribute("data-dragging")) {
+    f.pointer("pointerup", centre[0] + current[0], centre[1] + current[1]);
+  }
+  f.pointer("pointerdown", centre[0] + current[0], centre[1] + current[1]);
+  f.wait(preparation);
+  f.pointer("pointermove", ...centre.map((value, index) => value + position[index] - velocity[index] * duration / 1000));
+  f.wait(duration);
+  f.pointer("pointermove", ...centre.map((value, index) => value + position[index]));
+  f.pointer("pointerup", ...centre.map((value, index) => value + position[index]));
+  return f.windowRef.performance.now();
+}
+
+function impactAndCatch(f, options) {
+  const time = releaseAtEdge(f, options);
+  f.tick(1000 / 120);
+  const position = f.position();
+  f.pointer("pointerdown", f.bounds.left + 22 + position[0], f.bounds.top + 22 + position[1]);
+  assert.equal(f.frames.size, 1, "catching preserves a single cosmetic animation callback");
+  return time;
+}
+
+ballTest("an impact fades in over 80 ms and out over 800 ms while the ball is held", t => {
+  const f = impactFixture(t);
+  const impact = impactAndCatch(f);
+  tickUntil(f, impact + 40);
+  close(highlight(f), 25);
+  tickUntil(f, impact + 80);
+  close(highlight(f), 50);
+  tickUntil(f, impact + 480);
+  close(highlight(f), 25);
+  tickUntil(f, impact + 880);
+  assert.equal(f.link.style[impactProperty], undefined);
+  assert.equal(f.frames.size, 1, "the vortex continues after the last border pulse expires");
+  assert.equal(f.root.hasAttribute("data-dragging"), true);
+});
+
+for (const speed of [0.5, 1, 2]) {
+  ballTest(`an impact at ${speed} m/s contributes ${50 * speed}% peak colour`, t => {
+    const f = impactFixture(t);
+    const impact = impactAndCatch(f, { speed });
+    tickUntil(f, impact + 80);
+    close(highlight(f), 50 * speed);
+  });
+}
+
+ballTest("glancing momentum parallel to the wall does not brighten its impact", t => {
+  const f = impactFixture(t);
+  const impact = impactAndCatch(f, { speed: 1, tangent: 2 });
+  tickUntil(f, impact + 80);
+  close(highlight(f), 50);
+});
+
+for (const [axis, side, name] of [[0, 0, "left"], [0, 1, "right"], [1, 0, "ceiling"], [1, 1, "floor"]]) {
+  ballTest(`a rebound off the ${name} adds one pulse`, t => {
+    const f = impactFixture(t);
+    const impact = impactAndCatch(f, { axis, side });
+    tickUntil(f, impact + 80);
+    close(highlight(f), 50);
+  });
+}
+
+ballTest("a simultaneous corner impact adds a pulse for each boundary", t => {
+  const f = impactFixture(t);
+  const impact = impactAndCatch(f, { corner: true });
+  tickUntil(f, impact + 80);
+  close(highlight(f), 100);
+});
+
+ballTest("saturated corner pulses retain their full contributions during the fade", t => {
+  const f = impactFixture(t);
+  const impact = impactAndCatch(f, { corner: true, speed: 1.25 });
+  tickUntil(f, impact + 80);
+  close(highlight(f), 100);
+  tickUntil(f, impact + 240);
+  close(highlight(f), 100);
+  tickUntil(f, impact + 400);
+  close(highlight(f), 75);
+  tickUntil(f, impact + 880);
+  assert.equal(f.link.style[impactProperty], undefined);
+  assert.equal(f.frames.size, 1, "the held ball keeps its vortex animation");
+});
+
+ballTest("another throw adds to a pulse that is still fading in", t => {
+  const f = impactFixture(t);
+  const first = impactAndCatch(f);
+  tickUntil(f, first + 40);
+  const second = impactAndCatch(f, { preparation: 0, duration: 10 });
+  close(second - first, 50);
+  tickUntil(f, first + 80);
+  close(highlight(f), 50 + 50 * 30 / 80);
+  tickUntil(f, second + 80);
+  close(highlight(f), 50 * (1 - 50 / 800) + 50);
+});
+
+ballTest("another throw adds to a fading pulse without restarting its fade", t => {
+  const f = impactFixture(t);
+  const first = impactAndCatch(f);
+  tickUntil(f, first + 480);
+  close(highlight(f), 25);
+  const second = impactAndCatch(f, { preparation: 0, duration: 10 });
+  tickUntil(f, second + 80);
+  close(highlight(f), 50 * (1 - 490 / 800) + 50);
+  tickUntil(f, first + 880);
+  close(highlight(f), 50 * (1 - 310 / 800));
+  tickUntil(f, second + 880);
+  assert.equal(f.frames.size, 1, "the held ball keeps its vortex animation");
+});
+
+ballTest("dragging into a boundary and resting on the floor add no pulses", t => {
+  const f = impactFixture(t);
+  f.pointer("pointerdown", 1022, 1022);
+  f.pointer("pointermove", 5000, 1022);
+  f.tick(100);
+  assert.equal(highlight(f), 0);
+  assert.equal(f.frames.size, 0);
+  releaseAtEdge(f, { axis: 1, speed: 0, tangent: 1 });
+  advance(f, 100);
+  assert.equal(highlight(f), 0, "sliding on the floor is not a new impact");
+  assert.equal(f.frames.size, 1, "the ball is still in flight");
+});
+
+ballTest("a highlight finishes naturally after magnetic capture without keeping motion busy", t => {
+  const f = themeFixture({ game: false });
+  t.after(() => f.controller.destroy());
+  flick(f, { dx: 0, dy: 8, duration: 8 });
+  f.tick(1000 / 120);
+  assertParked(f);
+  assert.ok(highlight(f) > 0);
+  assert.equal(f.frames.size, 1);
+  assert.equal(f.link.emit("click", { detail: 0 }).defaultPrevented, false);
+  advance(f, 880);
+  assertParked(f);
+  assert.equal(f.link.style[impactProperty], undefined);
+  assert.equal(f.frames.size, 0);
+});
+
+ballGameTest("a cosmetic fade does not delay a completed discovery reshuffle", t => {
+  const f = themeFixture({ top: 760, candidateCount: 3, random: randomPrefix(0, 0.5) });
+  t.after(() => f.controller.destroy());
+  const selected = f.cpu;
+  flick(f, { dx: 0, dy: 40, duration: 20 });
+  for (let frame = 0; frame < 120 && f.root.hasAttribute("data-drag-active"); frame++) f.tick(1000 / 120);
+  assertParked(f);
+  assert.ok(highlight(f) > 0);
+  assert.ok(glow(f) > 0, "the halo can fade while discovery feedback completes");
+  finishShakes(f);
+  assert.notEqual(f.cpu, selected, "the remaining fade does not hold the game open");
+  assert.ok(glow(f) > 0, "the glow does not delay the discovery reshuffle");
+  assert.equal(f.frames.size, 1);
+});
+
+ballTest("impact colour follows elapsed time at 30, 60 and 120 fps and across delayed frames", t => {
+  for (const frame of [1000 / 30, 1000 / 60, 1000 / 120, 480]) {
+    const f = impactFixture(t);
+    const impact = impactAndCatch(f);
+    advance(f, impact + 480 - f.windowRef.performance.now(), frame);
+    close(highlight(f), 25);
+    f.tick(10000);
+    assert.equal(f.link.style[impactProperty], undefined);
+    assert.equal(f.frames.size, 1, "the held ball keeps its vortex animation");
+  }
+});
+
+ballTest("an impact occurring within a frame uses its collision time", t => {
+  const f = impactFixture(t);
+  const x = 1022;
+  const y = 1022;
+  f.pointer("pointerdown", x, y);
+  f.wait(120);
+  f.pointer("pointermove", x + 2920, y);
+  f.wait(20);
+  f.pointer("pointermove", x + 2940, y);
+  f.pointer("pointerup", x + 2940, y);
+  f.tick(100);
+  close(highlight(f), 50 * (1000 * 0.067 / 44) * (1 - 4 / 800), 0.02);
+});
+
+for (const type of ["Escape", "blur", "resize", "scroll", "visibilitychange", "reduced motion", "destroy", "viewport resize", "viewport scroll", "reduced motion before event", "invalid clock"]) {
+  ballTest(`${type} clears a lingering highlight and invalidates its callback`, t => {
+    const f = themeFixture({ game: false, visualViewport: {} });
+    t.after(() => f.controller.destroy());
+    flick(f, { dx: 0, dy: 8, duration: 8 });
+    f.tick(1000 / 120);
+    assertParked(f);
+    assert.ok(highlight(f) > 0);
+    const stale = [...f.frames.values()][0];
+    if (type === "Escape") f.documentRef.emit("keydown", { key: type });
+    else if (type === "visibilitychange") {
+      f.documentRef.hidden = true; f.documentRef.emit(type);
+    } else if (type.startsWith("reduced motion")) {
+      f.motion.matches = true;
+      if (type === "reduced motion") f.motion.emit("change");
+      else f.tick(16);
+    } else if (type === "destroy") f.controller.destroy();
+    else if (type.startsWith("viewport")) f.windowRef.visualViewport.emit(type.split(" ")[1]);
+    else if (type === "invalid clock") f.tick(NaN);
+    else f.windowRef.emit(type);
+    assert.equal(f.link.style[impactProperty], undefined);
+    assert.equal(f.frames.size, 0);
+    stale(20000);
+    assert.equal(f.link.style[impactProperty], undefined);
+    assert.equal(f.frames.size, 0);
+  });
+}
+
+const vortexAngle = f => parseFloat(f.root.style["--ball-vortex-angle"]);
+function assertNoVortex(f) {
+  assert.equal(f.root.hasAttribute("data-ball-vortex"), false);
+  assert.equal(f.root.style["--ball-vortex-angle"], undefined);
+}
+
+ballTest("a vortex starts only on a successful throw", t => {
+  const f = themeFixture({ game: false });
+  t.after(() => f.controller.destroy());
+  f.pointer("pointerdown", 352, 806);
+  f.pointer("pointermove", 312, 786);
+  f.wait(120);
+  assertNoVortex(f);
+  f.pointer("pointerup", 312, 786);
+  assertNoVortex(f);
+  f.complete();
+  flick(f);
+  assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+  close(vortexAngle(f), 0);
+});
+
+ballTest("a held vortex accelerates steadily and caps at 1.5 turns per second", t => {
+  const f = impactFixture(t);
+  const start = impactAndCatch(f);
+  const held = f.position();
+  for (const [seconds, angle] of [[0.1, 0.9], [0.5, 22.5], [1, 90], [1.25, 140.625], [2.9, 36.9], [3, 90], [3.1, 144], [3.2, 198], [4.1, 324], [6, 270], [6.1, 324], [6.2, 18], [10.125, 337.5], [100.125, 337.5]]) {
+    tickUntil(f, start + seconds * 1000);
+    close(vortexAngle(f), angle);
+    assert.deepEqual(f.position(), held, "spinning does not move a held ball");
+    assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+    assert.equal(f.frames.size, 1);
+  }
+});
+
+ballTest("catching and rethrowing preserve the original vortex clock and discard stale callbacks", t => {
+  const f = impactFixture(t);
+  const start = impactAndCatch(f);
+  tickUntil(f, start + 4100);
+  const stale = [...f.frames.values()][0];
+  impactAndCatch(f, { preparation: 0, duration: 10 });
+  const angle = vortexAngle(f);
+  stale(start + 20000);
+  close(vortexAngle(f), angle);
+  assert.equal(f.frames.size, 1);
+  tickUntil(f, start + 6100);
+  close(vortexAngle(f), 324, 0.00001);
+});
+
+ballTest("a gentle release keeps the vortex spinning until the spring reaches home", t => {
+  const f = impactFixture(t);
+  const start = impactAndCatch(f);
+  tickUntil(f, start + 6100);
+  f.wait(120);
+  const [x, y] = f.position();
+  f.pointer("pointerup", 1022 + x, 1022 + y);
+  assert.equal(f.animations.at(-1).options.duration, 400);
+  f.tick(100);
+  assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+  f.complete();
+  assertParked(f);
+  assert.equal(f.frames.size, 1, "the halo finishes fading after the spring reaches home");
+  advance(f, 150);
+  assert.equal(f.frames.size, 0);
+});
+
+ballTest("magnetic capture removes the vortex immediately and a later throw starts from rest", t => {
+  const f = themeFixture({ game: false });
+  t.after(() => f.controller.destroy());
+  flick(f, { dx: 0, dy: 8, duration: 8 });
+  assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+  f.tick(1000 / 120);
+  assertParked(f);
+  assert.ok(highlight(f) > 0, "the border pulse can finish independently after the vortex ends");
+  f.wait(2000);
+  flick(f);
+  close(vortexAngle(f), 0);
+});
+
+ballTest("vortex phase agrees across frame rates and delayed frames", t => {
+  for (const frame of [1000 / 30, 1000 / 60, 1000 / 120, 7125]) {
+    const f = impactFixture(t);
+    const start = impactAndCatch(f);
+    advance(f, start + 7125 - f.windowRef.performance.now(), frame);
+    close(vortexAngle(f), 157.5);
+    assert.equal(f.frames.size, 1);
+  }
+});
+
+for (const [name, game, choice] of [["CPU", false, 0.5], ["bug", true, 0.5], ["squirrel", true, 0.05]]) {
+  const run = game ? ballGameTest : ballTest;
+  run(`the vortex retains the ${name} icon and its discovery geometry`, t => {
+    const f = themeFixture({ game, candidateCount: 2, random: randomPrefix(0, choice) });
+    t.after(() => f.controller.destroy());
+    const icon = f.cpu;
+    const bounds = icon.getBoundingClientRect();
+    assert.equal(icon.name, name === "CPU" ? "cpu" : name);
+    flick(f);
+    f.tick(100);
+    assert.equal(f.cpu, icon);
+    assert.deepEqual(icon.getBoundingClientRect(), bounds);
+    assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+    assert.ok(vortexAngle(f) > 0);
+  });
+}
+
+for (const type of ["Escape", "pointercancel", "lostpointercapture", "blur", "resize", "scroll", "visibilitychange", "reduced motion", "destroy", "reduced motion before event", "invalid clock"]) {
+  ballTest(`${type} clears a held vortex after its border pulses have expired`, t => {
+    const f = impactFixture(t);
+    impactAndCatch(f);
+    f.tick(10000);
+    assert.equal(f.link.style[impactProperty], undefined);
+    assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+    const stale = [...f.frames.values()][0];
+    if (type === "Escape") f.documentRef.emit("keydown", { key: type });
+    else if (type === "pointercancel" || type === "lostpointercapture") f.pointer(type);
+    else if (type === "visibilitychange") {
+      f.documentRef.hidden = true; f.documentRef.emit(type);
+    } else if (type.startsWith("reduced motion")) {
+      f.motion.matches = true;
+      if (type === "reduced motion") f.motion.emit("change");
+      else f.tick(16);
+    } else if (type === "destroy") f.controller.destroy();
+    else if (type === "invalid clock") f.tick(NaN);
+    else f.windowRef.emit(type);
+    assertNoVortex(f);
+    assertNoGlow(f);
+    assert.equal(f.frames.size, 0);
+    stale(20000);
+    assertNoVortex(f);
+    assertNoGlow(f);
+    assert.equal(f.frames.size, 0);
+  });
+}
+
+const glow = f => parseFloat(f.root.style["--ball-vortex-glow"] || "0");
+function assertNoGlow(f) {
+  assert.equal(f.root.hasAttribute("data-ball-glow"), false);
+  assert.equal(f.root.style["--ball-vortex-glow"], undefined);
+}
+
+function dockHeldBall(f) {
+  f.wait(120);
+  const [x, y] = f.position();
+  f.pointer("pointerup", f.bounds.left + f.bounds.width / 2 + x, f.bounds.top + f.bounds.height / 2 + y);
+  assert.equal(f.animations.at(-1).options.duration, 400);
+  f.tick(400);
+  const opacity = glow(f);
+  f.complete();
+  assertParked(f);
+  return { time: f.windowRef.performance.now(), opacity };
+}
+
+ballTest("the halo builds to a faint maximum while the icon spins", t => {
+  const f = impactFixture(t);
+  assertNoGlow(f);
+  const start = impactAndCatch(f);
+  for (const [seconds, expected] of [[0.1, 0.005], [1, 0.05], [3, 0.15], [6, 0.3], [20, 0.3]]) {
+    tickUntil(f, start + seconds * 1000);
+    close(glow(f), expected);
+    assert.equal(f.root.hasAttribute("data-ball-glow"), true);
+    assert.equal(f.frames.size, 1);
+  }
+});
+
+ballTest("catching and rethrowing keep the halo building on the same clock", t => {
+  const f = impactFixture(t);
+  const start = impactAndCatch(f);
+  tickUntil(f, start + 3000);
+  close(glow(f), 0.15);
+  const stale = [...f.frames.values()][0];
+  impactAndCatch(f, { preparation: 0, duration: 10 });
+  const opacity = glow(f);
+  stale(start + 20000);
+  close(glow(f), opacity);
+  tickUntil(f, start + 4000);
+  close(glow(f), 0.2);
+  assert.equal(f.frames.size, 1);
+});
+
+for (const seconds of [2, 6]) {
+  ballTest(`the halo fades from its actual strength after a ${seconds}-second hold over 150 ms`, t => {
+    const f = impactFixture(t);
+    const start = impactAndCatch(f);
+    tickUntil(f, start + seconds * 1000);
+    const { time, opacity } = dockHeldBall(f);
+    close(glow(f), opacity);
+    assert.equal(f.root.hasAttribute("data-ball-glow"), true);
+    assert.equal(f.frames.size, 1, "the cosmetic fade continues after motion has stopped");
+    tickUntil(f, time + 75);
+    close(glow(f), opacity / 2);
+    tickUntil(f, time + 149);
+    assert.ok(glow(f) > 0);
+    tickUntil(f, time + 150);
+    assertNoGlow(f);
+    assert.equal(f.frames.size, 0);
+  });
+}
+
+ballTest("clicking the returned ball does not restart or abruptly end its halo fade", t => {
+  const f = impactFixture(t);
+  impactAndCatch(f);
+  f.tick(6000);
+  const { time, opacity } = dockHeldBall(f);
+  tickUntil(f, time + 50);
+  f.pointer("pointerdown", 1022, 1022);
+  f.pointer("pointerup", 1022, 1022);
+  assert.equal(f.link.emit("click", { detail: 1 }).defaultPrevented, false);
+  close(glow(f), opacity * 2 / 3);
+  tickUntil(f, time + 150);
+  assertNoGlow(f);
+  assert.equal(f.frames.size, 0);
+});
+
+ballTest("a new throw during the return fade starts a fresh halo from zero", t => {
+  const f = impactFixture(t);
+  impactAndCatch(f);
+  f.tick(6000);
+  const { time } = dockHeldBall(f);
+  tickUntil(f, time + 50);
+  const stale = [...f.frames.values()][0];
+  flick(f);
+  assertNoGlow(f);
+  stale(time + 1000);
+  assertNoGlow(f);
+  assert.equal(f.frames.size, 1);
+  f.tick(100);
+  close(glow(f), 0.005);
+  assert.equal(f.frames.size, 1);
+});
+
+ballTest("the halo fade follows elapsed time across frame rates and delayed frames", t => {
+  for (const frame of [1000 / 30, 1000 / 60, 1000 / 120, 75]) {
+    const f = impactFixture(t);
+    impactAndCatch(f);
+    f.tick(3000);
+    const { opacity } = dockHeldBall(f);
+    advance(f, 75, frame);
+    close(glow(f), opacity / 2);
+    f.tick(10000);
+    assertNoGlow(f);
+    assert.equal(f.frames.size, 0);
+  }
+});
+
+for (const type of ["Escape", "blur", "resize", "scroll", "visibilitychange", "reduced motion", "destroy", "viewport resize", "viewport scroll", "reduced motion before event", "invalid clock"]) {
+  ballTest(`${type} immediately clears a return halo fade and its callback`, t => {
+    const f = impactFixture(t, { visualViewport: { width: 4000, height: 4000 } });
+    impactAndCatch(f);
+    f.tick(6000);
+    dockHeldBall(f);
+    assert.ok(glow(f) > 0);
+    const stale = [...f.frames.values()][0];
+    if (type === "Escape") f.documentRef.emit("keydown", { key: type });
+    else if (type === "visibilitychange") {
+      f.documentRef.hidden = true; f.documentRef.emit(type);
+    } else if (type.startsWith("reduced motion")) {
+      f.motion.matches = true;
+      if (type === "reduced motion") f.motion.emit("change");
+      else f.tick(16);
+    } else if (type === "destroy") f.controller.destroy();
+    else if (type.startsWith("viewport")) f.windowRef.visualViewport.emit(type.split(" ")[1]);
+    else if (type === "invalid clock") f.tick(NaN);
+    else f.windowRef.emit(type);
+    assertNoGlow(f);
+    assert.equal(f.frames.size, 0);
+    stale(20000);
+    assertNoGlow(f);
+    assert.equal(f.frames.size, 0);
+  });
+}
+
+
+ballTest("vortex events carry the original throw clock through grabs, releases and rethrows", t => {
+  const f = impactFixture(t);
+  const events = [];
+  f.windowRef.addEventListener("libport:ball-vortex", event => events.push(event.detail));
+  const start = impactAndCatch(f);
+  assert.deepEqual(events.map(event => event.phase), ["start", "grab"]);
+  assert.equal(events[1].pointerType, "mouse");
+  assert.equal(events[1].pointerId, 1);
+  assert.ok(Number.isFinite(events[1].clientX) && Number.isFinite(events[1].clientY));
+  impactAndCatch(f, { preparation: 0, duration: 10 });
+  assert.equal(events.filter(event => event.phase === "start").length, 1);
+  assert.ok(events.some(event => event.phase === "release"));
+  assert.ok(events.every(event => event.startedAt === start && event.root === f.root));
+  f.windowRef.emit("blur");
+  assert.equal(events.at(-1).phase, "cancel");
+});
+
+ballTest("natural capture announces home once while ordinary drags announce no vortex", t => {
+  const f = themeFixture({ game: false });
+  t.after(() => f.controller.destroy());
+  const events = [];
+  f.windowRef.addEventListener("libport:ball-vortex", event => events.push(event.detail));
+  f.pointer("pointerdown", 352, 806); f.wait(120);
+  f.pointer("pointermove", 312, 786); f.wait(120);
+  f.pointer("pointerup", 312, 786); f.complete();
+  assert.equal(events.length, 0);
+  flick(f, { dx: 0, dy: 8, duration: 8 }); f.tick(1000 / 120);
+  assert.deepEqual(events.map(event => event.phase), ["start", "home"]);
+  assert.equal(events[0].startedAt, events[1].startedAt);
+  f.tick(1000); f.controller.destroy();
+  assert.equal(events.length, 2);
+});

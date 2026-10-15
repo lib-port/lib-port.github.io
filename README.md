@@ -362,6 +362,63 @@ cancels the motion. Reduced-motion preferences skip the throw and park on
 release. A completed discovery waits for the button to return home, all other
 items to land and the shake feedback to finish before reshuffling.
 
+Each viewport rebound adds a pulse of the active palette's link/accent colour
+around the ball's border. Pulse strength follows the incoming momentum towards
+the boundary: an impact at 1 m/s contributes 50% colour, with harder hits
+proportionally brighter and glancing hits fainter. Each pulse fades in linearly
+over 80 ms and out over 800 ms. Overlapping pulses add together, with
+the displayed colour capped at 100%; a corner impact contributes two pulses.
+Dragging into an edge or resting against it adds no pulses. The remaining
+highlight finishes fading when the ball is caught or returns home, and another
+throw can add to it. This cosmetic fade does not delay the discovery game.
+Cancellation or a reduced-motion preference clears the highlight.
+
+Throwing the ball also turns its exposed CPU, bug or squirrel icon into a
+spinning vortex at home. A 36 px central disc uses the active palette's heading
+colour, with the icon in the contrasting background colour. The icon rotates
+clockwise, accelerating from rest by 0.5 turns per second each second,
+up to 1.5 turns per second after three seconds. Catching, holding and throwing
+again keep the same vortex clock running until the ball returns home. Returning
+home or cancelling restores the stationary icon immediately. Reduced-motion
+preferences disable the vortex. Its cosmetic animation does not delay the
+discovery game or change the ball's physics.
+
+A tight halo around the spinning icon uses the active palette's link/accent
+colour. Its opacity builds while the icon spins, reaching a faint 30% maximum
+after six seconds. The halo has a 4 px blur and 2 px spread. When the ball
+returns home, rotation stops immediately and the halo fades from its current
+strength over 150 ms, remaining just visible around the returned ball.
+Cancellation or reduced motion clears the halo immediately. A new throw during
+the fade starts a fresh glow build from zero.
+
+
+The spinning icon also attracts the paper plane when both features are enabled.
+Two seconds after the first throw, a resting plane is tugged 12 px towards the
+icon over 300 ms; after five seconds it detaches. A plane already flying before
+the throw is pulled in at two seconds. Catches, holds, releases and rethrows
+preserve these deadlines until the ball returns home.
+
+Launching the plane while the icon spins starts a two-second struggle along its
+usual figure-of-eight, with a wavering path, declining speed and drift towards
+the icon. It always gets the full two seconds, even across the original
+five-second deadline. Leaving the activation area or releasing the ball does
+not interrupt the struggle. Holding a previously thrown ball still allows
+mouse or pen activation in the usual title-and-plane area: the same 62.5 ms
+stationary pause applies, even while the ball has pointer capture.
+
+Suction accelerates the plane directly into the icon over 600 ms. The plane
+stays 16 px throughout and disappears behind the icon when their centres meet.
+If the ball returns home during the attached tug, the plane settles back over
+250 ms. If it returns during struggle or suction, the detached plane turns
+around and flies home over one second. Each return chooses a different smooth,
+slightly wavy route, with varied wave spacing, direction and strength up to
+12 px. Its destination follows the current title layout.
+
+A swallowed plane and its launch control stay absent until the page reloads;
+this state is not saved in browser storage. Cancellation or reduced motion
+immediately restores any unswallowed plane and clears its pending effects.
+The animation does not delay discovery-game completion.
+
 When `light_dark_ball.switch` is `false`, null or missing, tennis-ball physics
 are disabled. If the game is enabled, all theme-button releases use the normal
 400 ms spring return. If both switches are disabled, the theme button stays
@@ -424,7 +481,7 @@ python3 scripts/validate_site_config.py
 JEKYLL_ENV=production ./scripts/build_site.sh
 ```
 
-The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 24 KiB for the activity, theme, blog, title animation, shared drag controller and enabled game/ball scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled features exclude their optional assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
+The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 27 KiB for the activity, theme, blog, title animation, shared drag controller and enabled game/ball scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled features exclude their optional assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
 
 ### Run tests
 
@@ -447,7 +504,7 @@ Validation on 1 October 2026 passed 80 Python tests and 196 JavaScript tests aga
 | Gzipped asset | Before | After | Budget |
 | --- | ---: | ---: | ---: |
 | Activity JavaScript | 18,433 bytes | 14,527 bytes | 16 KiB |
-| All client JavaScript | 22,792 bytes | 17,679 bytes | 24 KiB |
+| All client JavaScript | 22,792 bytes | 17,679 bytes | 27 KiB |
 | Stylesheet | 7,141 bytes | 6,302 bytes | 8 KiB |
 
 Local Chromium checks used eight repository fixtures, six linked pages per history and 20 ms simulated API latency. Older owner-authored commits were placed on page six, so the bounded search intentionally returned fewer commits. The following figures record one run with automatic page scrolling; timings and layout shifts are fixture measurements rather than field performance scores. Cold visits used at most four concurrent calls, while warm `localStorage` visits made no GitHub requests.
