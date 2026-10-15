@@ -221,6 +221,11 @@ up to approximately two seconds, then parks the plane. Repeated activation
 while flying or returning is ignored. Hovering back cannot restart a return;
 a fresh title entry, tap or keyboard activation is needed after the plane parks.
 
+Launching while the spinning icon is active makes the plane struggle to fly
+away from it for two seconds, slowing and wobbling before it is sucked in.
+The plane keeps its escape heading throughout suction. Returning the icon home
+before the plane disappears lets it turn and fly back to its resting point.
+
 The plane follows the active theme's link colour and adapts to wrapped titles.
 On wrapped titles, its resting point stays centred vertically on the whole
 title block, at the rightmost point of the same path.

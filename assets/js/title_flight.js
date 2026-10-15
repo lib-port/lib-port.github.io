@@ -75,13 +75,15 @@
     function strugglePose(time) {
       const elapsed = Math.min(2000, Math.max(0, time - motion.startedAt));
       const progress = elapsed / 2000;
-      const distance = elapsed - 0.75 * elapsed * elapsed / 4000;
-      const current = flightPose(START_PHASE + FULL_TURN * distance / LAP_MS, geometry);
-      const pull = direction(homePoint(), centre(vortex.root));
+      const distance = 96 * progress * (2 - progress);
+      const { from, away } = motion;
       const wobble = 8 * Math.sin(16 * Math.PI * progress) * Math.sin(Math.PI * progress);
-      return { ...current,
-        x: current.x + motion.offset.x + 32 * progress * pull.x - wobble * pull.y,
-        y: current.y + motion.offset.y + 32 * progress * pull.y + wobble * pull.x };
+      const angle = Math.atan2(away.y, away.x);
+      const turn = Math.atan2(Math.sin(angle - from.angle), Math.cos(angle - from.angle));
+      return { ...from,
+        x: from.x + distance * away.x - wobble * away.y,
+        y: from.y + distance * away.y + wobble * away.x,
+        angle: from.angle + turn * smooth(clamp(elapsed / 120)) };
     }
 
     function clearOverlay() {
@@ -119,11 +121,15 @@
       const progress = clamp((time - motion.startedAt) / duration);
       const target = state === SUCTION ? centre(vortex.root) : homePoint();
       const current = transitPoint(progress, target);
-      const before = transitPoint(Math.max(0, progress - 0.0001), target);
-      const after = transitPoint(Math.min(1, progress + 0.0001), target);
-      const angle = Math.atan2(after.y - before.y, after.x - before.x);
-      const turn = Math.atan2(Math.sin(angle - motion.from.angle), Math.cos(angle - motion.from.angle));
-      freePose = { ...current, angle: motion.from.angle + turn * smooth(clamp((time - motion.startedAt) / 120)) };
+      let angle = motion.from.angle;
+      if (state === RETURNING) {
+        const before = transitPoint(Math.max(0, progress - 0.0001), target);
+        const after = transitPoint(Math.min(1, progress + 0.0001), target);
+        const tangent = Math.atan2(after.y - before.y, after.x - before.x);
+        const turn = Math.atan2(Math.sin(tangent - angle), Math.cos(tangent - angle));
+        angle += turn * smooth(clamp((time - motion.startedAt) / 120));
+      }
+      freePose = { ...current, angle };
       overlay.style.transform = `translate3d(${current.x - 8}px, ${current.y - 8}px, 0) rotate(${freePose.angle}rad)`;
       if (progress < 1 - 1e-10) return;
       const swallowed = state === SUCTION;
@@ -143,11 +149,6 @@
       if (state === SUCTION || state === RETURNING) { renderTransit(time); return; }
       const current = state === STRUGGLING ? strugglePose(time)
         : flightPose(START_PHASE + FULL_TURN * lapElapsed / LAP_MS, geometry);
-      if (state === STRUGGLING) {
-        const atEnd = time >= motion.startedAt + 2000;
-        const next = strugglePose(time + (atEnd ? -0.5 : 0.5));
-        current.angle = Math.atan2((next.y - current.y) * (atEnd ? -1 : 1), (next.x - current.x) * (atEnd ? -1 : 1));
-      }
       if (state === IDLE && vortex) {
         const pull = direction(homePoint(), centre(vortex.root));
         const amount = 12 * smooth(clamp((time - vortex.startedAt - 2000) / 300));
@@ -279,8 +280,9 @@
       input = inputType;
       if (vortex) {
         render();
-        const home = restingPose();
-        motion = { startedAt: now(), offset: { x: pose.x - home.x, y: pose.y - home.y } };
+        const origin = centre(root);
+        motion = { startedAt: now(), from: { ...pose },
+          away: direction(centre(vortex.root), { x: origin.x + pose.x, y: origin.y + pose.y }) };
         state = STRUGGLING;
       } else state = FLYING;
       sync();
