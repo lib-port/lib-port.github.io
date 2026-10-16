@@ -4,6 +4,7 @@
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const PHYSICS_STEP = 1 / 120;
   const GRAVITY = 9.80665;
+  const MAX_HOME_ATTRACTION = 2.5 * GRAVITY;
   const DIAMETER = 0.067;
   const RADIUS = DIAMETER / 2;
   // Thin spherical shell, with mass divided out of every impulse.
@@ -12,6 +13,10 @@
   const SPIN_PROPERTY = "--ball-spin-angle";
   const SETTLE_DURATION = 300;
   const MAGNET_RADIUS = DIAMETER;
+  const DOCK_DURATION = 350;
+  // Inward speed in m/s; strength 3 gives at most 25% overshoot of the entry gap.
+  const DOCK_REFERENCE_SPEED = 2;
+  const DOCK_MAX_STRENGTH = 3;
   // Approximately 55% rebound height, matching a standard tennis ball.
   const RESTITUTION = 0.74;
   const FRICTION = 0.12;
@@ -25,7 +30,7 @@
   const VORTEX_ANGLE = "--ball-vortex-angle";
   const GLOW_PROPERTY = "--ball-vortex-glow";
   const GLOW_FADE = 150;
-  const homeAttraction = time => 0.25 * GRAVITY * Math.max(0, time);
+  const homeAttraction = time => Math.min(MAX_HOME_ATTRACTION, 0.25 * GRAVITY * Math.max(0, time));
 
   // The solver uses metres and seconds; only rendering uses CSS pixels.
   function gravity(position, time) {
@@ -350,6 +355,16 @@
         }
 
         function tickFlight(current, time) {
+          if (current.docking) {
+            const progress = clamp((time - current.docking.time) / DOCK_DURATION, 0, 1);
+            if (1 - progress <= EPSILON) { park(); return; }
+            // Inward momentum sets one overshoot, followed by a stop at home.
+            const remaining = (1 - progress) ** 2 * (1 - (1 + current.docking.strength) * progress);
+            state.position = current.docking.position.map((value, axis) =>
+              clamp(value * remaining, ...current.limits[axis]) * current.scale);
+            state.render();
+            return;
+          }
           current.accumulator = Math.min(0.1, current.accumulator + clamp((time - current.previousTime) / 1000, 0, 0.1));
           current.previousTime = Math.max(time, current.previousTime);
           let steps = 0;
@@ -364,7 +379,15 @@
             if (!Number.isFinite(duration) || duration <= EPSILON) { reset(); return; }
             if (advanceBall(current, elapsed, duration, recordImpact)) {
               renderSpin(current.angle);
-              park();
+              const distance = Math.hypot(...current.position);
+              const inwardSpeed = distance > EPSILON ? Math.max(0,
+                -current.position.reduce((sum, value, axis) => sum + value * current.velocity[axis], 0) / distance) : 0;
+              // Swept captures can start just outside the radius; still cap travel at a quarter diameter.
+              const strength = distance > EPSILON ? DOCK_MAX_STRENGTH *
+                clamp(inwardSpeed / DOCK_REFERENCE_SPEED, 0, 1) * Math.min(1, DIAMETER / distance) : 0;
+              current.docking = { time, position: [...current.position], strength };
+              state.position = current.position.map(value => value * current.scale);
+              state.render();
               return;
             }
             current.accumulator -= duration;

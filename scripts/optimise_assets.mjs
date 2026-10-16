@@ -51,7 +51,7 @@ for (const name of scripts) {
   const source = await readFile(path, "utf8");
   const result = await minify(source, {
     ecma: 2020,
-    compress: { unsafe: false, passes: 2 },
+    compress: { unsafe: false, passes: 2, hoist_funs: true },
     mangle: true,
     format: { comments: "some" },
   });

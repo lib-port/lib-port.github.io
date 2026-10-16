@@ -377,20 +377,33 @@ at rest. The simulation treats its rendered diameter as 6.7 cm:
 ordinary gravity pulls down at 1G (9.80665 m/s²), and collisions with the viewport
 edges lose energy like a tennis ball. From release, its original position
 becomes a point of attraction. This adds 0G at release, 0.25G after one second,
-0.5G after two seconds and 1G after four seconds. It continues growing smoothly
-at 0.25G per second without a cap. Its strength is independent of distance and
-adds to downward gravity. Within three ball diameters of home, gradual braking
-grows with the current attraction. Home also acts as a magnet: a returning ball
-snaps straight into place when its centre comes within one rendered ball
-diameter of home, including the boundary, regardless of speed or attraction
-strength. The radius is 44 px for the standard button and scales with its size.
+0.5G after two seconds and 1G after four seconds. It grows smoothly at 0.25G per
+second to a maximum of 2.5G after ten seconds, then stays at that strength.
+Its strength is independent of distance and adds to downward gravity. Within
+three ball diameters of home, gradual braking grows with the current attraction.
+Home also acts as a magnet: when a returning
+ball's centre comes within one rendered ball diameter of home, including the
+boundary, it starts a 350 ms spring return from its current position, regardless
+of speed or attraction strength. The radius is 44 px for the standard button and
+scales with its size. The ball glides towards home, with overshoot following its
+inward momentum at capture after gravity, collisions and braking have acted.
+Gentle arrivals barely overshoot, while faster arrivals bounce further. Spring
+strength grows with inward speed up to 2 m/s, limiting overshoot to a quarter of
+the ball's diameter (11 px for the standard button). For a standard ball entering
+at the capture radius, inward speeds of 0.5, 1 and 2 m/s produce approximately
+0.9, 3.5 and 11 px of overshoot respectively. Tangential movement adds no bounce
+strength. The overshoot stays within the viewport. The icon keeps its arrival
+angle until the return finishes, then starts its usual upright correction. The
+vortex and halo stay active until the ball settles. Catching it interrupts the
+return at its displayed position and allows another throw.
 This also catches a ball returning along the viewport floor just below home,
 without waiting for the attraction to exceed downward gravity.
 Throws released inside the magnetic zone can still move outwards. Capture
 becomes active after they leave the zone, turn towards home or stop moving
 within it. Holding and dragging the button remains under the visitor's control.
 Delayed frames retain the real elapsed time for attraction, while limiting
-physics catch-up to 100 ms per frame. Snapping into home resets the attraction to
+physics catch-up to 100 ms per frame. The spring return follows elapsed time
+without the physics catch-up limit. Settling at home resets the attraction to
 0G. Catching the button starts another drag
 from its current position; another flick or distant drop restarts the attraction
 at 0G.

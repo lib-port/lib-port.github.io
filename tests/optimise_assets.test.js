@@ -81,6 +81,16 @@ test("minifies generated JavaScript, retains licence comments and reports gzip s
   assert.doesNotMatch(bannerTests.stdout, /# SKIP/);
 });
 
+test("keeps all real client scripts within the production gzip budgets", t => {
+  const directory = makeBuild(t);
+  for (const name of names) {
+    fs.copyFileSync(path.join(root, "assets", "js", name),
+      path.join(directory, "assets", "js", name));
+  }
+  const result = optimise(directory);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
 test("optimises a build with the ASCII banner excluded", t => {
   const directory = makeBuild(t);
   for (const name of ["ascii_banner.mjs", "ascii-rest"]) {

@@ -75,44 +75,77 @@ function throwTowardsHome(f, { dx, dy = 0, speed = 2500 }) {
   f.tick(0);
 }
 
-for (const seconds of [0, 0.1, 1, 2, 3, 4, 20]) {
-  ballTest(`home attraction grows continuously to ${0.25 * seconds}G at ${seconds} real seconds`, () => {
-    close(probePull(seconds), 0.25 * (seconds + 1 / 120), 0.03);
+function startMagneticReturn(f, options = {}) {
+  throwTowardsHome(f, { dx: -0.75 * f.bounds.width, ...options });
+  const position = f.position();
+  f.tick(1000 / 120);
+  assert.deepEqual(f.position(), position, "the magnetic handover preserves the live position");
+  assert.equal(f.root.hasAttribute("data-drag-active"), true);
+  return { time: f.windowRef.performance.now(), position };
+}
+
+function measureMagneticOvershoot(f, { time, position }) {
+  const distance = Math.hypot(...position);
+  let overshoot = 0;
+  for (let elapsed = 1; elapsed < 350; elapsed++) {
+    tickUntil(f, time + elapsed);
+    const projection = f.position().reduce((sum, value, axis) => sum + value * position[axis], 0) / distance;
+    overshoot = Math.max(overshoot, -projection);
+  }
+  tickUntil(f, time + 350);
+  assertParked(f);
+  return overshoot;
+}
+
+for (const [seconds, strength] of [
+  [0, 0], [0.1, 0.025], [1, 0.25], [2, 0.5], [3, 0.75], [4, 1],
+  [9, 2.25], [9.9, 2.475], [10, 2.5], [10.1, 2.5], [20, 2.5], [100000, 2.5],
+]) {
+  ballTest(`home attraction reaches ${strength}G at ${seconds} real seconds`, () => {
+    close(probePull(seconds), strength, seconds >= 10 ? 0.001 : 0.03);
   });
 }
 
 ballTest("home attraction has the same G strength at different distances and button diameters", () => {
-  for (const diameter of [44, 88]) {
-    close(probePull(4, -500, diameter), probePull(4, -4000, diameter), 0.03);
+  for (const seconds of [4, 10, 40]) {
+    for (const diameter of [44, 88]) {
+      const strength = probePull(seconds, -4000, diameter);
+      close(probePull(seconds, -500, diameter), strength, 0.03);
+      if (seconds >= 10) close(strength, 2.5, 0.001);
+    }
   }
 });
 
-ballTest("a ball bouncing just below home snaps back before attraction exceeds downward gravity", () => {
+ballTest("a ball bouncing just below home springs back before attraction exceeds downward gravity", () => {
   const f = themeFixture();
   flick(f, { dx: 0, dy: 8, duration: 8 });
   assert.equal(f.frames.size, 1);
   f.tick(1000 / 120);
+  assert.deepEqual(f.position(), [0, 16], "capture preserves the arrival position");
+  advance(f, 350);
   assertParked(f);
   advance(f, 880);
   assert.equal(f.frames.size, 0);
-  assert.equal(f.animations.length, 0, "the magnet snaps without a settling animation");
+  assert.equal(f.animations.length, 0, "the magnetic return uses the existing frame loop");
   f.controller.destroy();
 });
 
-ballTest("a ball returning along the floor snaps home without waiting four seconds", () => {
+ballTest("a ball returning along the floor springs home without waiting four seconds", () => {
   const f = themeFixture();
   flick(f, { dx: -80, dy: 16 });
   let previous;
+  let departure;
   let frames = 0;
-  while (f.root.hasAttribute("data-drag-active") && frames < 120) {
+  while (f.root.hasAttribute("data-drag-active") && frames < 240) {
     previous = f.position();
     f.tick(1000 / 120);
+    if (!departure && f.position()[1] < 16 - 0.001) departure = previous;
     frames++;
   }
   assertParked(f);
-  close(previous[1], 16, 0.001);
-  assert.ok(previous[0] < -44 / 2, "capture happens before the ball reaches the space directly below home");
-  assert.ok(frames / 120 < 1, "the floor return completes while attraction is still below 0.25G");
+  close(departure[1], 16, 0.001);
+  assert.ok(departure[0] < -44 / 2, "the spring begins before the ball reaches the space directly below home");
+  assert.ok(frames / 120 < 1.5, "the floor return includes the spring without waiting for 1G attraction");
   advance(f, 880);
   assert.equal(f.frames.size, 0, "the remaining highlight finishes after magnetic capture");
   f.controller.destroy();
@@ -131,11 +164,14 @@ for (const [speed, escapes, top] of [[300, false, 792], [320, true, 784], [1000,
     assert.ok(f.position()[0] > 0, "a tangential release can start moving outwards");
     assert.equal(f.frames.size, 1);
     let maximumDistance = Math.hypot(...f.position());
+    let minimumX = f.position()[0];
     for (let frame = 1; frame < 120 && f.root.hasAttribute("data-drag-active"); frame++) {
       f.tick(1000 / 120);
       maximumDistance = Math.max(maximumDistance, Math.hypot(...f.position()));
+      minimumX = Math.min(minimumX, f.position()[0]);
     }
     assert.equal(maximumDistance > 44, escapes, "floor launches can turn within the zone or roll beyond it");
+    if (!escapes) assert.ok(minimumX > -0.01, "a nearly stationary turn adds no visible overshoot");
     assertParked(f);
     advance(f, 880);
     assert.equal(f.frames.size, 0, "the remaining highlight finishes after magnetic capture");
@@ -157,13 +193,16 @@ ballTest("one metre follows the rendered 6.7 cm ball diameter", () => {
   }
 });
 
-ballTest("a fast return snaps home even when a rendered frame would cross the whole magnetic zone", () => {
+ballTest("a fast return starts a spring even when a rendered frame would cross the whole magnetic zone", () => {
   const f = themeFixture({ left: 500, top: 300 });
   f.documentRef.documentElement.clientWidth = 1200;
   throwTowardsHome(f, { dx: -88 });
   assert.equal(f.frames.size, 1);
   f.tick(100);
-  assertParked(f);
+  assert.ok(Math.hypot(...f.position()) > 40, "the swept capture preserves the position at entry");
+  assert.ok(Math.hypot(...f.position()) < 45, "the return is caught at the magnetic zone");
+  const overshoot = measureMagneticOvershoot(f, { time: f.windowRef.performance.now(), position: f.position() });
+  assert.ok(overshoot > 10 && overshoot <= 11, "a fast swept return respects the quarter-diameter cap");
   advance(f, 150);
   assert.equal(f.frames.size, 0);
   assert.equal(f.animations.length, 0);
@@ -180,6 +219,8 @@ ballTest("magnetic capture uses centre distance rather than a square around home
   assert.ok(Math.hypot(...position) > 44, "the diagonal return remains outside the circular zone");
   assert.equal(f.frames.size, 1);
   advance(f, 100);
+  assert.equal(f.root.hasAttribute("data-drag-active"), true, "the diagonal return is still settling");
+  advance(f, 350);
   assertParked(f);
   advance(f, 150);
   assert.equal(f.frames.size, 0);
@@ -192,11 +233,15 @@ for (const diameter of [44, 88]) {
       const f = themeFixture({ left: 50 * diameter, top: 20 * diameter, width: diameter, height: diameter });
       Object.assign(f.documentRef.documentElement, { clientWidth: 100 * diameter, clientHeight: 21 * diameter });
       flick(f, { dx: -2 * diameter, dy: 0, firstFrameDelay: delay });
+      let approached = false;
       for (let frame = 0; frame < 600 && f.root.hasAttribute("data-drag-active"); frame++) {
-        assert.ok(f.position()[0] < -diameter, "an armed return parks on entry into the one-diameter zone");
+        const [x] = f.position();
+        approached ||= x > -diameter && x < 0;
+        assert.ok(x <= diameter / 4, "the spring overshoot stays within a quarter diameter");
         f.tick(1000 / 120);
         close(f.position()[1], 0);
       }
+      assert.ok(approached, "the spring visibly closes the remaining gap");
       assertParked(f);
       advance(f, 300);
       assertUpright(f);
@@ -207,11 +252,14 @@ for (const diameter of [44, 88]) {
   }
 
   for (const distance of [0.75 * diameter, diameter]) {
-    ballTest(`a returning ${diameter}px ball snaps at distance ${distance}px including the boundary`, () => {
+    ballTest(`a returning ${diameter}px ball begins settling at distance ${distance}px including the boundary`, () => {
       const f = themeFixture({ left: 500, top: 300, width: diameter, height: diameter });
       f.documentRef.documentElement.clientWidth = 1200;
       throwTowardsHome(f, { dx: -distance });
       f.tick(1000 / 120);
+      assert.deepEqual(f.position(), [-distance, 0], "capture starts without a position jump");
+      assert.equal(f.root.hasAttribute("data-drag-active"), true);
+      advance(f, 350);
       assertParked(f);
       advance(f, 150);
       assert.equal(f.frames.size, 0);
@@ -227,6 +275,7 @@ for (const diameter of [44, 88]) {
     assert.ok(Math.hypot(...f.position()) > diameter);
     assert.equal(f.frames.size, 1);
     advance(f, 100);
+    advance(f, 350);
     assertParked(f);
     advance(f, 150);
     assert.equal(f.frames.size, 0);
@@ -258,6 +307,170 @@ ballTest("the magnet does not capture a ball held and dragged inside its zone", 
   assert.equal(f.frames.size, 0);
   f.controller.destroy();
 });
+
+for (const diameter of [44, 88]) {
+  ballTest(`a ${diameter}px diagonal return closes the gap, overshoots once and settles over 350 ms`, t => {
+    const f = themeFixture({ left: 500, top: 300, width: diameter, height: diameter, game: false });
+    f.documentRef.documentElement.clientWidth = 1200;
+    t.after(() => f.controller.destroy());
+    const { time, position } = startMagneticReturn(f, { dx: -0.6 * diameter, dy: -0.45 * diameter });
+    const distance = Math.hypot(...position);
+    tickUntil(f, time + 70);
+    assert.ok(Math.hypot(...f.position()) < distance, "the ball visibly approaches home");
+    assert.ok(Math.hypot(...f.position()) > 0, "the approach does not teleport to the centre");
+    tickUntil(f, time + 175);
+    f.position().forEach((value, axis) => assert.ok(value * position[axis] < 0, "the fast return crosses home"));
+    assert.equal(f.root.hasAttribute("data-drag-active"), true, "crossing the centre does not complete the return");
+    const overshoot = Math.hypot(...f.position());
+    assert.ok(overshoot <= diameter / 4, "even a fast diagonal return respects the overshoot cap");
+    tickUntil(f, time + 280);
+    assert.ok(Math.hypot(...f.position()) < overshoot, "the ball recoils towards the centre");
+    tickUntil(f, time + 349);
+    assert.ok(Math.hypot(...f.position()) < 0.01, "the ball slows to a subpixel stop before parking");
+    assert.equal(f.root.hasAttribute("data-drag-active"), true);
+    tickUntil(f, time + 350);
+    assertParked(f);
+  });
+}
+
+ballTest("overshoot grows with inward capture momentum and caps at a quarter diameter", t => {
+  let previous = 0;
+  for (const [speed, expected] of [[0.5, 0.9], [1, 3.52], [1.5, 7.03], [2, 11], [3, 11]]) {
+    const f = rotationFixture(t);
+    const entry = startMagneticReturn(f, { dx: -44, speed: speed * 44 / 0.067 });
+    const overshoot = measureMagneticOvershoot(f, entry);
+    close(overshoot, expected, 0.02);
+    assert.ok(overshoot <= 11, "even excess momentum cannot exceed the cap");
+    if (speed <= 2) assert.ok(overshoot > previous, "more inward momentum produces a larger bounce");
+    else close(overshoot, previous);
+    previous = overshoot;
+  }
+});
+
+ballTest("equal physical capture momentum scales the overshoot with the rendered ball diameter", t => {
+  const peaks = [];
+  for (const diameter of [44, 88]) {
+    const f = rotationFixture(t, { width: diameter, height: diameter });
+    const entry = startMagneticReturn(f, { dx: -diameter, speed: diameter / 0.067 });
+    peaks.push(measureMagneticOvershoot(f, entry) / diameter);
+  }
+  close(peaks[0], 0.08);
+  close(peaks[1], peaks[0]);
+});
+
+ballTest("tangential momentum adds no overshoot to a fixed inward approach", t => {
+  for (const diameter of [44, 88]) {
+    const peaks = [];
+    for (const tangent of [0, -1, 1]) {
+      const f = rotationFixture(t, { width: diameter, height: diameter });
+      const scale = diameter / 0.067;
+      launchFromGrip(f, { grip: [0, 0], position: [-diameter, 0], velocity: [0.5 * scale, tangent * scale] });
+      const position = f.position();
+      f.tick(1000 / 120);
+      assert.deepEqual(f.position(), position, "capture preserves the position for glancing arrivals");
+      peaks.push(measureMagneticOvershoot(f, { time: f.windowRef.performance.now(), position }));
+    }
+    peaks.slice(1).forEach(peak => close(peak, peaks[0]));
+  }
+});
+
+ballTest("a rebound sets bounce strength from its reduced momentum at capture", t => {
+  const f = themeFixture({ left: 22, top: 300, game: false });
+  t.after(() => f.controller.destroy());
+  launchFromGrip(f, { grip: [0, 0], position: [-22, 0], velocity: [-2 * 44 / 0.067, 0] });
+  const position = f.position();
+  f.tick(1000 / 120);
+  assert.deepEqual(f.position(), position, "the wall rebound starts docking at the contact point");
+  const rebound = measureMagneticOvershoot(f, { time: f.windowRef.performance.now(), position });
+  close(rebound, 3.44, 0.02);
+
+  const direct = rotationFixture(t);
+  const entry = startMagneticReturn(direct, { dx: -22, speed: 2 * 44 / 0.067 });
+  const incoming = measureMagneticOvershoot(direct, entry);
+  close(incoming, 5.5);
+  assert.ok(rebound < incoming, "the wall's lost momentum reduces overshoot at the same entry distance");
+});
+
+ballTest("momentum-based settling agrees at 30, 60 and 120 fps and across delayed frames", t => {
+  for (const speed of [0.5, 1, 2]) {
+    const positions = [];
+    for (const frame of [1000 / 30, 1000 / 60, 1000 / 120, 210]) {
+      const f = themeFixture({ left: 500, top: 300, game: false });
+      f.documentRef.documentElement.clientWidth = 1200;
+      t.after(() => f.controller.destroy());
+      startMagneticReturn(f, { speed: speed * 44 / 0.067 });
+      advance(f, 210, frame);
+      positions.push(f.position());
+      advance(f, 140, frame);
+      assertParked(f);
+    }
+    for (const position of positions.slice(1)) {
+      position.forEach((value, axis) => close(value, positions[0][axis]));
+    }
+  }
+});
+
+ballTest("a long pause during magnetic settling completes the return without physics catch-up", t => {
+  const f = themeFixture({ left: 500, top: 300, game: false });
+  f.documentRef.documentElement.clientWidth = 1200;
+  t.after(() => f.controller.destroy());
+  startMagneticReturn(f);
+  f.tick(40000);
+  assertParked(f);
+  advance(f, 300);
+  assert.equal(f.frames.size, 0);
+});
+
+for (const [left, top, dx, dy, visualViewport] of [
+  [1, 1, 33, 0], [345, 799, -33, 0], [1, 1, 0, 33], [345, 799, 0, -33],
+  [101, 51, 33, 0, { offsetLeft: 100, offsetTop: 50, width: 250, height: 400 }],
+]) {
+  ballTest(`spring overshoot stays inside the viewport from ${left}, ${top} along ${dx}, ${dy}`, t => {
+    const f = themeFixture({ left, top, visualViewport, game: false });
+    t.after(() => f.controller.destroy());
+    const viewport = visualViewport || { offsetLeft: 0, offsetTop: 0, width: 390, height: 844 };
+    startMagneticReturn(f, { dx, dy });
+    for (let frame = 0; frame < 42; frame++) {
+      f.tick(1000 / 120);
+      const box = f.link.getBoundingClientRect();
+      assert.ok(box.left >= viewport.offsetLeft && box.right <= viewport.offsetLeft + viewport.width);
+      assert.ok(box.top >= viewport.offsetTop && box.bottom <= viewport.offsetTop + viewport.height);
+    }
+    assertParked(f);
+  });
+}
+
+for (const pointerType of ["mouse", "pen", "touch"]) {
+  for (const elapsed of [70, 210]) {
+    ballTest(`${pointerType} can catch and rethrow a spring return after ${elapsed} ms`, t => {
+      const f = themeFixture({ left: 500, top: 300, game: false });
+      f.documentRef.documentElement.clientWidth = 1200;
+      t.after(() => f.controller.destroy());
+      startMagneticReturn(f);
+      f.tick(elapsed);
+      const held = f.position();
+      const stale = [...f.frames.values()][0];
+      const x = f.bounds.left + 22 + held[0];
+      const y = f.bounds.top + 22 + held[1];
+      f.pointer("pointerdown", x, y, { pointerType });
+      stale(10000);
+      f.tick(100);
+      f.position().forEach((value, axis) => close(value, held[axis]));
+      assert.equal(f.root.hasAttribute("data-dragging"), true);
+      f.pointer("pointermove", x + 40, y, { pointerType });
+      f.wait(40);
+      f.pointer("pointermove", x + 80, y, { pointerType });
+      f.pointer("pointerup", x + 80, y, { pointerType });
+      f.tick(0);
+      const released = f.position();
+      stale(20000);
+      assert.deepEqual(f.position(), released, "the old spring cannot overwrite a rethrow");
+      f.tick(25);
+      assert.ok(f.position()[0] > released[0], "the new throw uses fresh release momentum");
+      assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+    });
+  }
+}
 
 ballTest("a moving ball exactly at home has a finite gravity direction", () => {
   const f = themeFixture({ left: 170, top: 800 });
@@ -296,13 +509,13 @@ for (const [width, height, left, top, dx, dy, duration] of [
     }
     assertParked(f);
     assert.equal(f.frames.size, 0);
-    assert.equal(f.animations.length, 0, "magnetic capture parks without a spring animation");
+    assert.equal(f.animations.length, 0, "magnetic settling uses the existing frame loop");
     f.controller.destroy();
   });
 }
 
 for (const delay of [60000, 1000000, 100000000]) {
-  ballTest(`a ${delay} ms frame pause keeps the growing field bounded and eventually settles`, () => {
+  ballTest(`a ${delay} ms frame pause keeps the capped field bounded and eventually settles`, () => {
     const f = themeFixture();
     flick(f, { firstFrameDelay: delay });
     for (let frame = 0; frame < 360 && f.frames.size; frame++) {
@@ -644,11 +857,15 @@ ballTest("theme throws start the home attraction on release while preserving mom
   f.controller.destroy();
 });
 
-ballTest("a delayed first theme frame captures the returning ball during the capped catch-up", () => {
+ballTest("a delayed first theme frame preserves flight before completing the magnetic return", () => {
   const f = themeFixture();
   flick(f, { firstFrameDelay: 40000 });
+  assert.ok(Math.hypot(...f.position()) > 44, "the capped attraction allows flight beyond the first catch-up");
+  assert.equal(f.root.hasAttribute("data-drag-active"), true);
+  advance(f, 350);
+  assert.equal(f.root.hasAttribute("data-drag-active"), true, "the spring duration starts at capture");
+  advance(f, 1000);
   assertParked(f);
-  advance(f, 150);
   assert.equal(f.frames.size, 0);
   assert.equal(f.animations.length, 0);
   f.controller.destroy();
@@ -772,11 +989,11 @@ for (const type of ["pointercancel", "lostpointercapture", "Escape"]) {
 
 for (const type of ["Escape", "blur", "resize", "scroll", "visibilitychange", "reduced motion", "destroy", "viewport resize", "viewport scroll"]) {
   ballTest(`${type} cancels theme flight and docking without leaving animation callbacks`, () => {
-    for (const elapsed of [0, 400]) {
+    for (const phase of ["flight", "docking"]) {
       const f = themeFixture({ candidateCount: 3, random: randomPrefix(0, 0.5), visualViewport: {} });
       const selected = f.cpu;
-      flick(f);
-      advance(f, elapsed);
+      if (phase === "flight") flick(f);
+      else { startMagneticReturn(f); f.tick(70); }
       assert.equal(f.frames.size, 1);
       const stale = [...f.frames.values()][0];
       if (type === "Escape") f.documentRef.emit("keydown", { key: type });
@@ -832,6 +1049,24 @@ ballGameTest("a thrown theme discovery reshuffles after docking, other surfaces 
   assert.notEqual(f.candidates.findIndex(candidate => candidate.children[0].name !== "cpu"), 0);
   f.roots.forEach(assertParked);
   f.controller.destroy();
+});
+
+ballGameTest("a discovery waits for the whole magnetic spring even after the ball crosses home", t => {
+  const f = themeFixture({ candidateCount: 3, random: randomPrefix(0, 0.5) });
+  t.after(() => f.controller.destroy());
+  const selected = f.cpu;
+  const { time } = startMagneticReturn(f);
+  tickUntil(f, time + 175);
+  assert.ok(f.position()[0] > 0, "the fast return has already crossed home");
+  finishShakes(f);
+  assert.equal(f.cpu, selected, "crossing home does not complete the discovery");
+  tickUntil(f, time + 349);
+  finishShakes(f);
+  assert.equal(f.cpu, selected, "the return remains busy until it settles");
+  tickUntil(f, time + 350);
+  assertParked(f);
+  finishShakes(f);
+  assert.notEqual(f.cpu, selected, "settling allows discovery feedback and replacement");
 });
 
 ballTest("reduced motion skips theme throws and catches preference changes before their event", () => {
@@ -1001,6 +1236,7 @@ ballTest("a highlight finishes naturally after magnetic capture without keeping 
   t.after(() => f.controller.destroy());
   flick(f, { dx: 0, dy: 8, duration: 8 });
   f.tick(1000 / 120);
+  advance(f, 350);
   assertParked(f);
   assert.ok(highlight(f) > 0);
   assert.equal(f.frames.size, 1);
@@ -1058,6 +1294,7 @@ for (const type of ["Escape", "blur", "resize", "scroll", "visibilitychange", "r
     t.after(() => f.controller.destroy());
     flick(f, { dx: 0, dy: 8, duration: 8 });
     f.tick(1000 / 120);
+    advance(f, 350);
     assertParked(f);
     assert.ok(highlight(f) > 0);
     const stale = [...f.frames.values()][0];
@@ -1142,12 +1379,17 @@ ballTest("a gentle release near home keeps the vortex spinning until the spring 
   assert.equal(f.frames.size, 0);
 });
 
-ballTest("magnetic capture removes the vortex immediately and a later throw starts from rest", t => {
+ballTest("magnetic settling keeps the vortex until arrival and a later throw starts from rest", t => {
   const f = themeFixture({ game: false });
   t.after(() => f.controller.destroy());
   flick(f, { dx: 0, dy: 8, duration: 8 });
   assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
   f.tick(1000 / 120);
+  const capturedAt = f.windowRef.performance.now();
+  tickUntil(f, capturedAt + 349);
+  assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+  assert.ok(vortexAngle(f) > 0, "the vortex continues rotating throughout the spring");
+  tickUntil(f, capturedAt + 350);
   assertParked(f);
   assert.ok(highlight(f) > 0, "the impact pulse can finish independently after the vortex ends");
   f.wait(2000);
@@ -1234,6 +1476,25 @@ function dockHeldBall(f) {
   assertParked(f);
   return { time: f.windowRef.performance.now(), opacity };
 }
+
+ballTest("the halo keeps building through magnetic settling and starts fading only on arrival", t => {
+  const f = themeFixture({ game: false });
+  t.after(() => f.controller.destroy());
+  const { time } = startMagneticReturn(f);
+  const capturedGlow = glow(f);
+  tickUntil(f, time + 210);
+  assert.ok(glow(f) > capturedGlow, "the halo continues to build during overshoot");
+  const overshootGlow = glow(f);
+  tickUntil(f, time + 349);
+  assert.ok(glow(f) > overshootGlow, "the halo has not started fading before arrival");
+  tickUntil(f, time + 350);
+  assertParked(f);
+  const arrivedGlow = glow(f);
+  tickUntil(f, time + 425);
+  close(glow(f), arrivedGlow / 2);
+  tickUntil(f, time + 500);
+  assertNoGlow(f);
+});
 
 ballTest("the halo builds to 70% opacity over three seconds and holds while the icon spins", t => {
   const f = impactFixture(t);
@@ -1409,6 +1670,8 @@ ballTest("natural capture announces home once while ordinary drags announce no v
   f.pointer("pointerup", 312, 786); f.complete();
   assert.equal(events.length, 0);
   flick(f, { dx: 0, dy: 8, duration: 8 }); f.tick(1000 / 120);
+  assert.deepEqual(events.map(event => event.phase), ["start"], "capture does not announce arrival early");
+  advance(f, 350);
   assert.deepEqual(events.map(event => event.phase), ["start", "home"]);
   assert.equal(events[0].startedAt, events[1].startedAt);
   f.tick(1000); f.controller.destroy();
@@ -1759,6 +2022,27 @@ ballTest("magnetic capture preserves its arrival angle before starting correctio
   f.tick(150);
   close(spinAngle(f), angle / 8);
   f.tick(150);
+  assertUpright(f);
+});
+
+ballTest("magnetic settling preserves the icon angle and starts upright correction only after arrival", t => {
+  const f = prepareUprightReturn(t, 170);
+  launchFromGrip(f, { position: [-33, 0], velocity: [800, 0] });
+  f.tick(1000 / 120);
+  const time = f.windowRef.performance.now();
+  const angle = spinAngle(f);
+  close(angle, 170 * Math.PI / 180);
+  for (const elapsed of [70, 210, 349]) {
+    tickUntil(f, time + elapsed);
+    close(spinAngle(f), angle);
+    assert.equal(f.root.hasAttribute("data-drag-active"), true);
+  }
+  tickUntil(f, time + 350);
+  assertParked(f);
+  close(spinAngle(f), angle);
+  tickUntil(f, time + 500);
+  close(spinAngle(f), angle / 8);
+  tickUntil(f, time + 650);
   assertUpright(f);
 });
 
