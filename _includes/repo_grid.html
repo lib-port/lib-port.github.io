@@ -11,7 +11,15 @@
   {%- else -%}
   {%- capture repo_cards -%}
     {%- for configured_repo in configured_repos -%}
-      {%- assign repo = github_repositories | where_exp: "item", "item.name == configured_repo" | first -%}
+      {%- assign configured_repo_key = configured_repo | strip | downcase -%}
+      {%- assign repo = nil -%}
+      {%- for candidate_repo in github_repositories -%}
+        {%- assign candidate_repo_key = candidate_repo.name | downcase -%}
+        {%- if candidate_repo_key == configured_repo_key -%}
+          {%- assign repo = candidate_repo -%}
+          {%- break -%}
+        {%- endif -%}
+      {%- endfor -%}
 
       {%- if repo -%}
         {%- assign branch = repo.default_branch | default: "main" -%}
@@ -47,7 +55,7 @@
 
               <li>
                 <span class="repo-icon" aria-hidden="true">{% octicon file-zip height:16 %}</span>
-                <a class="repo-download" href="https://github.com/{{ repo.owner.login | escape }}/{{ repo.name | escape }}/archive/refs/heads/{{ branch | escape }}.zip" rel="nofollow">download <small>(.zip)</small></a>
+                <a class="repo-download" href="https://github.com/{{ repo.owner.login | escape }}/{{ repo.name | escape }}/archive/refs/heads/{{ branch | url_encode | escape }}.zip" rel="nofollow">download <small>(.zip)</small></a>
               </li>
 
               {%- if homepage_https_prefix == "https://" or homepage_http_prefix == "http://" -%}
@@ -72,6 +80,12 @@
   {%- if repo_cards != "" -%}
   <div class="repo-section-heading">
     <h2>Notes and Projects <span class="section-heading-meta">(GitHub repos)</span></h2>
+    {%- if site["find_the_bug_game"].switch == true %}
+    <span class="repo-discovery-trophy" data-drag-trophy role="group" aria-hidden="true">
+      {% octicon trophy height:16 %}
+      <span class="repo-discovery-progress" data-drag-trophy-progress role="progressbar" aria-label="Progress towards the next trophy level" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"></span>
+    </span>
+    {%- endif %}
   </div>
   <ul class="repo-list">
     {{- repo_cards -}}

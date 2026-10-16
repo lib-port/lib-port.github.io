@@ -30,10 +30,12 @@ class Events {
   removeEventListener(type, callback) { this.listeners.get(type)?.delete(callback); }
   dispatchEvent(event) { this.emit(event.type, event); return true; }
   setAttribute(name, value) { this.attributes.set(name, value); }
+  getAttribute(name) { return this.attributes.get(name) ?? null; }
   removeAttribute(name) { this.attributes.delete(name); }
   hasAttribute(name) { return this.attributes.has(name); }
   emit(type, data = {}) {
     const event = {
+      type,
       preventDefault() { this.defaultPrevented = true; },
       stopPropagation() { this.stopped = true; },
       defaultPrevented: false, ...data,
@@ -73,12 +75,14 @@ function makeUnderlay(bounds, size) {
   return underlay;
 }
 
-function fixture({ reduced = false, width = 92, animate = true, frameAnimation = true, pointerEvents = true, card = false, left = 250, top = 8, height = 44, candidateCount = 0, templates = true, random = Math.random, milestones = [], theme = false, themeIndex, visualViewport, game = gameEnabled, ball = ballEnabled } = {}) {
+function fixture({ reduced = false, width = 92, animate = true, frameAnimation = true, pointerEvents = true, card = false, left = 250, top = 8, height = 44, candidateCount = 0, templates = true, trophy = false, random = Math.random, milestones = [], theme = false, themeIndex, visualViewport, game = gameEnabled, ball = ballEnabled, extensions = [] } = {}) {
   const style = () => ({
     setProperty(name, value) { this[name] = value; },
     removeProperty(name) { delete this[name]; },
   });
   const windowRef = new Events();
+  const navigations = [];
+  windowRef.location = { assign: url => navigations.push(url) };
   windowRef.CustomEvent = class {
     constructor(type, options) { this.type = type; this.detail = options.detail; }
   };
@@ -165,7 +169,30 @@ function fixture({ reduced = false, width = 92, animate = true, frameAnimation =
     removed: false,
     remove() { this.removed = true; },
   };
-  documentRef.querySelector = selector => selector === "[data-drag-icons]" && templates && !template.removed ? template : null;
+  const trophyElement = new Events();
+  trophyElement.setAttribute("aria-hidden", "true");
+  const trophyIcon = new Events();
+  const trophyProgress = new Events();
+  trophyProgress.style = style();
+  trophyProgress.setAttribute("aria-valuemin", "0");
+  trophyProgress.setAttribute("aria-valuemax", "5");
+  trophyProgress.setAttribute("aria-valuenow", "0");
+  trophyElement.querySelector = selector => ({
+    ".octicon": trophyIcon,
+    "[data-drag-trophy-progress]": trophyProgress,
+  })[selector] || null;
+  const trophyAnimations = [];
+  if (animate) for (const target of [trophyElement, trophyIcon]) {
+    target.animate = (keyframes, options) => {
+      const animation = { target, keyframes, options, cancel() { this.cancelled = true; } };
+      trophyAnimations.push(animation);
+      return animation;
+    };
+  }
+  documentRef.querySelector = selector => {
+    if (selector === "[data-drag-trophy]") return trophy ? trophyElement : null;
+    return selector === "[data-drag-icons]" && templates && !template.removed ? template : null;
+  };
   documentRef.querySelectorAll = selector => ({
     "[data-drag-reveal]": roots.map(entry => entry.root),
     "[data-drag-surprise]": candidates,
@@ -183,11 +210,13 @@ function fixture({ reduced = false, width = 92, animate = true, frameAnimation =
   const features = [];
   if (game) features.push(loadAsset("drag_reveal.js").createDragReveal({ random }));
   if (ball) features.push(loadAsset("light_dark_ball.js").createLightDarkBall());
+  features.push(...extensions);
   const controller = features.length
     ? loadAsset("drag_surface.js").initDragSurfaces({ documentRef, windowRef, features })
     : null;
   return {
     ...first, motion, windowRef, documentRef, controller, observers, candidates, template, roots, milestoneRoots, frames,
+    trophy: trophyElement, trophyIcon, trophyProgress, trophyAnimations, navigations,
     wait(elapsed) { time += elapsed; },
     tick(elapsed) {
       time += elapsed;

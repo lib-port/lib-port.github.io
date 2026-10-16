@@ -5,6 +5,12 @@
   const PHYSICS_STEP = 1 / 120;
   const GRAVITY = 9.80665;
   const DIAMETER = 0.067;
+  const RADIUS = DIAMETER / 2;
+  // Thin spherical shell, with mass divided out of every impulse.
+  const INERTIA = 2 * RADIUS * RADIUS / 3;
+  const TANGENT_MASS = 1 / (1 + RADIUS * RADIUS / INERTIA);
+  const SPIN_PROPERTY = "--ball-spin-angle";
+  const SETTLE_DURATION = 300;
   const MAGNET_RADIUS = DIAMETER;
   // Approximately 55% rebound height, matching a standard tennis ball.
   const RESTITUTION = 0.74;
@@ -31,12 +37,37 @@
     ];
   }
 
-  function damp(position, velocity, duration, time) {
+  function damp(ball, duration, time) {
+    const { position, velocity } = ball;
     const u = Math.max(0, 1 - Math.hypot(...position) / (3 * DIAMETER));
     // Two passes scale braking to the current pull and the ball's physical size.
     const rate = Math.sqrt(homeAttraction(time) / DIAMETER);
     const factor = Math.exp(-rate * u * u * (3 - 2 * u) * duration);
     for (let axis = 0; axis < 2; axis++) velocity[axis] *= factor;
+    ball.spin *= factor;
+  }
+
+  function solveContacts(ball, contacts) {
+    const { velocity } = ball;
+    // Accumulate impulses so simultaneous wall contacts share their friction.
+    for (let pass = 0; pass < 8; pass++) {
+      for (const contact of contacts) {
+        const { axis, side, target } = contact;
+        const normal = side ? -1 : 1;
+        const nextNormal = Math.max(0, contact.normal + target - normal * velocity[axis]);
+        velocity[axis] += normal * (nextNormal - contact.normal);
+        contact.normal = nextNormal;
+        const tangent = 1 - axis;
+        const direction = axis ? -normal : normal;
+        const slip = direction * velocity[tangent] - RADIUS * ball.spin;
+        const limit = FRICTION * nextNormal;
+        const nextTangent = clamp(contact.tangent - slip * TANGENT_MASS, -limit, limit);
+        const impulse = nextTangent - contact.tangent;
+        velocity[tangent] += direction * impulse;
+        ball.spin -= RADIUS * impulse / INERTIA;
+        contact.tangent = nextTangent;
+      }
+    }
   }
 
   function captured(ball) {
@@ -79,17 +110,22 @@
   function advanceBall(ball, time, duration, onImpact) {
     const { position, velocity, limits } = ball;
     if (captured(ball)) return true;
-    damp(position, velocity, duration, time);
+    damp(ball, duration, time);
     let remaining = duration;
     // Velocity-Verlet between impacts, with symmetric drag around each substep.
     for (let impacts = 0; remaining > EPSILON && impacts < 16; impacts++) {
       const acceleration = gravity(position, time);
       const resting = position[1] >= limits[1][1] - EPSILON && Math.abs(velocity[1]) < 0.05 && acceleration[1] >= 0;
+      const slip = velocity[0] - RADIUS * ball.spin;
+      // Include the external acceleration when static friction maintains rolling.
+      const floorFriction = force => resting && force[1] >= 0
+        ? clamp(-(slip / remaining + force[0]) * TANGENT_MASS,
+          -FRICTION * force[1], FRICTION * force[1]) : 0;
+      const friction = floorFriction(acceleration);
       if (resting) {
         velocity[1] = 0;
-        const normal = acceleration[1];
         acceleration[1] = 0;
-        velocity[0] = Math.sign(velocity[0]) * Math.max(0, Math.abs(velocity[0]) - FRICTION * normal * remaining);
+        acceleration[0] += friction;
       }
       let elapsed = remaining;
       let hits = [];
@@ -106,31 +142,39 @@
       }
       const nextPosition = position.map((value, axis) => value + velocity[axis] * elapsed + acceleration[axis] * elapsed * elapsed / 2);
       const nextAcceleration = gravity(nextPosition, time + elapsed);
-      if (resting && nextAcceleration[1] >= 0) nextAcceleration[1] = 0;
+      const nextFriction = floorFriction(nextAcceleration);
+      if (resting && nextAcceleration[1] >= 0) {
+        nextAcceleration[1] = 0;
+        nextAcceleration[0] += nextFriction;
+      }
       const nextVelocity = velocity.map((value, axis) => value + (acceleration[axis] + nextAcceleration[axis]) * elapsed / 2);
       if (ball.captureArmed && capturedDuring(position, nextPosition)) return true;
       for (let axis = 0; axis < 2; axis++) {
         position[axis] = nextPosition[axis];
         velocity[axis] = nextVelocity[axis];
       }
+      ball.angle += ball.spin * elapsed - RADIUS * friction / INERTIA * elapsed * elapsed / 2;
+      ball.spin -= RADIUS * (friction + nextFriction) / INERTIA * elapsed / 2;
+      const contacts = [];
       for (const [axis, side] of hits) {
         position[axis] = limits[axis][side];
         const incoming = velocity[axis];
-        velocity[axis] = -incoming * RESTITUTION;
-        if (hits.length === 1) {
-          const tangent = 1 - axis;
-          velocity[tangent] = Math.sign(velocity[tangent]) * Math.max(0,
-            Math.abs(velocity[tangent]) - FRICTION * (1 + RESTITUTION) * Math.abs(incoming));
-        }
-        if (axis === 1 && side === 1 && Math.abs(velocity[1]) < 0.05 && nextAcceleration[1] >= 0) velocity[1] = 0;
+        const speed = Math.abs(incoming);
+        const target = axis === 1 && side === 1 && speed * RESTITUTION < 0.05 && nextAcceleration[1] >= 0
+          ? 0 : speed * RESTITUTION;
+        contacts.push({ axis, side, target, normal: 0, tangent: 0 });
         onImpact(time + elapsed, Math.abs(incoming));
+      }
+      if (hits.length) {
+        if (resting) contacts.push({ axis: 1, side: 1, target: 0, normal: 0, tangent: 0 });
+        solveContacts(ball, contacts);
       }
       if (captured(ball)) return true;
       remaining -= elapsed;
       time += elapsed;
     }
     for (let axis = 0; axis < 2; axis++) position[axis] = clamp(position[axis], ...limits[axis]);
-    damp(position, velocity, duration, time);
+    damp(ball, duration, time);
     return captured(ball);
   }
 
@@ -146,6 +190,41 @@
         let frame = null;
         let vortexStartedAt = null;
         let glowFade = null;
+        let angle = 0;
+        let grip = [0, 0];
+        let settling = null;
+
+        function renderSpin(value) {
+          angle = value % (2 * Math.PI);
+          surface.style.setProperty(SPIN_PROPERTY, `${angle * 180 / Math.PI}deg`);
+        }
+
+        function clearSpin() {
+          settling = null;
+          angle = 0;
+          surface.style.removeProperty(SPIN_PROPERTY);
+        }
+
+        function settleUpright() {
+          const time = windowRef.performance?.now?.();
+          // [-PI, PI) takes the shortest route, choosing clockwise at a half turn.
+          let start = ((angle + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+          if (Math.abs(Math.abs(start) - Math.PI) <= EPSILON) start = -Math.PI;
+          if (!Number.isFinite(time) || !Number.isFinite(start) || Math.abs(start) <= EPSILON ||
+              reducedMotion?.matches || !windowRef.requestAnimationFrame || !windowRef.cancelAnimationFrame) {
+            clearSpin();
+            return;
+          }
+          settling = { time, angle: start };
+          renderSpin(start);
+        }
+
+        function renderSettling(time) {
+          if (!settling) return;
+          const remaining = clamp(1 - (time - settling.time) / SETTLE_DURATION, 0, 1);
+          if (remaining > EPSILON) renderSpin(settling.angle * remaining ** 3);
+          else clearSpin();
+        }
 
         function announceVortex(phase, event = {}) {
           if (vortexStartedAt === null) return;
@@ -156,9 +235,10 @@
         }
 
         function scheduleFrame() {
-          if (frame !== null) windowRef.cancelAnimationFrame(frame);
+          if (frame !== null) windowRef.cancelAnimationFrame?.(frame);
           frame = null;
-          if (context.destroyed || (!flight && !pulses.length && vortexStartedAt === null && !glowFade)) return;
+          if (context.destroyed || !windowRef.requestAnimationFrame || !windowRef.cancelAnimationFrame ||
+              (!flight && !pulses.length && vortexStartedAt === null && !glowFade && !settling)) return;
           const current = windowRef.requestAnimationFrame(time => {
             if (context.destroyed || frame !== current) return;
             frame = null;
@@ -187,7 +267,7 @@
         }
 
         function glowOpacity(time) {
-          return 0.3 * clamp((time - vortexStartedAt) / 6000, 0, 1);
+          return 0.7 * clamp((time - vortexStartedAt) / 3000, 0, 1);
         }
 
         function renderGlow(time) {
@@ -220,6 +300,7 @@
           if (documentRef.hidden || !Number.isFinite(time)) { reset(); return; }
           if (reducedMotion?.matches) { clearVortex(); clearHighlight(); park(); return; }
           if (flight) tickFlight(flight, time);
+          renderSettling(time);
           renderVortex(time);
           renderGlow(time);
           let strength = 0;
@@ -235,10 +316,10 @@
         }
 
         context.listen(documentRef, "keydown", event => {
-          if (event.key === "Escape") { clearVortex(); clearHighlight(); }
+          if (event.key === "Escape") { clearSpin(); clearVortex(); clearHighlight(); }
         });
         context.listen(reducedMotion, "change", () => {
-          if (reducedMotion.matches) { clearVortex(); clearHighlight(); }
+          if (reducedMotion.matches) { clearSpin(); clearVortex(); clearHighlight(); }
         });
 
         function recordMotion(event) {
@@ -259,7 +340,7 @@
           const duration = (last.time - first.time) / 1000;
           const velocity = last.position.map((value, axis) => (value - first.position[axis]) / duration);
           const speed = Math.hypot(...velocity);
-          if (!Number.isFinite(speed) || speed < 300) return [0, 0];
+          if (!Number.isFinite(speed)) return [0, 0];
           return velocity.map(value => value * Math.min(1, 2500 / speed));
         }
 
@@ -282,25 +363,28 @@
             const duration = Math.min(interval, travel / (Math.hypot(...current.velocity) + Math.sqrt(acceleration * travel)));
             if (!Number.isFinite(duration) || duration <= EPSILON) { reset(); return; }
             if (advanceBall(current, elapsed, duration, recordImpact)) {
+              renderSpin(current.angle);
               park();
               return;
             }
             current.accumulator -= duration;
             current.remaining = interval - duration > EPSILON ? interval - duration : 0;
-            if (![...current.position, ...current.velocity].every(Number.isFinite)) { reset(); return; }
+            if (![...current.position, ...current.velocity, current.angle, current.spin].every(Number.isFinite)) { reset(); return; }
           }
+          renderSpin(current.angle);
+          current.angle = angle;
           state.position = current.position.map(value => value * current.scale);
           state.render();
         }
 
-        function throwBall(velocity) {
-          if (!Math.hypot(...velocity) || !windowRef.requestAnimationFrame || !windowRef.cancelAnimationFrame) return false;
+        function startFlight(velocity) {
+          if (!windowRef.requestAnimationFrame || !windowRef.cancelAnimationFrame) return false;
           const releaseTime = windowRef.performance?.now?.();
           if (!Number.isFinite(releaseTime)) return false;
           const bounds = state.bounds;
           const position = state.position;
           const viewport = state.viewportBounds();
-          const size = surface.getBoundingClientRect();
+          const size = state.surfaceRect;
           const radius = Math.max(size.width, size.height) / 2;
           const scale = 2 * radius / DIAMETER;
           const home = [bounds.left + bounds.width / 2, bounds.top + bounds.height / 2];
@@ -310,12 +394,16 @@
           ];
           if (!limits.flat().every(Number.isFinite)) { park(); return true; }
           if (!(radius > 0) || limits.some(([min, max]) => min >= max || min > 0 || max < 0)) return false;
+          // Slow drops enter physics only beyond two rendered diameters of home.
+          if (Math.hypot(...velocity) < 300 && Math.hypot(...position) <= 4 * radius) return false;
           flight = {
             position: position.map((value, axis) => clamp(value, ...limits[axis]) / scale),
             velocity: velocity.map(value => value / scale),
             limits: limits.map(sides => sides.map(value => value / scale)), scale,
             captureArmed: false,
             startedAt: releaseTime, accumulator: 0, remaining: 0, previousTime: releaseTime,
+            angle,
+            spin: RADIUS * (grip[0] * velocity[1] - grip[1] * velocity[0]) / scale / INERTIA,
           };
           const fresh = vortexStartedAt === null;
           if (fresh) {
@@ -334,13 +422,24 @@
           motion: {
             isBusy: () => Boolean(flight),
             cancel: cancelFlight,
-            start: () => throwBall(releaseVelocity()),
+            start: () => startFlight(releaseVelocity()),
           },
-          onStart(event) { samples = []; recordMotion(event); announceVortex("grab", event); },
+          onStart(event) {
+            settling = null;
+            scheduleFrame();
+            const size = state.surfaceRect;
+            const radius = Math.max(size.width, size.height) / 2;
+            const offset = [event.clientX - size.left - size.width / 2, event.clientY - size.top - size.height / 2];
+            const length = Math.max(radius, Math.hypot(...offset));
+            grip = length > 0 && offset.every(Number.isFinite) ? offset.map(value => value / length) : [0, 0];
+            samples = [];
+            recordMotion(event);
+            announceVortex("grab", event);
+          },
           onMove: recordMotion,
           onRelease(event) { recordMotion(event); announceVortex("release", event); },
-          onCancel() { samples = []; clearVortex(); clearHighlight(); },
-          onPark() { clearVortex(true); scheduleFrame(); },
+          onCancel() { samples = []; clearSpin(); clearVortex(); clearHighlight(); },
+          onPark() { settleUpright(); clearVortex(true); scheduleFrame(); },
         };
       },
     });

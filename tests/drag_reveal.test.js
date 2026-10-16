@@ -20,6 +20,9 @@ if (homepage !== null) {
     assert.equal(fs.existsSync(asset), gameEnabled, "drag script inclusion");
     assert.equal(/<template\b[^>]*\bdata-drag-icons\b/.test(homepage), gameEnabled, "replacement icon template inclusion");
     assert.equal(/\bdata-drag-shuffle\b/.test(homepage), false, "automatic reshuffling has no manual control");
+    const hasRepoHeading = /class="repo-section-heading"/.test(homepage);
+    assert.equal(/\bdata-drag-trophy\b/.test(homepage), gameEnabled && hasRepoHeading, "discovery trophy inclusion");
+    assert.equal(/\bdata-drag-trophy-progress\b/.test(homepage), gameEnabled && hasRepoHeading, "discovery progress inclusion");
   });
 }
 
@@ -100,6 +103,7 @@ dragTest("small movements stay clicks and the six-pixel threshold starts draggin
   const f = fixture();
   f.pointer("pointerdown");
   f.pointer("pointermove", 303, 34);
+  f.tick(0);
   assert.deepEqual(f.position(), [0, 0]);
   assert.equal(f.root.hasAttribute("data-drag-active"), false);
   f.pointer("pointerup");
@@ -107,6 +111,7 @@ dragTest("small movements stay clicks and the six-pixel threshold starts draggin
   assert.equal(f.animations.length, 0);
   f.pointer("pointerdown");
   f.pointer("pointermove", 306, 30);
+  f.tick(0);
   assert.deepEqual(f.position(), [6, 0]);
   assert.equal(f.root.hasAttribute("data-drag-active"), true);
 });
@@ -120,6 +125,7 @@ for (const pointerType of ["mouse", "pen", "touch"]) {
     const moved = f.pointer("pointermove", 200, 180, { pointerType });
     assert.equal(moved.defaultPrevented, true);
     assert.equal(f.captures.has(1), true);
+    f.tick(0);
     assert.deepEqual(f.position(), [-100, 150]);
     assert.deepEqual(f.root.getBoundingClientRect(), original);
     assert.equal(f.root.hasAttribute("data-drag-active"), true);
@@ -166,8 +172,10 @@ for (const width of [44, 92]) {
     const f = fixture({ width });
     f.drag();
     f.pointer("pointermove", 10000, 10000);
+    f.tick(0);
     assert.deepEqual(f.position(), [390 - f.bounds.right, 844 - f.bounds.bottom]);
     f.pointer("pointermove", -10000, -10000);
+    f.tick(0);
     assert.deepEqual(f.position(), [-f.bounds.left, -f.bounds.top]);
     f.pointer("pointerup");
     for (const keyframe of f.animations[0].keyframes) {
@@ -185,10 +193,12 @@ dragTest("grabbing a returning icon continues from its visible position without 
   const spring = f.animations[0];
   spring.visual = [-40, 60];
   f.pointer("pointerdown", 220, 80);
+  f.tick(0);
   assert.deepEqual(f.position(), [-40, 60]);
   assert.equal(spring.cancelled, true);
   assert.equal(spring.onfinish, null);
   f.pointer("pointermove", 200, 90);
+  f.tick(0);
   assert.deepEqual(f.position(), [-60, 70]);
   f.pointer("pointerup", 200, 90);
   assert.equal(f.animations.length, 2);
@@ -241,6 +251,7 @@ dragTest("Escape during a return keeps the existing spring without jumping", () 
 dragTest("reduced motion permits direct dragging and parks immediately on release", () => {
   const f = fixture({ reduced: true });
   f.drag();
+  f.tick(0);
   assert.deepEqual(f.position(), [-100, 150]);
   f.pointer("pointerup");
   assertParked(f);
@@ -268,6 +279,7 @@ dragTest("secondary pointers and non-primary buttons cannot take over a drag", (
   for (const type of ["pointerdown", "pointermove", "pointerup"]) {
     f.pointer(type, 10, 20, { pointerId: 2 });
   }
+  f.tick(0);
   assert.deepEqual(f.position(), [-100, 150]);
   assert.equal(f.captures.has(1), true);
   assert.equal(f.animations.length, 0);
@@ -315,6 +327,7 @@ dragTest("the whole card moves while its space is reserved and the CPU is twice 
   assert.equal(f.captures.size, 0, "ordinary nested links keep their click targets");
   assert.equal(f.root.style.height, undefined);
   f.pointer("pointermove", 200, 250);
+  f.tick(0);
   assert.deepEqual(f.position(), [-100, 150]);
   assert.equal(f.root.style.height, "240px");
   assert.equal(f.link.style.width, "360px");
@@ -340,6 +353,7 @@ dragTest("touch scrolling outside the title handle stays native, including after
   assert.equal(f.link.emit("click", { detail: 1 }).defaultPrevented, false);
   f.pointer("pointerdown", 300, 100, { pointerType: "touch", target: f.icon });
   f.pointer("pointermove", 250, 200, { pointerType: "touch" });
+  f.tick(0);
   assert.deepEqual(f.position(), [-50, 100]);
   assert.equal(f.root.hasAttribute("data-drag-active"), true);
 });
@@ -352,6 +366,7 @@ dragTest("transferring implicit touch capture from the title handle keeps the dr
   assert.equal(f.root.hasAttribute("data-dragging"), true);
   assert.equal(f.animations.length, 0);
   f.pointer("pointermove", 230, 240, { pointerType: "touch" });
+  f.tick(0);
   assert.deepEqual(f.position(), [-70, 140]);
   f.pointer("pointerup", 230, 240, { pointerType: "touch" });
   assert.equal(f.animations.length, 1);
@@ -363,8 +378,10 @@ dragTest("a partly visible card taller than the viewport follows the pointer wit
   const f = fixture({ card: true, top: -300, height: 1400 });
   f.pointer("pointerdown", 300, 150);
   f.pointer("pointermove", 310, 160);
+  f.tick(0);
   assert.deepEqual(f.position(), [10, 10]);
   f.pointer("pointermove", 10000, -10000);
+  f.tick(0);
   assert.deepEqual(f.position(), [90, -150], "the grabbed point stays within the viewport");
   f.pointer("pointerup");
   f.complete();
@@ -387,19 +404,22 @@ dragTest("live content and hidden-state changes safely reset moving and returnin
   }
 });
 
-dragTest("re-grabbing a returning card retains its visible offset and releases its old observer", () => {
+dragTest("re-grabbing a returning card retains its visible offset and shared observer", () => {
   const f = fixture({ card: true });
   f.drag();
   f.pointer("pointerup");
   f.animations[0].visual = [-40, 60];
   f.pointer("pointerdown", 220, 80);
+  f.tick(0);
   assert.deepEqual(f.position(), [-40, 60]);
-  assert.equal(f.observers[0].disconnected, true);
+  assert.notEqual(f.observers[0].disconnected, true);
+  assert.equal(f.observers.length, 1);
   f.pointer("pointermove", 200, 90);
+  f.tick(0);
   assert.deepEqual(f.position(), [-60, 70]);
   f.controller.destroy();
   assertParked(f);
-  assert.equal(f.observers[1].disconnected, true);
+  assert.equal(f.observers[0].disconnected, true);
 });
 
 function randomPrefix(...values) {
@@ -443,7 +463,10 @@ for (const [name, options] of hidingPlaces) {
       item.pointer("pointermove", 200, 180, { pointerType });
       assert.equal(f.candidates[selected].children[0], creature, "the found creature stays put while held");
       assert.equal(item.root.hasAttribute("data-dragging"), true);
-      item.pointer("pointerup", 200, 180, { pointerType });
+      const release = item.link.hasAttribute("data-theme-toggle") ? [300, 70] : [200, 180];
+      item.pointer("pointermove", ...release, { pointerType });
+      f.wait(120);
+      item.pointer("pointerup", ...release, { pointerType });
       assert.equal(f.candidates[selected].children[0], creature, "release alone does not reshuffle");
       const spring = item.animations.at(-1);
       assert.equal(spring.options.duration, 400);
@@ -560,7 +583,7 @@ dragTest("Escape during a found item's return keeps the spring but cancels reshu
   f.controller.destroy();
 });
 
-for (const type of ["blur", "resize", "scroll", "visibilitychange", "layout", "hidden", "destroy"]) {
+for (const type of ["blur", "resize", "visibilitychange", "layout", "hidden", "destroy"]) {
   dragTest(`${type} discards a found creature's held or returning reset`, () => {
     for (const returning of [false, true]) {
       const f = gameFixture({ card: true, random: randomSequence(0, 0.5) });
@@ -580,6 +603,114 @@ for (const type of ["blur", "resize", "scroll", "visibilitychange", "layout", "h
       if (returning) assert.equal(f.animations[0].cancelled, true);
       if (type !== "destroy") f.controller.destroy();
     }
+  });
+}
+
+for (const returning of [false, true]) {
+  for (const card of [false, true]) {
+    dragTest(`scroll preserves a full reveal and its shuffle: returning=${returning}, card=${card}`, () => {
+      const f = gameFixture({ card, trophy: true });
+      const selected = f.cpu;
+      f.drag();
+      let staleLanding;
+      if (returning) {
+        f.pointer("pointerup");
+        staleLanding = f.animations.at(-1).onfinish;
+      }
+      f.windowRef.emit("scroll");
+      f.roots.forEach(assertParked);
+      assert.equal(f.cpu, selected, "replacement waits for the normal shakes");
+      const feedback = f.roots.map(item => item.animations.at(-1));
+      const staleFinishes = feedback.map(animation => animation.onfinish);
+      feedback.forEach(animation => {
+        assert.notEqual(animation.options.fill, "forwards");
+        assert.ok(animation.options.duration >= 640 && animation.options.duration <= 880);
+      });
+      if (returning) assert.equal(f.animations[0].cancelled, true);
+      f.windowRef.emit("scroll");
+      f.windowRef.emit("scroll");
+      f.pointer("pointerup");
+      staleLanding?.();
+      assert.deepEqual(f.roots.map(item => item.animations.at(-1)), feedback, "scrolling does not restart feedback");
+      feedback.forEach(animation => assert.notEqual(animation.cancelled, true));
+      finishShakes(f);
+      assert.notEqual(creatureIndex(f), 0);
+      const replacement = f.candidates.map(candidate => candidate.children[0]);
+      staleFinishes.forEach(finish => finish());
+      staleLanding?.();
+      f.windowRef.emit("scroll");
+      assert.deepEqual(f.candidates.map(candidate => candidate.children[0]), replacement, "replacement happens once");
+      assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "1", "scrolling retains the single credited find");
+      f.roots.forEach(assertParked);
+      f.controller.destroy();
+    });
+  }
+}
+
+dragTest("scroll preserves a queued shuffle while returning every moving item immediately", () => {
+  const f = gameFixture({ trophy: true });
+  const selected = f.cpu;
+  f.drag();
+  const other = f.roots[1];
+  other.pointer("pointerdown", 50, 80, { pointerId: 2 });
+  other.pointer("pointermove", 60, 90, { pointerId: 2 });
+  f.pointer("pointerup"); f.complete();
+  assert.equal(f.cpu, selected);
+  assert.equal(other.root.hasAttribute("data-dragging"), true);
+  f.windowRef.emit("scroll");
+  f.roots.forEach(assertParked);
+  assert.equal(f.cpu, selected, "the queued find starts shaking after all items return");
+  assert.equal(other.animations.length, 1, "the other item shakes without a spring return");
+  finishShakes(f);
+  assert.notEqual(creatureIndex(f), 0);
+  assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "1");
+  f.controller.destroy();
+});
+
+for (const index of [0, 1]) {
+  dragTest(`scroll finishes feedback waiting for re-grabbed item ${index} without restarting shakes`, () => {
+    const f = gameFixture({ trophy: true });
+    findAndLand(f);
+    const target = f.roots[index];
+    target.drag();
+    finishShakes(f);
+    assert.equal(creatureIndex(f), 0, "a held item defers replacement after the other shakes finish");
+    const animationCounts = f.roots.map(item => item.animations.length);
+    f.windowRef.emit("scroll");
+    assert.notEqual(creatureIndex(f), 0);
+    assert.deepEqual(f.roots.map(item => item.animations.length), animationCounts);
+    assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "1");
+    f.roots.forEach(assertParked);
+    f.controller.destroy();
+  });
+}
+
+for (const options of [{ reduced: true }, { animate: false }]) {
+  dragTest(`scroll completes a revealed creature's shuffle without motion: ${JSON.stringify(options)}`, () => {
+    const f = gameFixture({ ...options, trophy: true });
+    f.drag();
+    f.windowRef.emit("scroll");
+    assert.notEqual(creatureIndex(f), 0);
+    assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "1");
+    f.roots.forEach(item => { assertParked(item); assert.equal(item.animations.length, 0); });
+    f.controller.destroy();
+  });
+}
+
+for (const cpu of [false, true]) {
+  dragTest(`scroll after ${cpu ? "revealing a CPU" : "a partial reveal"} returns immediately without shuffling`, () => {
+    const f = gameFixture({ card: true, trophy: true });
+    const selected = f.cpu;
+    if (cpu) f.roots[1].drag();
+    else {
+      f.pointer("pointerdown");
+      f.pointer("pointermove", 306, 30);
+    }
+    f.windowRef.emit("scroll");
+    assert.equal(f.cpu, selected);
+    assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "0");
+    f.roots.forEach(item => { assertParked(item); assert.equal(item.animations.length, 0); });
+    f.controller.destroy();
   });
 }
 
@@ -612,6 +743,7 @@ dragTest("reshuffling waits for other drags and returns without interrupting the
   f.pointer("pointerup"); f.complete();
   assert.equal(f.cpu, selected);
   assert.equal(other.root.hasAttribute("data-dragging"), true);
+  f.tick(0);
   assert.deepEqual(other.position(), [10, 10]);
   other.pointer("pointerup", 60, 90, { pointerId: 2 });
   assert.equal(f.cpu, selected, "another returning item still defers the shuffle");
@@ -921,7 +1053,7 @@ dragTest("starting a drag cancels only that surface's shake before measuring its
   f.controller.destroy();
 });
 
-for (const type of ["blur", "resize", "scroll", "visibilitychange", "Escape", "destroy"]) {
+for (const type of ["blur", "resize", "visibilitychange", "Escape", "destroy"]) {
   dragTest(`${type} clears running automatic shuffle feedback`, () => {
     const f = gameFixture();
     findAndLand(f);
@@ -1010,4 +1142,250 @@ dragTest("reinitialisation preserves the newly hidden creature after an automati
   const next = initDragReveal({ ...f, random: () => assert.fail("reinitialisation must not reroll") });
   assert.equal(f.candidates[selected].children[0], icon);
   next.destroy();
+});
+
+function completeDiscoveries(f, count, { finishTrophy = true } = {}) {
+  for (let index = 0; index < count; index++) {
+    findAndLand(f);
+    finishShakes(f);
+    if (finishTrophy) f.trophyAnimations.at(-1)?.onfinish?.();
+  }
+}
+
+dragTest("discovery milestones fade in bronze and turn before changing to silver and gold", () => {
+  const f = gameFixture({ trophy: true });
+  assert.equal(f.trophy.getAttribute("aria-hidden"), "true");
+  for (let count = 1; count <= 19; count++) {
+    completeDiscoveries(f, 1, { finishTrophy: false });
+    assert.equal(f.trophyAnimations.length, Math.min(3, Math.floor(count / 5)));
+    if (count < 5) {
+      assert.equal(f.trophy.getAttribute("data-trophy-tier"), null);
+    } else if (count % 5 === 0) {
+      const animation = f.trophyAnimations.at(-1);
+      if (count === 5) {
+        assert.equal(animation.target, f.trophy, "the icon and progress bar fade in together");
+        assert.equal(animation.options.duration, 300);
+        assert.deepEqual(animation.keyframes, [{ opacity: 0 }, { opacity: 1 }]);
+      } else {
+        assert.equal(animation.target, f.trophyIcon, "the progress bar stays still during trophy spins");
+        assert.equal(f.trophy.getAttribute("data-trophy-tier"), count === 10 ? "bronze" : "silver");
+        assert.equal(animation.options.duration, 600);
+        assert.deepEqual(animation.keyframes.map(frame => frame.transform), [
+          "perspective(8rem) rotateY(0deg)", "perspective(8rem) rotateY(360deg)",
+        ]);
+      }
+      animation.onfinish();
+      const tier = count === 5 ? "bronze" : count === 10 ? "silver" : "gold";
+      assert.equal(f.trophy.getAttribute("data-trophy-tier"), tier);
+      assert.match(f.trophy.getAttribute("aria-label"), new RegExp(tier, "i"));
+      assert.equal(f.trophy.hasAttribute("aria-hidden"), false);
+    }
+    assert.deepEqual(f.navigations, []);
+  }
+  assert.equal(f.trophy.getAttribute("data-trophy-tier"), "gold");
+  f.controller.destroy();
+});
+
+for (const options of [{}, { reduced: true }, { animate: false }]) {
+  dragTest(`progress tracks each find through all stages with ${options.reduced ? "reduced motion" : options.animate === false ? "no animation support" : "animations"}`, () => {
+    const f = gameFixture({ trophy: true, ...options });
+    const expectedProgress = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 5];
+    const targets = ["bronze trophy", "silver trophy", "gold trophy", "game completion"];
+    assert.equal(f.trophyProgress.getAttribute("aria-valuemin"), "0");
+    assert.equal(f.trophyProgress.getAttribute("aria-valuemax"), "5");
+    for (let count = 0; count <= 20; count++) {
+      if (count) completeDiscoveries(f, 1);
+      const progress = expectedProgress[count];
+      const target = targets[Math.min(Math.floor(count / 5), 3)];
+      const description = `${count} completed; ${progress} of 5 towards ${target}; ${5 - progress} remaining`;
+      assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), String(progress));
+      assert.equal(f.trophyProgress.style["--trophy-progress"], String(progress / 5));
+      assert.equal(f.trophyProgress.getAttribute("aria-label"), `Progress towards ${target}`);
+      assert.equal(f.trophyProgress.getAttribute("aria-valuetext"), description);
+      assert.equal(f.trophy.getAttribute("title"), description);
+      assert.equal(f.trophy.getAttribute("aria-hidden"), count < 5 ? "true" : null);
+    }
+    assert.deepEqual(f.navigations, ["https://www.khanacademy.org/"]);
+    f.controller.destroy();
+  });
+}
+
+dragTest("progress updates while a trophy upgrade is pending and survives reinitialisation", () => {
+  const f = gameFixture({ trophy: true });
+  completeDiscoveries(f, 9);
+  completeDiscoveries(f, 1, { finishTrophy: false });
+  const animation = f.trophyAnimations.at(-1);
+  assert.equal(f.trophy.getAttribute("data-trophy-tier"), "bronze");
+  assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "0");
+  assert.match(f.trophyProgress.getAttribute("aria-label"), /gold/);
+  completeDiscoveries(f, 1, { finishTrophy: false });
+  assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "1");
+  animation.onfinish();
+  assert.equal(f.trophy.getAttribute("data-trophy-tier"), "silver");
+  assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "1");
+  f.controller.destroy();
+  f.trophyProgress.setAttribute("aria-valuenow", "0");
+  f.trophyProgress.style.setProperty("--trophy-progress", "0");
+  let randomCalls = 0;
+  f.controller = initDragReveal({ ...f, random: () => { randomCalls++; return 0.5; } });
+  assert.equal(randomCalls, 0, "reinitialisation must not reroll");
+  assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "1");
+  assert.equal(f.trophyProgress.style["--trophy-progress"], "0.2");
+  assert.equal(f.trophy.getAttribute("title"), "11 completed; 1 of 5 towards gold trophy; 4 remaining");
+  completeDiscoveries(f, 1);
+  assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "2");
+  f.controller.destroy();
+});
+
+dragTest("full reveals award once before release and cannot repeat until a new hiding place", () => {
+  const f = gameFixture({ trophy: true });
+  completeDiscoveries(f, 4);
+  findAndLand(f, (creatureIndex(f) + 1) % f.roots.length);
+  const item = f.roots[creatureIndex(f)];
+  item.pointer("pointerdown"); item.pointer("pointermove", 306, 30); item.pointer("pointerup"); item.complete();
+  assert.equal(f.trophyAnimations.length, 0, "CPUs and partial reveals add nothing");
+  assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "4");
+  item.drag();
+  assert.equal(f.trophyAnimations.length, 1, "the fifth full reveal starts the fade while held");
+  assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "0", "the new stage starts before release");
+  item.pointer("pointermove", 180, 200);
+  item.pointer("pointercancel"); item.complete();
+  assert.equal(f.trophy.getAttribute("data-trophy-tier"), "bronze", "cancelling does not undo a full reveal");
+  item.drag();
+  assert.equal(f.trophyAnimations.length, 1, "revealing the same hiding place again adds nothing");
+  assert.equal(f.trophy.getAttribute("title"), "5 completed; 0 of 5 towards silver trophy; 5 remaining");
+  item.pointer("pointerup");
+  const land = item.animations.at(-1).onfinish;
+  land();
+  const staleFinishes = f.roots.map(entry => entry.animations.at(-1).onfinish);
+  land();
+  finishShakes(f);
+  assert.equal(f.trophyAnimations.length, 1);
+  staleFinishes.forEach(finish => finish());
+  completeDiscoveries(f, 4);
+  assert.equal(f.trophyAnimations.length, 1, "duplicate callbacks cannot advance the next milestone");
+  completeDiscoveries(f, 1);
+  assert.equal(f.trophy.getAttribute("data-trophy-tier"), "silver");
+  f.controller.destroy();
+});
+
+dragTest("the twentieth full reveal redirects once and ends the run", () => {
+  const f = gameFixture({ trophy: true });
+  completeDiscoveries(f, 19);
+  assert.deepEqual(f.navigations, []);
+  const selected = creatureIndex(f);
+  const item = f.roots[selected];
+  item.drag();
+  assert.deepEqual(f.navigations, ["https://www.khanacademy.org/"], "the twentieth reveal redirects while held");
+  item.pointer("pointerup");
+  const land = item.animations.at(-1).onfinish;
+  land();
+  assert.equal(creatureIndex(f), selected, "the completed run does not choose a new hiding place");
+  land();
+  completeDiscoveries(f, 2);
+  f.controller.destroy();
+  f.controller = initDragReveal({ ...f, random: () => assert.fail("a completed run cannot reroll") });
+  completeDiscoveries(f, 1);
+  assert.deepEqual(f.navigations, ["https://www.khanacademy.org/"]);
+  f.controller.destroy();
+});
+
+for (const [count, previous, next] of [[10, "bronze", "silver"], [15, "silver", "gold"]]) {
+  dragTest(`the ${next} upgrade starts on a full reveal while held, before landing or shuffling`, () => {
+    const f = gameFixture({ trophy: true });
+    completeDiscoveries(f, count - 1);
+    const item = f.roots[creatureIndex(f)];
+    item.drag();
+    assert.equal(item.root.hasAttribute("data-dragging"), true);
+    assert.equal(f.trophy.getAttribute("data-trophy-tier"), previous);
+    const animation = f.trophyAnimations.at(-1);
+    assert.equal(animation.options.duration, 600);
+    animation.onfinish();
+    assert.equal(f.trophy.getAttribute("data-trophy-tier"), next);
+    assert.equal(item.root.hasAttribute("data-dragging"), true);
+    f.controller.destroy();
+    f.controller = initDragReveal({ ...f, random: () => 0.5 });
+    completeDiscoveries(f, 1);
+    assert.equal(f.trophyAnimations.length, count / 5, "reinitialisation cannot count the same reveal twice");
+    f.controller.destroy();
+  });
+}
+
+dragTest("bugs and squirrels share progress and the redirect works without a repo heading", () => {
+  let roll = 0.05;
+  const f = gameFixture({ reduced: true, random: () => roll });
+  const creatures = new Set();
+  for (let count = 1; count <= 20; count++) {
+    creatures.add(f.candidates[creatureIndex(f)].children[0].name);
+    roll = count % 2 ? 0.9 : 0.05;
+    completeDiscoveries(f, 1);
+    assert.equal(f.navigations.length, count === 20 ? 1 : 0);
+  }
+  assert.deepEqual([...creatures].sort(), ["bug", "squirrel"]);
+  assert.deepEqual(f.navigations, ["https://www.khanacademy.org/"]);
+  f.controller.destroy();
+});
+
+for (const options of [{ reduced: true }, { animate: false }]) {
+  dragTest(`trophy tiers apply immediately with ${options.reduced ? "reduced motion" : "no animation support"}`, () => {
+    const f = gameFixture({ trophy: true, ...options });
+    completeDiscoveries(f, 5);
+    assert.equal(f.trophy.getAttribute("data-trophy-tier"), "bronze");
+    completeDiscoveries(f, 5);
+    assert.equal(f.trophy.getAttribute("data-trophy-tier"), "silver");
+    completeDiscoveries(f, 5);
+    assert.equal(f.trophy.getAttribute("data-trophy-tier"), "gold");
+    assert.equal(f.trophyAnimations.length, 0);
+    f.controller.destroy();
+  });
+}
+
+for (const [count, tier] of [[5, "bronze"], [10, "silver"], [15, "gold"]]) {
+  for (const interruption of ["reduced motion", "hidden page", "destroy", "animation cancellation"]) {
+    dragTest(`${interruption} settles the trophy earned on discovery ${count} and ignores stale finishes`, () => {
+      const f = gameFixture({ trophy: true });
+      completeDiscoveries(f, count - 1);
+      completeDiscoveries(f, 1, { finishTrophy: false });
+      const animation = f.trophyAnimations.at(-1);
+      const staleFinish = animation.onfinish;
+      if (interruption === "reduced motion") {
+        f.motion.matches = true; f.motion.emit("change");
+      } else if (interruption === "hidden page") {
+        f.documentRef.hidden = true; f.documentRef.emit("visibilitychange");
+      } else if (interruption === "destroy") f.controller.destroy();
+      else animation.oncancel();
+      assert.equal(animation.cancelled, true);
+      assert.equal(f.trophy.getAttribute("data-trophy-tier"), tier);
+      assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "0");
+      f.documentRef.hidden = false;
+      f.controller.destroy();
+      f.controller = initDragReveal({ ...f, random: () => 0.5 });
+      assert.equal(f.trophyAnimations.length, Math.floor(count / 5), "initialisation cannot replay trophy effects");
+      if (count === 5) {
+        completeDiscoveries(f, 5);
+        assert.equal(f.trophy.getAttribute("data-trophy-tier"), "silver");
+      }
+      staleFinish();
+      assert.equal(f.trophy.getAttribute("data-trophy-tier"), count === 5 ? "silver" : tier);
+      f.controller.destroy();
+    });
+  }
+}
+
+dragTest("a new document resets trophy progress and a single hiding place cannot earn repeated finds", () => {
+  const first = gameFixture({ trophy: true, reduced: true });
+  completeDiscoveries(first, 15);
+  first.controller.destroy();
+  const fresh = gameFixture({ trophy: true, reduced: true });
+  completeDiscoveries(fresh, 4);
+  assert.equal(fresh.trophy.getAttribute("data-trophy-tier"), null);
+  assert.equal(fresh.trophyProgress.getAttribute("aria-valuenow"), "4");
+  completeDiscoveries(fresh, 1);
+  assert.equal(fresh.trophy.getAttribute("data-trophy-tier"), "bronze");
+  fresh.controller.destroy();
+  const single = gameFixture({ trophy: true, reduced: true, candidateCount: 1 });
+  completeDiscoveries(single, 20);
+  assert.equal(single.trophy.getAttribute("data-trophy-tier"), null);
+  assert.deepEqual(single.navigations, []);
+  single.controller.destroy();
 });

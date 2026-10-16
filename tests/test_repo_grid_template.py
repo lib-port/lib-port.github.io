@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import subprocess
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -9,9 +13,99 @@ TEMPLATE_PATH = REPO_ROOT / "_includes" / "repo_grid.html"
 INTRO_TEMPLATE_PATH = REPO_ROOT / "_includes" / "intro.html"
 MILESTONE_TEMPLATE_PATH = REPO_ROOT / "_includes" / "recent_milestones.html"
 STYLES_PATH = REPO_ROOT / "_sass" / "minima" / "custom-styles.scss"
+LIQUID_RENDERER = """
+require "json"
+require "jekyll"
+require "jekyll-octicons"
+
+class TestIncludeTag < Liquid::Tag
+  def render(_context)
+    '<p data-repo-grid-error>Repository metadata unavailable</p>'
+  end
+end
+
+Liquid::Template.register_tag("include", TestIncludeTag)
+context = JSON.parse(STDIN.read)
+template = Liquid::Template.parse(File.read(ARGV.fetch(0), encoding: "UTF-8"))
+print template.render!(context, filters: [Jekyll::Filters])
+"""
+
+
+class RenderedRepoGrid(HTMLParser):
+    def __init__(self, html: str) -> None:
+        super().__init__()
+        self.repo_names: list[str] = []
+        self.download_urls: list[str] = []
+        self.has_error = False
+        self.feed(html)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if tag == "li" and "data-repo-name" in attributes:
+            self.repo_names.append(attributes["data-repo-name"])
+        if tag == "a" and attributes.get("class") == "repo-download":
+            self.download_urls.append(attributes["href"])
+        if "data-repo-grid-error" in attributes:
+            self.has_error = True
 
 
 class RepoGridTemplateTests(unittest.TestCase):
+    @staticmethod
+    def repository(name: str = "tech-lib", branch: str | None = "main") -> dict:
+        return {
+            "name": name,
+            "html_url": f"https://github.com/example/{name}",
+            "owner": {"login": "example"},
+            "description": "Local fixture metadata",
+            "default_branch": branch,
+        }
+
+    def render_grid(self, repo_list: list[str], repositories: list[dict]) -> RenderedRepoGrid:
+        # Render seeded metadata locally; no GitHub requests are needed.
+        result = subprocess.run(
+            ["bundle", "exec", "ruby", "-e", LIQUID_RENDERER, str(TEMPLATE_PATH)],
+            cwd=REPO_ROOT,
+            input=json.dumps({"site": {
+                "repo_grid": {"switch": True, "repo_list": repo_list},
+                "github": {"public_repositories": repositories},
+            }}),
+            capture_output=True, text=True, check=True, timeout=20,
+        )
+        return RenderedRepoGrid(result.stdout)
+
+    def test_repository_names_ignore_case_and_surrounding_whitespace(self) -> None:
+        for configured_name in ("Tech-Lib", "tech-lib", "TECH-LIB", " \t tEcH-LiB \n"):
+            with self.subTest(configured_name=configured_name):
+                rendered = self.render_grid([configured_name], [self.repository("Tech-Lib")])
+                self.assertEqual(rendered.repo_names, ["Tech-Lib"])
+                self.assertFalse(rendered.has_error)
+
+    def test_repository_selection_preserves_order_and_skips_unmatched_names(self) -> None:
+        rendered = self.render_grid(
+            [" Beta ", "missing", " ALPHA ", "another-missing"],
+            [self.repository(name) for name in ("Alpha", "Beta", "Unselected")],
+        )
+        self.assertEqual(rendered.repo_names, ["Beta", "Alpha"])
+        self.assertFalse(rendered.has_error)
+
+    def test_unknown_repositories_keep_the_error_fallback(self) -> None:
+        rendered = self.render_grid(["missing"], [self.repository()])
+        self.assertEqual(rendered.repo_names, [])
+        self.assertTrue(rendered.has_error)
+
+    def test_archive_urls_encode_default_branch_names(self) -> None:
+        for branch in ("main", "feature/branch", "trunk#v2", "release%2Fv1", "feature+preview", None, ""):
+            with self.subTest(branch=branch):
+                rendered = self.render_grid(["tech-lib"], [self.repository(branch=branch)])
+                self.assertEqual(len(rendered.download_urls), 1)
+                url = urlsplit(rendered.download_urls[0])
+                self.assertEqual(url.fragment, "")
+                self.assertEqual(url.query, "")
+                self.assertEqual(
+                    unquote(url.path),
+                    f"/example/tech-lib/archive/refs/heads/{branch or 'main'}.zip",
+                )
+
     def test_repo_title_keeps_its_decorative_drag_handle_inside_the_link(self) -> None:
         template = TEMPLATE_PATH.read_text(encoding="utf-8")
         repo_icon = (

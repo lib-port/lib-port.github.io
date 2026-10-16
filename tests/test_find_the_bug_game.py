@@ -88,6 +88,13 @@ class FindTheBugGameBuildTests(unittest.TestCase):
                         self.assertEqual("<template data-drag-icons>" in html, enabled)
                         self.assertEqual("octicon-bug" in html, enabled)
                         self.assertEqual("octicon-squirrel" in html, enabled)
+                        self.assertEqual("data-drag-trophy" in html, enabled and show_repos)
+                        self.assertEqual("data-drag-trophy-progress" in html, enabled and show_repos)
+                        self.assertEqual('data-drag-trophy-progress role="progressbar"' in html, enabled and show_repos)
+                        if enabled and show_repos:
+                            self.assertIn('data-drag-trophy role="group" aria-hidden="true"', html)
+                            self.assertIn('aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"', html)
+                        self.assertEqual("octicon-trophy" in html, enabled and show_repos)
                         self.assertNotIn("data-drag-shuffle", html)
                         self.assertNotIn("octicon-sync", html)
                         self.assertEqual('class="repo-section-heading"' in html, show_repos)

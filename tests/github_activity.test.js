@@ -751,3 +751,49 @@ test("retires legacy global transport failures while retaining rate-limit record
     }
   }
 });
+
+test("activity modules use the shared request headers and cache constants", () => {
+  const { recentMilestones } = require(clientAssetPath(scriptPath));
+  assert.equal(recentMilestones.buildHeaders, shared.buildHeaders);
+  assert.equal(recentMilestones.API_VERSION, shared.API_VERSION);
+  assert.equal(recentMilestones.CACHE_TTL_MS, shared.CACHE_TTL_MS);
+  assert.equal(recentMilestones.FAILURE_TTL_MS, shared.FAILURE_TTL_MS);
+  assert.equal(recentMilestones.start, undefined);
+  assert.deepEqual(shared.buildHeaders('"version"'), {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": shared.API_VERSION,
+    "If-None-Match": '"version"',
+  });
+});
+
+test("shared optional-storage helpers recover from invalid data and unavailable storage", () => {
+  const storage = new FakeStorage();
+  for (const value of ["invalid", "null", "[]", "false"]) {
+    storage.setItem("cache", value);
+    assert.equal(shared.readStoredObject(storage, "cache"), null);
+    assert.equal(storage.getItem("cache"), null);
+  }
+  assert.equal(shared.writeStoredJson(storage, "cache", { savedAt: 1 }), true);
+  assert.deepEqual(shared.readStoredObject(storage, "cache"), { savedAt: 1 });
+  const unavailable = {
+    getItem() { throw new Error("unavailable"); },
+    setItem() { throw new Error("unavailable"); },
+    removeItem() { throw new Error("unavailable"); },
+  };
+  assert.equal(shared.readStoredObject(unavailable, "cache"), null);
+  assert.equal(shared.writeStoredJson(unavailable, "cache", {}), false);
+  assert.doesNotThrow(() => shared.removeStorageItem(unavailable, "cache"));
+  assert.equal(shared.readStoredObject(null, "cache"), null);
+});
+
+test("shared pagination, header and date helpers retain tolerant input handling", () => {
+  assert.equal(shared.hasNextPage('<https://api.github.com/page=2>; rel="next"'), true);
+  for (const value of [null, undefined, 1, '', '<https://api.github.com/page=1>; rel="prev"']) {
+    assert.equal(shared.hasNextPage(value), false);
+  }
+  assert.equal(shared.getHeader({}, "etag"), "");
+  assert.equal(shared.normalizeDate("2026-10-15"), "2026-10-15T00:00:00.000Z");
+  for (const value of [null, undefined, false, "", " ", "invalid"]) assert.equal(shared.normalizeDate(value), "");
+  for (const value of [-1, Infinity, NaN, 11, "1"]) assert.equal(shared.isValidStoredTime(value, 10), false);
+  assert.equal(shared.isValidStoredTime(0, 10), true);
+});

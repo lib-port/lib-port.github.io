@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
-from site_config import ConfigValidationError, validate_site_config
+from helpers.ruby_site_config import (
+    ConfigValidationError, close_validator, validate_site_config,
+)
+
+unittest.addModuleCleanup(close_validator)
+
 
 RENDERER = r'''
 require "json"
@@ -45,11 +47,11 @@ print Liquid::Template.parse(source).render!(context, filters: [Filters])
 
 
 class AsciiBannerTests(unittest.TestCase):
-    def validate(self, settings):
+    def validate(self, settings, **options):
         with tempfile.TemporaryDirectory() as directory:
             filename = Path(directory) / "_config.yml"
             filename.write_text(json.dumps(settings), encoding="utf-8")
-            return validate_site_config(filename)
+            return validate_site_config(filename, **options)
 
     def render(self, settings):
         site = {"title": "Test", "baseurl": "/project", **settings}
@@ -100,14 +102,19 @@ class AsciiBannerTests(unittest.TestCase):
         self.assertIn('<hr class="section-divider">', rendered)
 
     def test_random_requires_a_non_empty_catalogue(self):
-        with patch("site_config.json.loads", return_value={"scenes": []}):
-            with self.assertRaisesRegex(ConfigValidationError, "non-empty"):
-                self.validate({"ascii_banner": {"switch": True, "module": "random"}})
+        self.assert_invalid_catalogue([], "non-empty")
 
     def test_random_requires_locally_available_scene_files(self):
-        with patch("site_config.Path.is_file", return_value=False):
-            with self.assertRaisesRegex(ConfigValidationError, "locally available scenes"):
-                self.validate({"ascii_banner": {"switch": True, "module": "random"}})
+        self.assert_invalid_catalogue(["missing-scene"], "locally available scenes")
+
+    def assert_invalid_catalogue(self, scenes, message):
+        with tempfile.TemporaryDirectory() as directory:
+            catalogue = Path(directory) / "assets/js/ascii-rest/manifest.json"
+            catalogue.parent.mkdir(parents=True)
+            catalogue.write_text(json.dumps({"scenes": scenes}), encoding="utf-8")
+            with self.assertRaisesRegex(ConfigValidationError, message):
+                self.validate({"ascii_banner": {"switch": True, "module": "random"}},
+                              source_root=directory)
 
     def test_enabled_banner_is_hidden_and_uses_local_script_with_baseurl(self):
         rendered = self.render({"ascii_banner": {"switch": True, "module": "misty-forest"}})

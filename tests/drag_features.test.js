@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const test = require("node:test");
 const vm = require("node:vm");
 const {
-  fixture, flick, advance, assertParked, gameEnabled, ballEnabled, assetPath,
+  fixture, flick, advance, assertParked, finishShakes, gameEnabled, ballEnabled, assetPath,
 } = require("./helpers/drag_fixture");
 
 for (const game of [false, true]) {
@@ -40,6 +40,18 @@ for (const game of [false, true]) {
       f.controller?.destroy();
     });
 
+    test(`distant drops respect independent switches: game ${game}, ball ${ball}`, options, t => {
+      const f = fixture({ game, ball, theme: true, width: 44, left: 330, top: 784, candidateCount: 4 });
+      t.after(() => f.controller?.destroy());
+      flick(f, { pause: 150 });
+      assert.equal(f.frames.size, Number(ball));
+      assert.equal(f.root.hasAttribute("data-ball-vortex"), ball);
+      assert.equal(f.animations.length, Number(game && !ball));
+      if (game && !ball) f.complete();
+      else if (ball) advance(f, 15000);
+      assertParked(f);
+    });
+
     test(`deferred feature registration boots one controller: game ${game}, ball ${ball}`, options, () => {
       const f = fixture({ game: false, ball: false, theme: true, candidateCount: 4 });
       f.documentRef.readyState = "interactive";
@@ -59,4 +71,26 @@ for (const game of [false, true]) {
       } else assert.equal(f.link.listeners.get("pointerdown")?.size || 0, 0);
     });
   }
+}
+
+for (const viewport of [false, true]) {
+  test(`scroll stops theme-button physics and preserves the revealed creature's shuffle: viewport=${viewport}`, {
+    skip: !gameEnabled || !ballEnabled ? "The built homepage excludes a feature required by this scenario." : false,
+  }, () => {
+    const rolls = [0, 0.5];
+    const f = fixture({ game: true, ball: true, theme: true, width: 44, left: 330, top: 784,
+      candidateCount: 3, trophy: true, visualViewport: {}, random: () => rolls.length ? rolls.shift() : 0.5 });
+    flick(f);
+    assert.equal(f.frames.size, 1);
+    const target = viewport ? f.windowRef.visualViewport : f.windowRef;
+    target.emit("scroll");
+    assert.equal(f.frames.size, 0);
+    f.roots.forEach(assertParked);
+    assert.notEqual(f.cpu.name, "cpu", "the creature waits for the normal shakes");
+    finishShakes(f);
+    assert.equal(f.cpu.name, "cpu");
+    assert.equal(f.candidates.filter(candidate => candidate.children[0].name !== "cpu").length, 1);
+    assert.equal(f.trophyProgress.getAttribute("aria-valuenow"), "1");
+    f.controller.destroy();
+  });
 }

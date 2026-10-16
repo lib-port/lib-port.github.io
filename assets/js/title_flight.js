@@ -78,11 +78,12 @@
       const distance = 96 * progress * (2 - progress);
       const { from, away } = motion;
       const wobble = 8 * Math.sin(16 * Math.PI * progress) * Math.sin(Math.PI * progress);
+      const offset = distance + wobble;
       const angle = Math.atan2(away.y, away.x);
       const turn = Math.atan2(Math.sin(angle - from.angle), Math.cos(angle - from.angle));
       return { ...from,
-        x: from.x + distance * away.x - wobble * away.y,
-        y: from.y + distance * away.y + wobble * away.x,
+        x: from.x + offset * away.x,
+        y: from.y + offset * away.y,
         angle: from.angle + turn * smooth(clamp(elapsed / 120)) };
     }
 
@@ -117,7 +118,7 @@
     }
 
     function renderTransit(time) {
-      const duration = state === SUCTION ? 600 : 1000;
+      const duration = state === SUCTION ? 1200 : 1000;
       const progress = clamp((time - motion.startedAt) / duration);
       const target = state === SUCTION ? centre(vortex.root) : homePoint();
       const current = transitPoint(progress, target);

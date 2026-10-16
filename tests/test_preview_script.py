@@ -67,6 +67,7 @@ class PreviewScriptTests(unittest.TestCase):
         self.bin_dir.mkdir()
         self.capture_path = self.temp_path / "bundle-arguments"
         self.cwd_capture_path = self.temp_path / "bundle-cwd"
+        self.validation_capture_path = self.temp_path / "validation-arguments"
         self.gh_capture_path = self.temp_path / "gh-arguments"
 
         self.write_executable(
@@ -77,6 +78,11 @@ class PreviewScriptTests(unittest.TestCase):
 
             if [[ "${1:-}" == "check" ]]; then
               exit "${FAKE_BUNDLE_CHECK_EXIT:-0}"
+            fi
+
+            if [[ "${1:-}" == "exec" && "${3:-}" == "scripts/validate_site_config.rb" ]]; then
+              printf '%s\n' "$@" > "$VALIDATION_CAPTURE"
+              exit "${FAKE_VALIDATION_EXIT:-0}"
             fi
 
             if [[ "${1:-}" == "exec" ]]; then
@@ -117,6 +123,7 @@ class PreviewScriptTests(unittest.TestCase):
         environment["PATH"] = f"{self.bin_dir}{os.pathsep}{environment['PATH']}"
         environment["PREVIEW_CAPTURE"] = str(self.capture_path)
         environment["PREVIEW_CWD_CAPTURE"] = str(self.cwd_capture_path)
+        environment["VALIDATION_CAPTURE"] = str(self.validation_capture_path)
         environment["GH_CAPTURE"] = str(self.gh_capture_path)
         environment.pop("JEKYLL_GITHUB_TOKEN", None)
         return environment
@@ -206,6 +213,25 @@ class PreviewScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('Run "bundle install"', result.stderr)
         self.assertFalse(self.capture_path.exists())
+
+    def test_invalid_configuration_stops_before_authentication_and_serving(self):
+        environment = self.environment()
+        environment["FAKE_VALIDATION_EXIT"] = "1"
+        result = self.run_preview(environment=environment)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.validation_capture_path.read_text().splitlines(),
+                         ["exec", "ruby", "scripts/validate_site_config.rb"])
+        self.assertFalse(self.gh_capture_path.exists())
+        self.assertFalse(self.capture_path.exists())
+
+    def test_preview_does_not_require_python(self):
+        self.write_executable("python3", "#!/bin/sh\nexit 73\n")
+        environment = self.environment()
+        environment["JEKYLL_GITHUB_TOKEN"] = "environment-token"
+        environment["EXPECTED_GITHUB_TOKEN"] = "environment-token"
+        result = self.run_preview(environment=environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.validation_capture_path.exists())
 
     def test_preview_script_is_excluded_from_the_generated_site(self) -> None:
         config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))

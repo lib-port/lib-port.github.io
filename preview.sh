@@ -20,18 +20,7 @@ if ! bundle check >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1 ||
-  ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
-  printf 'Python 3.11 or newer is required. See README.md for setup.\n' >&2
-  exit 1
-fi
-
-if ! python3 -c 'import yaml' >/dev/null 2>&1; then
-  printf 'Python dependencies are not installed. Run "python3 -m pip install -r requirements.txt".\n' >&2
-  exit 1
-fi
-
-python3 scripts/validate_site_config.py
+bundle exec ruby scripts/validate_site_config.rb
 
 if [[ -z "${JEKYLL_GITHUB_TOKEN:-}" ]]; then
   github_token=""

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
 
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
+from helpers.ruby_site_config import (
+    ConfigValidationError, close_validator, validate_site_config,
+)
 
-from site_config import ConfigValidationError, validate_site_config
+unittest.addModuleCleanup(close_validator)
+
 
 
 class SiteConfigValidationTests(unittest.TestCase):

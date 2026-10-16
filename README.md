@@ -170,10 +170,14 @@ the time; its new location stays hidden until dragged. There is no manual reset
 control. Partial reveals and revealing a CPU do not trigger a shuffle.
 
 Re-grabbing a returning item delays the shuffle until its next release and
-completed return. Cancelling a drag, pressing Escape or forcing a layout reset
-discards that find. If another item is moving, the shuffle waits until all items
-are at rest. The repository cards, GitHub icon, theme switcher and loaded
-milestone cards then shake with independent horizontal movements of 1.5–6 px
+completed return. Scrolling ends the drag and returns the item immediately to
+its original position while preserving a fully revealed creature's shuffle.
+The usual shake sequence starts once all items are at rest; scrolling during
+shaking lets the existing sequence finish without restarting it. Other drag
+cancellations, pressing Escape or forcing a layout reset discard the pending
+shuffle. If another item is moving, the shuffle waits until all items are at
+rest. The repository cards, GitHub icon, theme switcher and
+loaded milestone cards then shake with independent horizontal movements of 1.5–6 px
 over 640–880 ms. Dragging during this feedback stops only that item's shake;
 the shuffle waits for the remaining shakes and for all items to return. The next
 hiding place is chosen from the underlays available when the shuffle completes.
@@ -184,16 +188,38 @@ Reduced-motion preferences and unavailable animation support return the released
 item immediately and reshuffle without shaking. Enabling reduced motion during
 feedback stops the shakes and completes the shuffle once all items are at rest.
 
+Full reveals share a counter for bugs and squirrels until the page reloads.
+A find counts as soon as the creature is completely uncovered, before release,
+landing or shaking. Each hiding place counts once until a shuffle chooses a
+new one; repeated reveals, partial reveals and CPUs add nothing. Cancelling
+after a full reveal keeps that discovery's credit. On the fifth find, a
+bronze trophy Octicon fades in over 300 ms at the right of the repository cards
+heading, alongside the title. Its height is 2rem, and its space is reserved
+before it appears. A thin progress bar fades in beneath it at the same time,
+matching the icon's width and the active light/dark palette. It starts empty
+at each five-find stage and advances on every credited find towards silver,
+gold, then game completion at twenty finds. Hovering over the trophy or bar
+shows the total completed, progress within the current stage and finds remaining;
+screen readers receive the same counts. On the tenth and fifteenth finds,
+the icon makes one clockwise, coin-like turn over 600 ms, then changes to
+silver and gold respectively.
+Reduced motion or unavailable animation support applies these changes immediately.
+Interrupted trophy animations settle to the earned tier. Progress survives
+controller reinitialisation without replaying the effects, but resets on reload.
+The twentieth full reveal ends the game and redirects the current tab to
+https://www.khanacademy.org/. Counting and the redirect also work when the
+repository cards section is absent; the trophy is omitted in that case.
+
 When the switch is `false`, null or missing, the game and dragging of the GitHub
 icon, repository cards and Recent Tasks cards are disabled. The theme button
 remains draggable when `light_dark_ball.switch` is `true`. Links and theme
 switching continue to work.
 Jekyll excludes `assets/js/drag_reveal.js` from its output and omits the game's
-script reference and bug/squirrel SVG template. The script is neither optimised
-nor deployed, and rebuilding removes a copy left by an earlier enabled build.
-Its source remains in the repository; shared styles and layout wrappers remain
-part of the site. Re-enabling the game includes the script again. Restart the
-preview after changing `_config.yml`.
+script reference, bug/squirrel SVG template and trophy. The script is neither
+optimised nor deployed, and rebuilding removes a copy left by an earlier
+enabled build. Its source remains in the repository; shared styles and layout
+wrappers remain part of the site. Re-enabling the game includes the script
+again. Restart the preview after changing `_config.yml`.
 
 ### Title animation
 
@@ -222,7 +248,8 @@ while flying or returning is ignored. Hovering back cannot restart a return;
 a fresh title entry, tap or keyboard activation is needed after the plane parks.
 
 Launching while the spinning icon is active makes the plane struggle to fly
-away from it for two seconds, slowing and wobbling before it is sucked in.
+away from it for two seconds, slowing and bobbing towards and away from the icon
+along their connecting line before it is sucked in.
 The plane keeps its escape heading throughout suction. Returning the icon home
 before the plane disappears lets it turn and fly back to its resting point.
 
@@ -339,9 +366,14 @@ The page initially follows the visitor's operating-system light or dark preferen
 With either `find_the_bug_game.switch` or `light_dark_ball.switch` enabled,
 drag the theme button with a mouse, pen or touch to reveal a stationary CPU
 Octicon at 1.5rem, matching the icon beneath
-the GitHub link. Gentle releases spring back without changing the theme.
+the GitHub link. Gentle releases near home spring back without changing the theme.
 With `light_dark_ball.switch: true`, flicks launch the circular button with the
-drag's release velocity. The simulation treats its rendered diameter as 6.7 cm:
+drag's release velocity. A slow drop also starts physics when the ball's centre
+is more than two rendered diameters from its original position: 88 px for the
+standard 44 px button, scaling with its size. Drops at or within that distance
+keep the spring return unless their release speed reaches 300 px/s. Distant
+drops preserve measured slow movement; releasing after a pause starts the ball
+at rest. The simulation treats its rendered diameter as 6.7 cm:
 ordinary gravity pulls down at 1G (9.80665 m/s²), and collisions with the viewport
 edges lose energy like a tennis ball. From release, its original position
 becomes a point of attraction. This adds 0G at release, 0.25G after one second,
@@ -360,41 +392,66 @@ within it. Holding and dragging the button remains under the visitor's control.
 Delayed frames retain the real elapsed time for attraction, while limiting
 physics catch-up to 100 ms per frame. Snapping into home resets the attraction to
 0G. Catching the button starts another drag
-from its current position; another flick restarts the attraction at 0G.
+from its current position; another flick or distant drop restarts the attraction
+at 0G.
 Ordinary clicks, taps, Enter and Space still switch themes. Escape parks a
 thrown button immediately; scrolling, resizing, hiding the tab or losing focus
 cancels the motion. Reduced-motion preferences skip the throw and park on
 release. A completed discovery waits for the button to return home, all other
 items to land and the shake feedback to finish before reshuffling.
 
+The sun/moon icon rotates with the moving ball's angular momentum. The model
+uses thin-shell inertia, with the same physical radius and time steps as its
+linear motion. Grabbing away from the centre gives a throw spin according to
+the grab offset and release velocity; a centred or radial throw starts without
+spin. Contact friction at viewport boundaries transfers momentum between
+travel and rotation, allowing spin to slow down or reverse and sliding on the
+floor to become rolling without slipping. Overspin can accelerate floor travel,
+while backspin brakes it. Gravity and home attraction act through the centre;
+the existing braking near home also damps spin.
+
+Catching freezes the icon at its current angle. Holding and dragging preserve
+that angle, and another throw calculates fresh spin from its new grab and
+release. After docking, the icon turns upright along the shortest route over
+300 ms, easing to a stop without overshoot; an exact half turn goes clockwise.
+Picking it up during this correction freezes the displayed angle for dragging
+and subsequent throws. An ordinary click pauses correction while held and
+resumes it on release. The correction is cosmetic and does not delay the
+discovery game. Cancellation, reduced motion or unavailable animation support
+restores the icon upright immediately. The button stays circular, and the
+spinning vortex at home keeps its independent animation.
+
 Each viewport rebound adds a pulse of the active palette's link/accent colour
-around the ball's border. Pulse strength follows the incoming momentum towards
-the boundary: an impact at 1 m/s contributes 50% colour, with harder hits
+to the ball's border. The fill and sun/moon icon keep their normal colours,
+including on hover. Pulse strength follows the incoming momentum towards the
+boundary: an impact at 1 m/s contributes 50% border colour, with harder hits
 proportionally brighter and glancing hits fainter. Each pulse fades in linearly
 over 80 ms and out over 800 ms. Overlapping pulses add together, with
-the displayed colour capped at 100%; a corner impact contributes two pulses.
+the displayed border colour capped at 100%; a corner impact contributes two pulses.
 Dragging into an edge or resting against it adds no pulses. The remaining
 highlight finishes fading when the ball is caught or returns home, and another
 throw can add to it. This cosmetic fade does not delay the discovery game.
 Cancellation or a reduced-motion preference clears the highlight.
 
-Throwing the ball also turns its exposed CPU, bug or squirrel icon into a
-spinning vortex at home. A 36 px central disc uses the active palette's heading
+Throwing the ball or dropping it beyond two diameters from home also turns its
+exposed CPU, bug or squirrel icon into a spinning vortex at home. The vortex
+starts on release. A 36 px central disc uses the active palette's heading
 colour, with the icon in the contrasting background colour. The icon rotates
 clockwise, accelerating from rest by 0.5 turns per second each second,
-up to 1.5 turns per second after three seconds. Catching, holding and throwing
+up to 1.5 turns per second after three seconds. Catching, holding and releasing
 again keep the same vortex clock running until the ball returns home. Returning
 home or cancelling restores the stationary icon immediately. Reduced-motion
 preferences disable the vortex. Its cosmetic animation does not delay the
 discovery game or change the ball's physics.
 
-A tight halo around the spinning icon uses the active palette's link/accent
-colour. Its opacity builds while the icon spins, reaching a faint 30% maximum
-after six seconds. The halo has a 4 px blur and 2 px spread. When the ball
+A broad, soft halo around the spinning icon uses the active palette's link/accent
+colour. Its opacity builds while the icon spins, reaching a 70% maximum after
+three seconds. Two diffuse layers use a 12 px blur with 4 px spread and a
+28 px blur with 8 px spread; the outer layer uses 55% colour strength. When the ball
 returns home, rotation stops immediately and the halo fades from its current
-strength over 150 ms, remaining just visible around the returned ball.
-Cancellation or reduced motion clears the halo immediately. A new throw during
-the fade starts a fresh glow build from zero.
+strength over 150 ms, remaining briefly visible around the returned ball.
+Cancellation or reduced motion clears the halo immediately. A new throw or
+distant drop during the fade starts a fresh glow build from zero.
 
 
 The spinning icon also attracts the paper plane when both features are enabled.
@@ -403,15 +460,15 @@ icon over 300 ms; after five seconds it detaches. A plane already flying before
 the throw is pulled in at two seconds. Catches, holds, releases and rethrows
 preserve these deadlines until the ball returns home.
 
-Launching the plane while the icon spins starts a two-second struggle along its
-usual figure-of-eight, with a wavering path, declining speed and drift towards
-the icon. It always gets the full two seconds, even across the original
-five-second deadline. Leaving the activation area or releasing the ball does
-not interrupt the struggle. Holding a previously thrown ball still allows
-mouse or pen activation in the usual title-and-plane area: the same 62.5 ms
-stationary pause applies, even while the ball has pointer capture.
+Launching the plane while the icon spins starts a two-second struggle away from
+the icon, with declining escape speed and bobbing along the radial line from
+the icon through the plane. It always gets the full two seconds, even across
+the original five-second deadline. Leaving the activation area or releasing
+the ball does not interrupt the struggle. Holding a previously thrown ball
+still allows mouse or pen activation in the usual title-and-plane area: the
+same 62.5 ms stationary pause applies, even while the ball has pointer capture.
 
-Suction accelerates the plane directly into the icon over 600 ms. The plane
+Suction accelerates the plane directly into the icon over 1,200 ms. The plane
 stays 16 px throughout and disappears behind the icon when their centres meet.
 If the ball returns home during the attached tug, the plane settles back over
 250 ms. If it returns during struggle or suction, the detached plane turns
@@ -437,6 +494,8 @@ only when either feature is enabled; game-specific code remains in
 register with a single controller before dragging starts. Restart the preview
 after changing either switch in `_config.yml`.
 
+The controller routes pointer events through one set of global listeners, batches pointer transforms once per animation frame, and caches pickup geometry. One body observer watches displaced cards until they return home. Every pointer sample still reaches the ball physics and discovery game.
+
 The theme is selected before the main stylesheet loads to avoid a mismatched-colour flash. If JavaScript or browser storage is unavailable, Minima's automatic colour scheme remains the fallback; storage failures do not prevent switching for the current page.
 
 ## Local development
@@ -444,7 +503,7 @@ The theme is selected before the main stylesheet loads to avoid a mismatched-col
 ### Prerequisites
 
 - Ruby 3.3 and Bundler
-- Python 3.11 and `pip`
+- Python 3.11 and `pip` for local Python tests only
 - Node.js 24 and npm for client-side tests and production asset optimisation
 - Network access to download the latest remote Minima theme
 
@@ -452,7 +511,6 @@ The theme is selected before the main stylesheet loads to avoid a mismatched-col
 
 ```bash
 bundle install
-python3 -m pip install -r requirements.txt
 npm ci
 ```
 
@@ -482,15 +540,18 @@ Restart `./preview.sh` to attempt a fresh build after GitHub recovers.
 ### Validate and build
 
 ```bash
-python3 scripts/validate_site_config.py
+bundle exec ruby scripts/validate_site_config.rb
 JEKYLL_ENV=production ./scripts/build_site.sh
 ```
 
-The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 27 KiB for the activity, theme, blog, title animation, shared drag controller and enabled game/ball scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled features exclude their optional assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
+The Ruby validator is shared by the command above and Jekyll, which also validates merged configuration and overrides before rendering and on rebuilds. Python is needed only for local tests.
+
+The build script validates `_config.yml` before writing the generated site to `_site`. Supply `JEKYLL_GITHUB_TOKEN` through the environment for authenticated build metadata. Production builds compress Sass and minify generated JavaScript with the locked Terser version, preserving licence comments and asset URLs. Repository sources stay readable; development previews retain CSS source maps. Gzip budgets are 16 KiB for the activity script, 28 KiB for the activity, theme, blog, title animation, shared drag controller and enabled game/ball scripts combined, 100 KiB for the complete ASCII JavaScript catalogue including its banner loader when enabled, and 8 KiB for the stylesheet. The browser loads only the selected scene from the catalogue. Disabled features exclude their optional assets and skip their optimisation and size checks. Exceeding a budget fails the build. npm dependencies and build tooling are excluded from the published site.
 
 ### Run tests
 
 ```bash
+python3 -m pip install -r requirements.txt
 python3 -m unittest discover -s tests
 npm test
 npm run test:built
@@ -504,12 +565,12 @@ regardless of the repository's banner setting. The paper plane tests follow
 the same pattern: disabled builds verify that the script and markup are absent,
 while source tests and an enabled, minified fixture exercise the animation.
 
-Validation on 1 October 2026 passed 80 Python tests and 196 JavaScript tests against both readable sources and minified assets. Development CSS source maps remain available, and production output excludes maps, npm dependencies and build tooling.
+Local regression tests cover readable sources, minified assets, configuration validation and Jekyll integration. Development CSS source maps remain available, and production output excludes maps, npm dependencies and build tooling.
 
 | Gzipped asset | Before | After | Budget |
 | --- | ---: | ---: | ---: |
 | Activity JavaScript | 18,433 bytes | 14,527 bytes | 16 KiB |
-| All client JavaScript | 22,792 bytes | 17,679 bytes | 27 KiB |
+| All client JavaScript | 22,792 bytes | 17,679 bytes | 28 KiB |
 | Stylesheet | 7,141 bytes | 6,302 bytes | 8 KiB |
 
 Local Chromium checks used eight repository fixtures, six linked pages per history and 20 ms simulated API latency. Older owner-authored commits were placed on page six, so the bounded search intentionally returned fewer commits. The following figures record one run with automatic page scrolling; timings and layout shifts are fixture measurements rather than field performance scores. Cold visits used at most four concurrent calls, while warm `localStorage` visits made no GitHub requests.
@@ -527,7 +588,7 @@ Separate checks confirmed that cached commits stayed visible during a slow stale
 
 | Area | Responsibility |
 | --- | --- |
-| Configuration | `_config.yml` defines site metadata, the header GitHub icon, homepage sections, and external-feed settings; Python validation rejects invalid enabled-section settings. |
+| Configuration | `_config.yml` defines site metadata, the header GitHub icon, homepage sections, and external-feed settings; Ruby validation rejects invalid enabled-section settings. |
 | Page generation | Jekyll, Minima, Liquid includes, and custom Sass generate the static site. |
 | GitHub activity | `assets/js/github_activity.js` coordinates repository updates, milestones, and commits through one switch-aware configuration, request queue, failure policy, and cross-tab cache integration. |
 | Repository data | `jekyll-github-metadata` supplies repository cards during the build; the shared controller refreshes update labels and revalidates its local catalogue weekly using GitHub ETags. |
@@ -546,7 +607,7 @@ The GitHub Actions workflow deploys pushes to `main` that can affect the publish
 
 During deployment, the workflow:
 
-1. installs the locked Ruby and npm dependencies and required Python package
+1. installs the locked Ruby and npm dependencies
 2. validates `_config.yml` and builds production assets with authenticated GitHub metadata
 3. uploads and deploys `_site` to GitHub Pages
 

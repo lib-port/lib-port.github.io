@@ -692,7 +692,7 @@ function vortexFixture(t) {
   return f;
 }
 
-flightTest("a resting plane tugs at two seconds and is swallowed at 5.6 seconds without shrinking", t => {
+flightTest("a resting plane tugs at two seconds and is swallowed at 6.2 seconds without shrinking", t => {
   const f = vortexFixture(t);
   const home = renderedPosition(f.plane);
   f.vortex("start");
@@ -706,13 +706,13 @@ flightTest("a resting plane tugs at two seconds and is swallowed at 5.6 seconds 
   f.to(4999); assert.equal(f.overlays.length, 0);
   f.to(5000); assert.equal(f.stage(), "suction");
   const from = renderedPosition(f.overlays[0]);
-  f.to(5300);
+  f.to(5600); assert.equal(f.stage(), "suction");
   const midway = renderedPosition(f.overlays[0]);
   close(midway.x, from.x + (900 - from.x) / 8);
   close(midway.y, from.y + (700 - from.y) / 8);
   assert.doesNotMatch(f.overlays[0].style.transform, /scale/);
-  f.to(5599); assert.equal(f.overlays.length, 1);
-  f.to(5600);
+  f.to(6199); assert.equal(f.overlays.length, 1);
+  f.to(6200);
   assert.equal(f.stage(), "swallowed");
   assert.equal(f.root.hasAttribute("data-plane-swallowed"), true);
   assert.equal(f.overlays.length, 0);
@@ -744,7 +744,8 @@ flightTest("an already-flying plane is sucked in two seconds after the throw", t
   f.activate("keyboard"); f.tick(0); f.tick(500); f.vortex("start");
   f.to(2499); assert.equal(f.stage(), "flying");
   f.to(2500); assert.equal(f.stage(), "suction");
-  f.to(3100); assert.equal(f.stage(), "swallowed");
+  f.to(3100); assert.equal(f.stage(), "suction");
+  f.to(3700); assert.equal(f.stage(), "swallowed");
 });
 
 flightTest("a plane that finishes its old loop before two seconds waits for the resting-plane deadline", t => {
@@ -768,7 +769,8 @@ for (const launchTime of [0, 500, 1500, 4500]) {
     f.tick(500); f.leave(); f.blur(); f.activate("touch");
     f.to(launchTime + 1999); assert.equal(f.stage(), "struggling");
     f.to(launchTime + 2000); assert.equal(f.stage(), "suction");
-    f.to(launchTime + 2600); assert.equal(f.stage(), "swallowed");
+    f.to(launchTime + 2600); assert.equal(f.stage(), "suction");
+    f.to(launchTime + 3200); assert.equal(f.stage(), "swallowed");
   });
 }
 
@@ -877,7 +879,7 @@ for (const phase of ["tug", "struggle", "suction", "return"]) {
 
 flightTest("swallowing persists through preference changes and controller reinitialisation until a fresh page", t => {
   const f = vortexFixture(t);
-  f.vortex("start"); f.to(5600);
+  f.vortex("start"); f.to(6200);
   f.vortex("home"); f.vortex("start"); f.activate("keyboard");
   f.reducedMotion.matches = true; f.reducedMotion.emit("change");
   f.reducedMotion.matches = false; f.reducedMotion.emit("change");
@@ -916,7 +918,7 @@ flightTest("an overdue activation cannot bypass automatic detachment without a r
   const f = vortexFixture(t);
   f.vortex("start");
   f.frames.clear();
-  f.tick(6000);
+  f.tick(7000);
   f.activate("keyboard");
   assert.equal(f.stage(), "swallowed");
 });

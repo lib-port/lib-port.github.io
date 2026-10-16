@@ -118,10 +118,10 @@ ballTest("a ball returning along the floor snaps home without waiting four secon
   f.controller.destroy();
 });
 
-for (const [speed, escapes] of [[320, false], [1000, true]]) {
+for (const [speed, escapes, top] of [[300, false, 792], [320, true, 784], [1000, true, 784]]) {
   ballTest(`a ${speed}px/s tangential floor launch can depart before magnetic capture`, () => {
-    const f = themeFixture({ left: 170 });
-    f.pointer("pointerdown", 192, 806);
+    const f = themeFixture({ left: 170, top });
+    f.pointer("pointerdown", 192, top + 22);
     f.wait(120);
     f.pointer("pointermove", 192 - speed * 0.04, 822);
     f.wait(40);
@@ -135,7 +135,7 @@ for (const [speed, escapes] of [[320, false], [1000, true]]) {
       f.tick(1000 / 120);
       maximumDistance = Math.max(maximumDistance, Math.hypot(...f.position()));
     }
-    assert.equal(maximumDistance > 44, escapes, "slow launches can turn back within the zone and fast launches can escape");
+    assert.equal(maximumDistance > 44, escapes, "floor launches can turn within the zone or roll beyond it");
     assertParked(f);
     advance(f, 880);
     assert.equal(f.frames.size, 0, "the remaining highlight finishes after magnetic capture");
@@ -198,7 +198,8 @@ for (const diameter of [44, 88]) {
         close(f.position()[1], 0);
       }
       assertParked(f);
-      advance(f, 150);
+      advance(f, 300);
+      assertUpright(f);
       assert.equal(f.frames.size, 0);
       assert.equal(f.animations.length, 0);
       f.controller.destroy();
@@ -406,9 +407,9 @@ ballTest("theme throw speed is capped while keeping its direction", () => {
 
 for (const [name, options, gesture] of [
   ["gentle", {}, { dx: -20, dy: -20, duration: 120 }],
-  ["paused", {}, { pause: 150 }],
-  ["invalid timestamp", {}, { release: { timeStamp: NaN } }],
-  ["backwards timestamp", {}, { release: { timeStamp: -1 } }],
+  ["paused near home", {}, { dx: -20, dy: -20, pause: 150 }],
+  ["invalid timestamp near home", {}, { dx: -20, dy: -20, release: { timeStamp: NaN } }],
+  ["backwards timestamp near home", {}, { dx: -20, dy: -20, release: { timeStamp: -1 } }],
   ["missing frame support", { frameAnimation: false }, {}],
 ]) {
   ballTest(`${name} theme releases keep the ordinary spring return`, () => {
@@ -420,6 +421,103 @@ for (const [name, options, gesture] of [
     f.complete();
     assertParked(f);
     f.controller.destroy();
+  });
+}
+
+for (const diameter of [44, 88]) {
+  for (const [name, displacement, startsPhysics] of [
+    ["inside", [-2 * diameter + 1, 0], false],
+    ["at", [-2 * diameter, 0], false],
+    ["outside", [-2 * diameter - 1, 0], true],
+    ["diagonally inside", [-1.4 * diameter, -1.4 * diameter], false],
+    ["diagonally outside", [-1.5 * diameter, -1.5 * diameter], true],
+  ]) {
+    ballTest(`a paused ${diameter}px ball dropped ${name} two diameters ${startsPhysics ? "starts physics" : "springs home"}`, t => {
+      const f = themeFixture({ left: 1000, top: 1000, width: diameter, height: diameter, game: false });
+      Object.assign(f.documentRef.documentElement, { clientWidth: 4000, clientHeight: 4000 });
+      t.after(() => f.controller.destroy());
+      flick(f, { dx: displacement[0], dy: displacement[1], pause: 150 });
+      assert.equal(f.frames.size, Number(startsPhysics));
+      assert.equal(f.root.hasAttribute("data-ball-vortex"), startsPhysics);
+      assert.equal(f.link.emit("click", { detail: 1 }).defaultPrevented, true);
+      if (!startsPhysics) {
+        assert.equal(f.animations[0].options.duration, 400);
+        f.complete();
+      } else {
+        assert.equal(f.animations.length, 0);
+        close(vortexAngle(f), 0);
+        displacement.forEach((value, axis) => close(f.position()[axis], value));
+        f.tick(1000 / 120);
+        close(f.position()[0], displacement[0], 0.001);
+        assert.ok(f.position()[1] > displacement[1], "a stationary drop starts falling under gravity");
+        assert.ok(vortexAngle(f) > 0);
+        advance(f, 15000);
+      }
+      assertParked(f);
+    });
+  }
+}
+
+for (const pointerType of ["mouse", "pen", "touch"]) {
+  ballTest(`a distant ${pointerType} drop activates the vortex only when released`, t => {
+    const f = themeFixture({ game: false });
+    t.after(() => f.controller.destroy());
+    f.pointer("pointerdown", 352, 806, { pointerType });
+    f.pointer("pointermove", 232, 726, { pointerType });
+    f.wait(150);
+    assertNoVortex(f);
+    f.tick(0);
+    assert.equal(f.frames.size, 0);
+    f.pointer("pointerup", 232, 726, { pointerType });
+    assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+    assert.equal(f.frames.size, 1);
+    assert.equal(f.animations.length, 0);
+    advance(f, 15000);
+    assertParked(f);
+  });
+}
+
+for (const timeStamp of [NaN, -1]) {
+  ballTest(`a distant drop with ${timeStamp} as its sample timestamp starts at rest`, t => {
+    const f = themeFixture({ left: 1000, top: 1000, game: false });
+    Object.assign(f.documentRef.documentElement, { clientWidth: 4000, clientHeight: 4000 });
+    t.after(() => f.controller.destroy());
+    flick(f, { dx: -200, dy: -200, release: { timeStamp } });
+    assert.equal(f.frames.size, 1);
+    assert.equal(f.animations.length, 0);
+    f.tick(1000 / 120);
+    close(f.position()[0], -200, 0.001);
+    close(f.position()[1], -200 + screenGravity(44) / (2 * 120 ** 2), 0.001);
+    close(spinAngle(f), 0);
+  });
+}
+
+ballTest("a distant paused drop keeps the spring fallback when the simulation clock is invalid", t => {
+  const f = themeFixture({ game: false });
+  t.after(() => f.controller.destroy());
+  f.windowRef.performance.now = () => NaN;
+  flick(f, { pause: 150 });
+  assertNoVortex(f);
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.animations[0].options.duration, 400);
+  f.complete();
+  assertParked(f);
+});
+
+for (const missing of ["reduced motion", "requestAnimationFrame", "cancelAnimationFrame"]) {
+  ballTest(`a distant paused drop starts no physics with ${missing}`, t => {
+    const f = themeFixture({ reduced: missing === "reduced motion", game: false });
+    t.after(() => f.controller.destroy());
+    if (missing !== "reduced motion") delete f.windowRef[missing];
+    flick(f, { pause: 150 });
+    assertNoVortex(f);
+    assert.equal(f.frames.size, 0);
+    if (missing === "reduced motion") assert.equal(f.animations.length, 0);
+    else {
+      assert.equal(f.animations[0].options.duration, 400);
+      f.complete();
+    }
+    assertParked(f);
   });
 }
 
@@ -537,7 +635,9 @@ ballTest("theme throws start the home attraction on release while preserving mom
   assert.ok(f.position()[0] < before, "the return initially retains outward momentum");
   assert.ok(f.position()[0] > before - 100, "the new field bends the trajectory during the first 100 ms");
   advance(f, 1900);
-  assert.ok(f.position()[0] > before, "the growing field reverses the throw");
+  const returning = f.position()[0];
+  f.tick(1000 / 120);
+  assert.ok(f.position()[0] > returning, "the growing field reverses the throw");
   advance(f, 6000);
   assertParked(f);
   assert.equal(f.frames.size, 0);
@@ -654,16 +754,19 @@ ballTest("catching a theme throw preserves its position and discards its old vel
 });
 
 for (const type of ["pointercancel", "lostpointercapture", "Escape"]) {
-  ballTest(`${type} never turns a fast theme drag into a throw`, () => {
-    const f = themeFixture();
-    f.pointer("pointerdown"); f.wait(20); f.pointer("pointermove", 200, 180);
-    if (type === "Escape") f.documentRef.emit("keydown", { key: type });
-    else f.pointer(type);
-    assert.equal(f.frames.size, 0);
-    assert.equal(f.animations[0].options.duration, 400);
-    f.complete();
-    assertParked(f);
-    f.controller.destroy();
+  ballTest(`${type} never turns a fast or paused theme drag into flight`, () => {
+    for (const pause of [0, 150]) {
+      const f = themeFixture();
+      f.pointer("pointerdown"); f.wait(20); f.pointer("pointermove", 200, 180);
+      f.wait(pause);
+      if (type === "Escape") f.documentRef.emit("keydown", { key: type });
+      else f.pointer(type);
+      assert.equal(f.frames.size, 0);
+      assert.equal(f.animations[0].options.duration, 400);
+      f.complete();
+      assertParked(f);
+      f.controller.destroy();
+    }
   });
 }
 
@@ -804,12 +907,12 @@ ballTest("an impact fades in over 80 ms and out over 800 ms while the ball is he
   close(highlight(f), 25);
   tickUntil(f, impact + 880);
   assert.equal(f.link.style[impactProperty], undefined);
-  assert.equal(f.frames.size, 1, "the vortex continues after the last border pulse expires");
+  assert.equal(f.frames.size, 1, "the vortex continues after the last impact pulse expires");
   assert.equal(f.root.hasAttribute("data-dragging"), true);
 });
 
 for (const speed of [0.5, 1, 2]) {
-  ballTest(`an impact at ${speed} m/s contributes ${50 * speed}% peak colour`, t => {
+  ballTest(`an impact at ${speed} m/s contributes ${50 * speed}% peak border colour`, t => {
     const f = impactFixture(t);
     const impact = impactAndCatch(f, { speed });
     tickUntil(f, impact + 80);
@@ -983,7 +1086,7 @@ function assertNoVortex(f) {
   assert.equal(f.root.style["--ball-vortex-angle"], undefined);
 }
 
-ballTest("a vortex starts only on a successful throw", t => {
+ballTest("a near-home drag starts no vortex while a successful throw does", t => {
   const f = themeFixture({ game: false });
   t.after(() => f.controller.destroy());
   f.pointer("pointerdown", 352, 806);
@@ -1025,14 +1128,11 @@ ballTest("catching and rethrowing preserve the original vortex clock and discard
   close(vortexAngle(f), 324, 0.00001);
 });
 
-ballTest("a gentle release keeps the vortex spinning until the spring reaches home", t => {
+ballTest("a gentle release near home keeps the vortex spinning until the spring reaches home", t => {
   const f = impactFixture(t);
   const start = impactAndCatch(f);
   tickUntil(f, start + 6100);
-  f.wait(120);
-  const [x, y] = f.position();
-  f.pointer("pointerup", 1022 + x, 1022 + y);
-  assert.equal(f.animations.at(-1).options.duration, 400);
+  releaseNearHome(f);
   f.tick(100);
   assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
   f.complete();
@@ -1049,7 +1149,7 @@ ballTest("magnetic capture removes the vortex immediately and a later throw star
   assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
   f.tick(1000 / 120);
   assertParked(f);
-  assert.ok(highlight(f) > 0, "the border pulse can finish independently after the vortex ends");
+  assert.ok(highlight(f) > 0, "the impact pulse can finish independently after the vortex ends");
   f.wait(2000);
   flick(f);
   close(vortexAngle(f), 0);
@@ -1083,7 +1183,7 @@ for (const [name, game, choice] of [["CPU", false, 0.5], ["bug", true, 0.5], ["s
 }
 
 for (const type of ["Escape", "pointercancel", "lostpointercapture", "blur", "resize", "scroll", "visibilitychange", "reduced motion", "destroy", "reduced motion before event", "invalid clock"]) {
-  ballTest(`${type} clears a held vortex after its border pulses have expired`, t => {
+  ballTest(`${type} clears a held vortex after its impact pulses have expired`, t => {
     const f = impactFixture(t);
     impactAndCatch(f);
     f.tick(10000);
@@ -1117,11 +1217,17 @@ function assertNoGlow(f) {
   assert.equal(f.root.style["--ball-vortex-glow"], undefined);
 }
 
-function dockHeldBall(f) {
+function releaseNearHome(f) {
+  const x = f.bounds.left - f.bounds.width / 2;
+  const y = f.bounds.top + f.bounds.height / 2;
+  f.pointer("pointermove", x, y);
   f.wait(120);
-  const [x, y] = f.position();
-  f.pointer("pointerup", f.bounds.left + f.bounds.width / 2 + x, f.bounds.top + f.bounds.height / 2 + y);
+  f.pointer("pointerup", x, y);
   assert.equal(f.animations.at(-1).options.duration, 400);
+}
+
+function dockHeldBall(f) {
+  releaseNearHome(f);
   f.tick(400);
   const opacity = glow(f);
   f.complete();
@@ -1129,11 +1235,11 @@ function dockHeldBall(f) {
   return { time: f.windowRef.performance.now(), opacity };
 }
 
-ballTest("the halo builds to a faint maximum while the icon spins", t => {
+ballTest("the halo builds to 70% opacity over three seconds and holds while the icon spins", t => {
   const f = impactFixture(t);
   assertNoGlow(f);
   const start = impactAndCatch(f);
-  for (const [seconds, expected] of [[0.1, 0.005], [1, 0.05], [3, 0.15], [6, 0.3], [20, 0.3]]) {
+  for (const [seconds, expected] of [[0.1, 0.7 / 30], [1, 0.7 / 3], [2, 1.4 / 3], [3, 0.7], [6, 0.7], [20, 0.7]]) {
     tickUntil(f, start + seconds * 1000);
     close(glow(f), expected);
     assert.equal(f.root.hasAttribute("data-ball-glow"), true);
@@ -1144,15 +1250,15 @@ ballTest("the halo builds to a faint maximum while the icon spins", t => {
 ballTest("catching and rethrowing keep the halo building on the same clock", t => {
   const f = impactFixture(t);
   const start = impactAndCatch(f);
-  tickUntil(f, start + 3000);
-  close(glow(f), 0.15);
+  tickUntil(f, start + 1000);
+  close(glow(f), 0.7 / 3);
   const stale = [...f.frames.values()][0];
   impactAndCatch(f, { preparation: 0, duration: 10 });
   const opacity = glow(f);
   stale(start + 20000);
   close(glow(f), opacity);
-  tickUntil(f, start + 4000);
-  close(glow(f), 0.2);
+  tickUntil(f, start + 2000);
+  close(glow(f), 1.4 / 3);
   assert.equal(f.frames.size, 1);
 });
 
@@ -1162,6 +1268,8 @@ for (const seconds of [2, 6]) {
     const start = impactAndCatch(f);
     tickUntil(f, start + seconds * 1000);
     const { time, opacity } = dockHeldBall(f);
+    if (seconds === 2) assert.ok(opacity > 0 && opacity < 0.7, "an early return fades from a partial build");
+    else close(opacity, 0.7);
     close(glow(f), opacity);
     assert.equal(f.root.hasAttribute("data-ball-glow"), true);
     assert.equal(f.frames.size, 1, "the cosmetic fade continues after motion has stopped");
@@ -1203,7 +1311,7 @@ ballTest("a new throw during the return fade starts a fresh halo from zero", t =
   assertNoGlow(f);
   assert.equal(f.frames.size, 1);
   f.tick(100);
-  close(glow(f), 0.005);
+  close(glow(f), 0.7 / 30);
   assert.equal(f.frames.size, 1);
 });
 
@@ -1266,6 +1374,31 @@ ballTest("vortex events carry the original throw clock through grabs, releases a
   assert.equal(events.at(-1).phase, "cancel");
 });
 
+ballTest("catching and dropping preserves the vortex clock while restarting home attraction", t => {
+  const f = rotationFixture(t);
+  const events = [];
+  f.windowRef.addEventListener("libport:ball-vortex", event => events.push(event.detail));
+  launchFromGrip(f);
+  const startedAt = events[0].startedAt;
+  f.tick(1000);
+  launchFromGrip(f, { velocity: [0, 0], pause: 150 });
+  assert.equal(events.filter(event => event.phase === "start").length, 1);
+  assert.equal(events.at(-1).phase, "release");
+  assert.ok(events.every(event => event.startedAt === startedAt));
+  close(vortexAngle(f), 90 * ((f.windowRef.performance.now() - startedAt) / 1000) ** 2);
+  const fresh = rotationFixture(t);
+  launchFromGrip(fresh, { velocity: [0, 0], pause: 150 });
+  for (let frame = 0; frame < 60; frame++) {
+    f.tick(1000 / 60);
+    fresh.tick(1000 / 60);
+    f.position().forEach((value, axis) => close(value, fresh.position()[axis]));
+  }
+  advance(f, 15000);
+  assertParked(f);
+  assert.equal(events.at(-1).phase, "home");
+  assert.equal(events.at(-1).startedAt, startedAt);
+});
+
 ballTest("natural capture announces home once while ordinary drags announce no vortex", t => {
   const f = themeFixture({ game: false });
   t.after(() => f.controller.destroy());
@@ -1281,3 +1414,487 @@ ballTest("natural capture announces home once while ordinary drags announce no v
   f.tick(1000); f.controller.destroy();
   assert.equal(events.length, 2);
 });
+
+const spinProperty = "--ball-spin-angle";
+const spinAngle = f => parseFloat(f.link.style[spinProperty] || "0") * Math.PI / 180;
+const angleChange = (after, before) => Math.atan2(Math.sin(after - before), Math.cos(after - before));
+
+function rotationFixture(t, options = {}) {
+  const f = themeFixture({ left: 2000, top: 1000, game: false, ...options });
+  Object.assign(f.documentRef.documentElement, { clientWidth: 6000, clientHeight: 6000 });
+  t.after(() => f.controller.destroy());
+  return f;
+}
+
+function launchFromGrip(f, { grip = [0, -0.5], velocity = [800, 0], position = [400, -200], pointerType = "mouse", pause = 0 } = {}) {
+  const size = f.bounds.width;
+  const current = f.position();
+  const origin = [f.bounds.left + size / 2, f.bounds.top + size / 2];
+  const grab = origin.map((value, axis) => value + current[axis] + grip[axis] * size / 2);
+  f.pointer("pointerdown", ...grab, { pointerType });
+  f.wait(120);
+  f.pointer("pointermove", ...grab.map((value, axis) => value + position[axis] - current[axis] - velocity[axis] * 0.04), { pointerType });
+  f.wait(40);
+  f.pointer("pointermove", ...grab.map((value, axis) => value + position[axis] - current[axis]), { pointerType });
+  f.wait(pause);
+  f.pointer("pointerup", ...grab.map((value, axis) => value + position[axis] - current[axis]), { pointerType });
+  f.tick(0);
+}
+
+function launchSpin(diameter, grip, velocity) {
+  const length = Math.max(1, Math.hypot(...grip));
+  return 1.5 * (grip[0] * velocity[1] - grip[1] * velocity[0]) / length / (diameter / 2);
+}
+
+for (const pointerType of ["mouse", "pen", "touch"]) {
+  ballTest(`${pointerType} off-centre throws acquire grip-dependent angular momentum`, t => {
+    const f = rotationFixture(t);
+    const grip = [0.25, -0.5];
+    const velocity = [600, -400];
+    launchFromGrip(f, { grip, velocity, pointerType });
+    f.tick(100);
+    close(angleChange(spinAngle(f), 0), angleChange(launchSpin(44, grip, velocity) * 0.1, 0));
+    assert.match(f.link.style.transform, /^translate\([^)]*\)$/);
+  });
+}
+
+ballTest("centred and radial throws have no initial spin, while opposite grips reverse it", t => {
+  for (const grip of [[0, 0], [0.5, 0], [0, -0.5], [0, 0.5], [0, -2]]) {
+    const f = rotationFixture(t);
+    launchFromGrip(f, { grip });
+    f.tick(25);
+    close(spinAngle(f), launchSpin(44, grip, [800, 0]) * 0.025);
+  }
+});
+
+for (const pointerType of ["mouse", "pen", "touch"]) {
+  ballTest(`${pointerType} slow drops preserve release velocity and grip-dependent spin`, t => {
+    const f = rotationFixture(t);
+    const velocity = [100, -50];
+    const grip = [0, -0.5];
+    launchFromGrip(f, { pointerType, velocity, grip });
+    assert.equal(f.frames.size, 1);
+    assert.equal(f.animations.length, 0);
+    assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+    f.tick(25);
+    close(f.position()[0], 400 + velocity[0] * 0.025, 0.01);
+    close(f.position()[1], -200 + velocity[1] * 0.025 + screenGravity(44) * 0.025 ** 2 / 2, 0.01);
+    close(spinAngle(f), launchSpin(44, grip, velocity) * 0.025);
+  });
+}
+
+ballTest("spin uses the capped release velocity while stationary distant drops start without spin", t => {
+  const f = rotationFixture(t);
+  launchFromGrip(f, { velocity: [5000, 0] });
+  f.tick(25);
+  close(spinAngle(f), launchSpin(44, [0, -0.5], [2500, 0]) * 0.025);
+  for (const options of [{ velocity: [0, 0] }, { pause: 150 }]) {
+    const slow = rotationFixture(t);
+    launchFromGrip(slow, options);
+    close(spinAngle(slow), 0);
+    assert.equal(slow.frames.size, 1);
+    assert.equal(slow.animations.length, 0);
+    slow.tick(25);
+    close(spinAngle(slow), 0);
+    advance(slow, 15000);
+    assertParked(slow);
+  }
+});
+
+ballTest("angular momentum persists in flight and only simulated catch-up time advances orientation", t => {
+  const f = rotationFixture(t);
+  launchFromGrip(f);
+  const spin = launchSpin(44, [0, -0.5], [800, 0]);
+  f.tick(1000);
+  close(angleChange(spinAngle(f), 0), angleChange(spin * 0.1, 0));
+  for (let frame = 0; frame < 12; frame++) {
+    const before = spinAngle(f);
+    f.tick(1000 / 120);
+    close(angleChange(spinAngle(f), before), spin / 120);
+  }
+});
+
+ballTest("physical spin and travel scale with the rendered ball diameter", t => {
+  const samples = [44, 88].map(diameter => {
+    const f = rotationFixture(t, { width: diameter, height: diameter });
+    launchFromGrip(f, { velocity: [20 * diameter, -8 * diameter], position: [8 * diameter, -4 * diameter] });
+    f.tick(100);
+    return { angle: spinAngle(f), position: f.position().map(value => value / diameter) };
+  });
+  close(samples[0].angle, samples[1].angle);
+  samples[0].position.forEach((value, axis) => close(value, samples[1].position[axis]));
+});
+
+function edgeLaunch(f, axis, side, options = {}) {
+  const direction = side ? 1 : -1;
+  const size = [f.documentRef.documentElement.clientWidth, f.documentRef.documentElement.clientHeight];
+  const start = [f.bounds.left, f.bounds.top];
+  const position = [300, 300];
+  position[axis] = side ? size[axis] - start[axis] - f.bounds.width : -start[axis];
+  const velocity = [0, 0];
+  velocity[axis] = direction * 500;
+  velocity[1 - axis] = 200;
+  launchFromGrip(f, { grip: [0, 0], velocity, position, ...options });
+  return { velocity, position };
+}
+
+for (const [axis, side, name] of [[0, 0, "left wall"], [0, 1, "right wall"], [1, 0, "ceiling"], [1, 1, "floor"]]) {
+  ballTest(`friction at the ${name} transfers tangential momentum into spin`, t => {
+    const f = rotationFixture(t);
+    const { velocity } = edgeLaunch(f, axis, side);
+    const direction = (axis ? -1 : 1) * (side ? -1 : 1);
+    const impulse = -direction * velocity[1 - axis] * 0.4;
+    const expectedSpin = -(44 / 2) * impulse / (2 * (44 / 2) ** 2 / 3);
+    f.tick(1000 / 120);
+    close(spinAngle(f) * 120, expectedSpin);
+    assert.ok(highlight(f) > 0, "contact retains the border highlight");
+  });
+}
+
+ballTest("boundary friction can reverse existing spin", t => {
+  const f = rotationFixture(t);
+  edgeLaunch(f, 0, 1, { velocity: [500, -400], grip: [0, 0.1] });
+  assert.ok(launchSpin(44, [0, 0.1], [500, -400]) < 0);
+  f.tick(1000 / 120);
+  assert.ok(spinAngle(f) > 0, "right-wall friction reverses the negative launch spin");
+});
+
+ballTest("collision impulses dissipate combined linear and rotational energy at every corner", t => {
+  for (const horizontal of [-1, 1]) for (const vertical of [-1, 1]) {
+    for (const grip of [[0, 0], [0.6, -0.6], [-0.6, 0.6]]) {
+      const f = rotationFixture(t);
+      const velocity = [horizontal * 500, vertical * 700];
+      const position = [horizontal > 0 ? 6000 - f.bounds.right : -f.bounds.left,
+        vertical > 0 ? 6000 - f.bounds.bottom : -f.bounds.top];
+      launchFromGrip(f, { velocity, position, grip });
+      const spin = launchSpin(44, grip, velocity);
+      const inertia = 2 * (44 / 2) ** 2 / 3;
+      const energy = (velocity[0] ** 2 + velocity[1] ** 2 + inertia * spin ** 2) / 2;
+      const duration = 1 / 120;
+      f.tick(duration * 1000);
+      const outgoing = f.position().map((value, axis) => (value - position[axis]) / duration);
+      const outgoingSpin = spinAngle(f) / duration;
+      const after = (outgoing[0] ** 2 + outgoing[1] ** 2 + inertia * outgoingSpin ** 2) / 2;
+      assert.ok(outgoing[0] * horizontal < 0 && outgoing[1] * vertical < 0, "both contacts rebound inwards");
+      assert.ok(after <= energy * 1.001, `${after} exceeds incoming energy ${energy}`);
+    }
+  }
+});
+
+ballTest("floor friction converts sliding into rolling without slip", t => {
+  const f = rotationFixture(t);
+  f.documentRef.documentElement.clientHeight = f.bounds.bottom;
+  launchFromGrip(f, { grip: [0, 0], position: [500, 0] });
+  advance(f, 600);
+  for (let frame = 0; frame < 12; frame++) {
+    const before = f.position();
+    const angle = spinAngle(f);
+    f.tick(1000 / 120);
+    close(f.position()[0] - before[0], 22 * angleChange(spinAngle(f), angle), 0.00001);
+    close(f.position()[1], 0);
+  }
+});
+
+ballTest("overspin accelerates floor travel while backspin brakes it", t => {
+  const speeds = [0, -1, 1].map(grabY => {
+    const f = rotationFixture(t);
+    f.documentRef.documentElement.clientHeight = f.bounds.bottom;
+    launchFromGrip(f, { grip: [0, grabY], position: [500, 0] });
+    advance(f, 100);
+    const before = f.position()[0];
+    f.tick(1000 / 120);
+    return (f.position()[0] - before) * 120;
+  });
+  assert.ok(speeds[1] > 800, "overspin transfers rotational energy into forward travel");
+  assert.ok(speeds[0] < 800 && speeds[2] < 800, "sliding and backspin remove forward speed");
+});
+
+ballTest("rotational collision trajectories agree at 30, 60 and 120 fps", t => {
+  const trajectories = [30, 60, 120].map(fps => {
+    const f = rotationFixture(t);
+    f.documentRef.documentElement.clientHeight = 2000;
+    launchFromGrip(f, { velocity: [700, 500], position: [300, 600] });
+    const samples = [];
+    for (let interval = 0; interval < 4; interval++) {
+      advance(f, 200, 1000 / fps);
+      samples.push([...f.position(), spinAngle(f)]);
+    }
+    return samples;
+  });
+  for (const samples of trajectories.slice(1)) samples.forEach((sample, index) => {
+    sample.forEach((value, component) => close(value, trajectories[0][index][component], 0.00001));
+  });
+});
+
+ballTest("catching freezes the angle and a centred rethrow discards old spin without changing orientation", t => {
+  const f = rotationFixture(t);
+  launchFromGrip(f);
+  f.tick(50);
+  const angle = spinAngle(f);
+  const current = f.position();
+  const stale = [...f.frames.values()][0];
+  f.pointer("pointerdown", f.bounds.left + 22 + current[0], f.bounds.top + 22 + current[1]);
+  f.tick(500);
+  close(spinAngle(f), angle);
+  launchFromGrip(f, { grip: [0, 0], position: current.map(value => value + 100) });
+  close(spinAngle(f), angle);
+  stale(20000);
+  close(spinAngle(f), angle);
+  f.tick(100);
+  close(spinAngle(f), angle);
+  advance(f, 15000);
+  assertParked(f);
+});
+
+ballTest("a rethrow preserves orientation and replaces spin using the new grip", t => {
+  const f = rotationFixture(t);
+  launchFromGrip(f);
+  f.tick(50);
+  const angle = spinAngle(f);
+  const current = f.position();
+  launchFromGrip(f, { grip: [0, 0.5], position: [current[0] + 100, current[1]] });
+  close(spinAngle(f), angle);
+  f.tick(25);
+  close(angleChange(spinAngle(f), angle), launchSpin(44, [0, 0.5], [800, 0]) * 0.025);
+});
+
+ballTest("near-home braking damps angular momentum before capture", t => {
+  const f = rotationFixture(t);
+  launchFromGrip(f, { position: [110, 0], velocity: [-600, 0] });
+  f.tick(25);
+  const first = spinAngle(f);
+  f.tick(25);
+  const second = angleChange(spinAngle(f), first);
+  assert.ok(Math.abs(second) < Math.abs(first), "spin slows as the ball approaches the magnetic zone");
+  assert.ok(Math.abs(second) > 0, "braking is gradual before capture");
+});
+
+for (const type of ["Escape", "pointercancel", "lostpointercapture", "blur", "resize", "scroll", "visibilitychange", "reduced motion", "destroy", "viewport resize", "viewport scroll", "reduced motion before event", "invalid clock"]) {
+  ballTest(`${type} clears non-zero ball rotation and invalidates its callback`, t => {
+    const f = rotationFixture(t, { visualViewport: { width: 6000, height: 6000 } });
+    launchFromGrip(f);
+    f.tick(50);
+    assert.ok(Math.abs(spinAngle(f)) > 0);
+    const stale = [...f.frames.values()][0];
+    if (type === "pointercancel" || type === "lostpointercapture") {
+      const current = f.position();
+      f.pointer("pointerdown", f.bounds.left + 22 + current[0], f.bounds.top + 22 + current[1]);
+      f.pointer(type);
+      f.complete();
+    } else if (type === "Escape") f.documentRef.emit("keydown", { key: type });
+    else if (type === "visibilitychange") {
+      f.documentRef.hidden = true;
+      f.documentRef.emit(type);
+    } else if (type.startsWith("reduced motion")) {
+      f.motion.matches = true;
+      if (type === "reduced motion") f.motion.emit("change");
+      else f.tick(16);
+    } else if (type === "destroy") f.controller.destroy();
+    else if (type.startsWith("viewport")) f.windowRef.visualViewport.emit(type.split(" ")[1]);
+    else if (type === "invalid clock") f.tick(NaN);
+    else f.windowRef.emit(type);
+    assertParked(f);
+    stale(20000);
+    assert.equal(f.link.style[spinProperty], undefined);
+    assert.equal(f.frames.size, 0);
+  });
+}
+
+function assertUpright(f) {
+  assert.equal(f.link.style[spinProperty], undefined);
+  close(spinAngle(f), 0);
+}
+
+function prepareUprightReturn(t, degrees, options = {}) {
+  const f = rotationFixture(t, options);
+  const gripY = -(degrees * Math.PI / 180) * 22 / (1.5 * 1200 * 0.1);
+  launchFromGrip(f, { grip: [0, gripY], velocity: [1200, 0] });
+  f.tick(100);
+  close(angleChange(spinAngle(f), degrees * Math.PI / 180), 0);
+  const current = f.position();
+  f.pointer("pointerdown", f.bounds.left + 22 + current[0], f.bounds.top + 22 + current[1]);
+  return f;
+}
+
+function returnedAtAngle(t, degrees, options) {
+  const f = prepareUprightReturn(t, degrees, options);
+  const { time } = dockHeldBall(f);
+  return { f, time };
+}
+
+for (const [degrees, start] of [[30, 30], [-30, -30], [170, 170], [-170, -170],
+  [180, -180], [-180, -180], [190, -170], [-190, 170], [350, -10], [-350, 10]]) {
+  ballTest(`a ${degrees} degree return takes the shortest route upright over 300 ms`, t => {
+    const { f, time } = returnedAtAngle(t, degrees);
+    assertParked(f);
+    close(spinAngle(f), start * Math.PI / 180);
+    assert.equal(f.frames.size, 1, "position is parked while cosmetic rotation continues");
+    for (const elapsed of [75, 150, 225, 299]) {
+      tickUntil(f, time + elapsed);
+      close(spinAngle(f), start * Math.PI / 180 * (1 - elapsed / 300) ** 3);
+      assertParked(f);
+    }
+    tickUntil(f, time + 300);
+    assertUpright(f);
+    assert.equal(f.frames.size, 0);
+  });
+}
+
+ballTest("upright and full-turn returns skip the correction", t => {
+  for (const degrees of [0, 360, -360]) {
+    const { f, time } = returnedAtAngle(t, degrees);
+    assertUpright(f);
+    tickUntil(f, time + 150);
+    assert.equal(f.frames.size, 0, "only the independent halo fade was scheduled");
+  }
+});
+
+ballTest("magnetic capture preserves its arrival angle before starting correction", t => {
+  const f = rotationFixture(t);
+  launchFromGrip(f);
+  for (let frame = 0; frame < 2400 && f.root.hasAttribute("data-drag-active"); frame++) f.tick(1000 / 120);
+  assertParked(f);
+  const angle = spinAngle(f);
+  assert.ok(Math.abs(angle) > 0.001, "capture retains the physical angle instead of snapping upright");
+  f.tick(150);
+  close(spinAngle(f), angle / 8);
+  f.tick(150);
+  assertUpright(f);
+});
+
+for (const pointerType of ["mouse", "pen", "touch"]) {
+  ballTest(`${pointerType} pickup freezes the displayed correction angle for dragging and rethrowing`, t => {
+    const { f, time } = returnedAtAngle(t, 170);
+    tickUntil(f, time + 75);
+    const held = spinAngle(f);
+    const stale = [...f.frames.values()][0];
+    f.wait(25);
+    const x = f.bounds.left + 22;
+    const y = f.bounds.top + 22;
+    f.pointer("pointerdown", x, y, { pointerType });
+    close(spinAngle(f), held, 1e-12);
+    stale(time + 300);
+    f.tick(500);
+    close(spinAngle(f), held, 1e-12);
+    f.pointer("pointermove", x + 400 - 800 * 0.04, y - 200, { pointerType });
+    f.wait(40);
+    f.pointer("pointermove", x + 400, y - 200, { pointerType });
+    f.pointer("pointerup", x + 400, y - 200, { pointerType });
+    f.tick(100);
+    close(spinAngle(f), held, 1e-12);
+    assert.equal(f.root.hasAttribute("data-drag-active"), true);
+    assert.equal(f.root.hasAttribute("data-ball-vortex"), true);
+  });
+}
+
+ballTest("a rethrow from a correction adds fresh grip-dependent spin to the frozen angle", t => {
+  const { f, time } = returnedAtAngle(t, -170);
+  tickUntil(f, time + 150);
+  const held = spinAngle(f);
+  launchFromGrip(f, { grip: [0, -0.5] });
+  close(spinAngle(f), held);
+  f.tick(25);
+  close(angleChange(spinAngle(f), held), launchSpin(44, [0, -0.5], [800, 0]) * 0.025);
+  const { time: secondReturn } = dockHeldBallAfterCatch(f);
+  const arrived = spinAngle(f);
+  tickUntil(f, secondReturn + 150);
+  close(spinAngle(f), arrived / 8);
+  tickUntil(f, secondReturn + 300);
+  assertUpright(f);
+});
+
+function dockHeldBallAfterCatch(f) {
+  const current = f.position();
+  f.pointer("pointerdown", f.bounds.left + 22 + current[0], f.bounds.top + 22 + current[1]);
+  return dockHeldBall(f);
+}
+
+ballTest("a normal click pauses correction and resumes from its held angle on release", t => {
+  const { f, time } = returnedAtAngle(t, 170);
+  tickUntil(f, time + 100);
+  const held = spinAngle(f);
+  const x = f.bounds.left + 22;
+  const y = f.bounds.top + 22;
+  f.pointer("pointerdown", x, y);
+  f.tick(400);
+  close(spinAngle(f), held);
+  f.pointer("pointerup", x, y);
+  const released = f.windowRef.performance.now();
+  assert.equal(f.link.emit("click", { detail: 1 }).defaultPrevented, false);
+  close(spinAngle(f), held);
+  tickUntil(f, released + 150);
+  close(spinAngle(f), held / 8);
+  tickUntil(f, released + 300);
+  assertUpright(f);
+  assert.equal(f.frames.size, 0);
+});
+
+ballTest("correction follows elapsed time at different frame rates and after a delayed frame", t => {
+  for (const frame of [1000 / 30, 1000 / 60, 1000 / 120, 150]) {
+    const { f } = returnedAtAngle(t, 170);
+    advance(f, 150, frame);
+    close(spinAngle(f), 170 * Math.PI / 180 / 8);
+    f.tick(10000);
+    assertUpright(f);
+    assert.equal(f.frames.size, 0);
+  }
+});
+
+ballGameTest("a correction does not delay discovery feedback or the halo fade", t => {
+  const f = prepareUprightReturn(t, 170, { game: true, candidateCount: 3, random: randomPrefix(0, 0.5) });
+  const selected = f.cpu;
+  const { time } = dockHeldBall(f);
+  const angle = spinAngle(f);
+  assert.ok(Math.abs(angle) > 0);
+  assert.ok(glow(f) > 0);
+  finishShakes(f);
+  assert.notEqual(f.cpu, selected, "the settled position allows the discovery to reshuffle");
+  close(spinAngle(f), angle, 1e-12);
+  tickUntil(f, time + 150);
+  assertNoGlow(f);
+  assert.ok(Math.abs(spinAngle(f)) > 0);
+  assert.equal(f.frames.size, 1, "rotation retains one callback after the halo finishes");
+  tickUntil(f, time + 300);
+  assertUpright(f);
+  assert.equal(f.frames.size, 0);
+});
+
+for (const type of ["Escape", "blur", "resize", "scroll", "visibilitychange", "reduced motion", "destroy", "viewport resize", "viewport scroll", "reduced motion before event", "invalid clock"]) {
+  ballTest(`${type} clears upright correction and invalidates its callback`, t => {
+    const { f, time } = returnedAtAngle(t, 170, { visualViewport: { width: 6000, height: 6000 } });
+    tickUntil(f, time + 75);
+    assert.ok(Math.abs(spinAngle(f)) > 0);
+    const stale = [...f.frames.values()][0];
+    if (type === "Escape") f.documentRef.emit("keydown", { key: type });
+    else if (type === "visibilitychange") {
+      f.documentRef.hidden = true;
+      f.documentRef.emit(type);
+    } else if (type.startsWith("reduced motion")) {
+      f.motion.matches = true;
+      if (type === "reduced motion") f.motion.emit("change");
+      else f.tick(16);
+    } else if (type === "destroy") f.controller.destroy();
+    else if (type.startsWith("viewport")) f.windowRef.visualViewport.emit(type.split(" ")[1]);
+    else if (type === "invalid clock") f.tick(NaN);
+    else f.windowRef.emit(type);
+    assertParked(f);
+    assertUpright(f);
+    stale(time + 150);
+    assertUpright(f);
+    assert.equal(f.frames.size, 0);
+  });
+}
+
+for (const missing of ["requestAnimationFrame", "cancelAnimationFrame"]) {
+  ballTest(`docking without ${missing} restores the icon upright immediately`, t => {
+    const f = prepareUprightReturn(t, 170);
+    releaseNearHome(f);
+    f.tick(400);
+    f.windowRef[missing] = undefined;
+    f.complete();
+    assertParked(f);
+    assertUpright(f);
+    f.tick(1000);
+    assertUpright(f);
+  });
+}

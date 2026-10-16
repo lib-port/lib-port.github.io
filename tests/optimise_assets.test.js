@@ -16,6 +16,8 @@ const ballMarkup = '<script src="/project/assets/js/light_dark_ball.js" defer></
 const bannerMarkup = '<div data-home-section="ascii_banner" hidden><ascii-art piece="random"></ascii-art>' +
   '<script type="module" src="/project/assets/js/ascii_banner.mjs"></script></div>';
 const gameMarkup = '<div class="repo-section-heading"><h2>Notes and Projects</h2>' +
+  '<span class="repo-discovery-trophy" data-drag-trophy role="group" aria-hidden="true">' +
+  '<span data-drag-trophy-progress role="progressbar" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"></span></span>' +
   '</div>' +
   '<template data-drag-icons></template>' +
   '<script src="/project/assets/js/drag_reveal.js" defer></script>';
@@ -107,6 +109,8 @@ test("exercises the enabled game against its minified build", t => {
   assert.match(gameTests.stdout, /each eligible underlay occupies an equal interval/);
   assert.match(gameTests.stdout, /milestones loaded after initialisation join both the shuffle/);
   assert.match(gameTests.stdout, /completed finds reshuffle once after each shake sequence/);
+  assert.match(gameTests.stdout, /discovery milestones fade in bronze and turn before changing to silver and gold/);
+  assert.match(gameTests.stdout, /the twentieth full reveal redirects once and ends the run/);
   assert.doesNotMatch(gameTests.stdout, /# SKIP/);
   const ballTests = testBuiltAssets(directory, "light_dark_ball.test.js");
   assert.equal(ballTests.status, 0, ballTests.stdout + ballTests.stderr);
@@ -151,7 +155,7 @@ for (const game of [false, true]) {
         assert.match(result.stdout, /Light\/dark ball: skipped/);
         assert.doesNotMatch(result.stdout, /light_dark_ball\.js: \d+ bytes/);
       }
-      for (const suite of ["drag_features.test.js", "drag_reveal.test.js", "light_dark_ball.test.js", "theme_toggle.test.js"]) {
+      for (const suite of ["drag_features.test.js", "drag_surface.test.js", "drag_reveal.test.js", "light_dark_ball.test.js", "theme_toggle.test.js"]) {
         const checked = testBuiltAssets(directory, suite);
         assert.equal(checked.status, 0, checked.stdout + checked.stderr);
       }
@@ -302,6 +306,6 @@ for (const budget of ["activity", "combined", "stylesheet", "ascii"]) {
     }
     const result = optimise(directory);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "27 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
+    assert.match(result.stderr, new RegExp(budget === "activity" ? "16 KiB" : budget === "combined" ? "28 KiB" : budget === "ascii" ? "100 KiB" : "8 KiB"));
   });
 }

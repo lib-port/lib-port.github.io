@@ -382,6 +382,56 @@ html[data-github-icon-variant="logo"]
   }
 }
 
+.repo-discovery-trophy {
+  display: inline-flex;
+  flex-direction: column;
+  align-self: center;
+  flex: none;
+  gap: 0.25rem;
+  margin-inline-start: auto;
+  width: 2rem;
+  color: #cd7f32;
+  visibility: hidden;
+
+  > .octicon {
+    display: block;
+    height: 2rem;
+    width: auto;
+    fill: currentColor;
+  }
+
+  &[data-trophy-tier] {
+    visibility: visible;
+  }
+
+  &[data-trophy-tier="silver"] {
+    color: silver;
+  }
+
+  &[data-trophy-tier="gold"] {
+    color: gold;
+  }
+}
+
+.repo-discovery-progress {
+  display: block;
+  width: 100%;
+  height: 0.125rem;
+  overflow: hidden;
+  border-radius: 0.125rem;
+  background: var(--minima-border-color-01);
+
+  &::before {
+    content: "";
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: var(--minima-link-base-color);
+    transform: scaleX(var(--trophy-progress, 0));
+    transform-origin: left;
+  }
+}
+
 .repo-list {
   list-style: none;
   margin: 0;
@@ -920,7 +970,9 @@ html[data-github-icon-variant="logo"]
   height: 2.25rem;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 4px 2px var(--minima-link-base-color);
+  box-shadow:
+    0 0 12px 4px var(--minima-link-base-color),
+    0 0 28px 8px color-mix(in srgb, var(--minima-link-base-color) 55%, transparent);
   opacity: var(--ball-vortex-glow, 0);
   pointer-events: none;
 }
@@ -965,14 +1017,15 @@ html[data-github-icon-variant="logo"]
   height: 2.75rem;
   padding: 0;
   border: 1px solid currentColor;
+  // Keep the border pulse independent of the icon's hover colour.
   border-color: color-mix(
     in srgb,
-    currentColor,
+    var(--minima-text-color),
     var(--minima-link-base-color) var(--ball-impact-highlight, 0%)
   );
   border-radius: 50%;
   appearance: none;
-  background: var(--minima-background-color);
+  background-color: var(--minima-background-color);
   color: var(--minima-text-color);
   cursor: pointer;
   pointer-events: auto;
@@ -988,7 +1041,7 @@ html[data-github-icon-variant="logo"]
 
 @media (hover: hover) {
   .theme-toggle:hover {
-    background: color-mix(
+    background-color: color-mix(
       in srgb,
       var(--minima-background-color) 92%,
       var(--minima-link-base-color)
@@ -1009,6 +1062,7 @@ html[data-github-icon-variant="logo"]
   width: 1.125rem;
   height: 1.125rem;
   line-height: 1;
+  transform: rotate(var(--ball-spin-angle, 0deg));
 }
 
 .theme-toggle-icon[hidden] {
@@ -1033,6 +1087,10 @@ html[data-github-icon-variant="logo"]
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .theme-toggle-icon {
+    transform: none;
+  }
+
   .theme-toggle-drag[data-ball-glow]::before {
     display: none;
   }
