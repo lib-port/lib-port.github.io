@@ -70,8 +70,8 @@ repo_grid:
     - who-gets-heard
     - full-stack-pm
     - open-banking-lakehouse
-    - backtest
     - pricing-function-mapper
+    - insur-proto
     - papers
 
 recent_milestones:
